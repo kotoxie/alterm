@@ -1,0 +1,21 @@
+{
+  "name": "alterm",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "packages/server",
+    "packages/client"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "npm run dev --workspace=packages/server",
+    "dev:client": "npm run dev --workspace=packages/client",
+    "build": "npm run build --workspace=packages/client && npm run build --workspace=packages/server",
+    "start": "npm run start --workspace=packages/server",
+    "clean": "rm -rf packages/server/dist packages/client/dist"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "typescript": "^5.7.0"
+  }
+}
