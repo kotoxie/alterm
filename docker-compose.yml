@@ -1,0 +1,12 @@
+services:
+  alterm:
+    image: alterm:latest
+    build: .
+    ports:
+      - "7443:7443"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - ADMIN_PASSWORD=changeme  # only used on first launch
+      # - TLS_CERT_PATH=/app/data/certs/custom.crt
+      # - TLS_KEY_PATH=/app/data/certs/custom.key
