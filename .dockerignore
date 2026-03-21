@@ -1,0 +1,16 @@
+# Dependencies — installed inside the container by RUN npm install
+node_modules
+**/node_modules
+
+# Local build outputs — rebuilt inside the container
+**/dist
+
+# Git history — not needed in image
+.git
+
+# Local data volume
+data
+
+# Editor / OS artifacts
+.DS_Store
+*.log
