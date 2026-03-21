@@ -142,7 +142,7 @@ export function SshSession({ tab, isActive, onStatusChange, onClose }: SshSessio
   }, [tab.id, tab.connectionId, token, onStatusChange, reconnectCount]);
 
   return (
-    <div className="absolute inset-0 bg-[#0d0d0d] relative">
+    <div className="absolute inset-0 bg-[#0d0d0d]">
       <div ref={termRef} className="absolute inset-0" />
 
       {disconnected && (

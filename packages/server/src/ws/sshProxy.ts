@@ -1,7 +1,7 @@
 import type { IncomingMessage } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import type https from 'https';
-import { Client as SshClient } from 'ssh2';
+import { Client as SshClient, type ClientChannel } from 'ssh2';
 import { verifyToken } from '../services/jwt.js';
 import { queryOne, execute } from '../db/helpers.js';
 import { decrypt } from '../services/encryption.js';
@@ -51,7 +51,7 @@ export function setupSshProxy(server: https.Server): void {
 
     const ssh = new SshClient();
     let cols = 80, rows = 24;
-    let shellStream: import('ssh2').ClientChannel | null = null;
+    let shellStream: ClientChannel | null = null;
 
     ssh.on('banner', (message: string) => {
       if (ws.readyState === WebSocket.OPEN) ws.send(Buffer.from(message));
