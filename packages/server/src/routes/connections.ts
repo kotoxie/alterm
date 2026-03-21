@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import net from 'net';
 import { v4 as uuid } from 'uuid';
 import { queryAll, queryOne, execute, getChanges } from '../db/helpers.js';
 import { authRequired } from '../middleware/auth.js';
@@ -22,6 +23,7 @@ interface ConnectionRow {
   sort_order: number;
   recording_enabled: number;
   shared: number;
+  tunnels_json: string | null;
 }
 
 interface GroupRow {
@@ -93,10 +95,116 @@ router.get('/', (req: Request, res: Response) => {
   res.json({ groups: rootGroups, ungrouped, sharedConnections: sharedMapped });
 });
 
+// POST /health-check — TCP reachability for multiple connections
+router.post('/health-check', async (req: Request, res: Response) => {
+  const { checks } = req.body as { checks: { id: string; host: string; port: number }[] };
+  if (!Array.isArray(checks)) { res.status(400).json({ error: 'checks array required' }); return; }
+
+  const results = await Promise.all(
+    checks.map(({ id, host, port }) =>
+      new Promise<{ id: string; reachable: boolean; latencyMs: number | null }>((resolve) => {
+        const start = Date.now();
+        const socket = net.createConnection({ host, port, timeout: 3000 });
+        socket.on('connect', () => {
+          const latencyMs = Date.now() - start;
+          socket.destroy();
+          resolve({ id, reachable: true, latencyMs });
+        });
+        socket.on('timeout', () => { socket.destroy(); resolve({ id, reachable: false, latencyMs: null }); });
+        socket.on('error', () => resolve({ id, reachable: false, latencyMs: null }));
+      }),
+    ),
+  );
+  res.json({ results });
+});
+
+// GET /export — export all connections and groups as JSON (no passwords)
+router.get('/export', (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const groups = queryAll<GroupRow>(
+    'SELECT id, name, parent_id, sort_order FROM connection_groups WHERE user_id = ? ORDER BY sort_order',
+    [userId],
+  );
+  interface ExportConn {
+    id: string; name: string; protocol: string; host: string;
+    port: number; username: string | null; group_id: string | null; shared: number;
+  }
+  const connections = queryAll<ExportConn>(
+    'SELECT id, name, protocol, host, port, username, group_id, shared FROM connections WHERE user_id = ? ORDER BY sort_order',
+    [userId],
+  );
+  const payload = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    groups: groups.map((g) => ({ id: g.id, name: g.name, parentId: g.parent_id, sortOrder: g.sort_order })),
+    connections: connections.map((c) => ({
+      id: c.id, name: c.name, protocol: c.protocol, host: c.host, port: c.port,
+      username: c.username, groupId: c.group_id, shared: c.shared,
+    })),
+  };
+  res.setHeader('Content-Disposition', `attachment; filename="alterm-connections-${Date.now()}.json"`);
+  res.setHeader('Content-Type', 'application/json');
+  res.json(payload);
+});
+
+// POST /import — import connections from JSON
+router.post('/import', (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const { groups, connections } = req.body as {
+    version?: number;
+    groups?: { id: string; name: string; parentId?: string | null; sortOrder?: number }[];
+    connections?: { name: string; protocol: string; host: string; port: number; username?: string | null; groupId?: string | null; shared?: number }[];
+  };
+
+  let groupsCreated = 0;
+  let connectionsCreated = 0;
+  const groupIdMap = new Map<string, string>(); // old id → new id
+
+  // Create groups (preserve hierarchy by sorting: parents before children)
+  const sortedGroups = (groups ?? []).slice().sort((a, b) => {
+    if (!a.parentId) return -1;
+    if (!b.parentId) return 1;
+    return 0;
+  });
+
+  for (const g of sortedGroups) {
+    const newId = uuid();
+    groupIdMap.set(g.id, newId);
+    const newParentId = g.parentId ? (groupIdMap.get(g.parentId) ?? null) : null;
+    execute(
+      'INSERT INTO connection_groups (id, user_id, name, parent_id, sort_order) VALUES (?, ?, ?, ?, ?)',
+      [newId, userId, g.name, newParentId, g.sortOrder ?? 0],
+    );
+    groupsCreated++;
+  }
+
+  for (const c of (connections ?? [])) {
+    if (!c.name || !c.protocol || !c.host || !c.port) continue;
+    if (!['ssh', 'rdp', 'smb'].includes(c.protocol)) continue;
+    const newId = uuid();
+    const newGroupId = c.groupId ? (groupIdMap.get(c.groupId) ?? null) : null;
+    execute(
+      `INSERT INTO connections (id, user_id, group_id, name, protocol, host, port, username, shared, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [newId, userId, newGroupId, c.name, c.protocol, c.host, c.port, c.username ?? null, c.shared ?? 0, 0],
+    );
+    connectionsCreated++;
+  }
+
+  logAudit({
+    userId,
+    eventType: 'connections.imported',
+    details: { groupsCreated, connectionsCreated },
+    ipAddress: req.ip,
+  });
+
+  res.json({ groupsCreated, connectionsCreated });
+});
+
 // Create connection
 router.post('/', (req: Request, res: Response) => {
   const userId = req.user!.userId;
-  const { name, protocol, host, port, username, password, groupId, privateKey, extraConfig, shared } = req.body;
+  const { name, protocol, host, port, username, password, groupId, privateKey, extraConfig, shared, tunnels } = req.body;
 
   if (!name || !protocol || !host || !port) {
     res.status(400).json({ error: 'Name, protocol, host, and port are required' });
@@ -113,13 +221,14 @@ router.post('/', (req: Request, res: Response) => {
   const encryptedKey = privateKey ? encrypt(privateKey) : null;
 
   execute(
-    `INSERT INTO connections (id, user_id, group_id, name, protocol, host, port, username, encrypted_password, private_key, extra_config_json, sort_order, shared)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO connections (id, user_id, group_id, name, protocol, host, port, username, encrypted_password, private_key, extra_config_json, sort_order, shared, tunnels_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id, userId, groupId || null, name, protocol, host, port,
       username || null, encryptedPassword, encryptedKey,
       extraConfig ? JSON.stringify(extraConfig) : null, 0,
       shared ? 1 : 0,
+      tunnels ? JSON.stringify(tunnels) : null,
     ],
   );
 
@@ -177,7 +286,7 @@ router.put('/:id', (req: Request, res: Response) => {
     groupId: existing.group_id,
   };
 
-  const { name, protocol, host, port, username, password, groupId, privateKey, shared } = req.body;
+  const { name, protocol, host, port, username, password, groupId, privateKey, shared, tunnels } = req.body;
 
   const updates: string[] = [];
   const params: unknown[] = [];
@@ -191,6 +300,7 @@ router.put('/:id', (req: Request, res: Response) => {
   if (privateKey !== undefined) { updates.push('private_key = ?'); params.push(privateKey ? encrypt(privateKey) : null); }
   if (groupId !== undefined) { updates.push('group_id = ?'); params.push(groupId || null); }
   if (shared !== undefined) { updates.push('shared = ?'); params.push(shared ? 1 : 0); }
+  if (tunnels !== undefined) { updates.push('tunnels_json = ?'); params.push(tunnels ? JSON.stringify(tunnels) : null); }
 
   if (updates.length === 0) {
     res.status(400).json({ error: 'No fields to update' });
@@ -264,6 +374,9 @@ router.get('/:id', (req: Request, res: Response) => {
     return;
   }
 
+  let tunnels: unknown[] = [];
+  try { if (conn.tunnels_json) tunnels = JSON.parse(conn.tunnels_json); } catch { /* ignore */ }
+
   res.json({
     id: conn.id,
     name: conn.name,
@@ -276,6 +389,7 @@ router.get('/:id', (req: Request, res: Response) => {
     hasPassword: !!conn.encrypted_password,
     hasPrivateKey: !!conn.private_key,
     shared: conn.shared,
+    tunnels,
   });
 });
 

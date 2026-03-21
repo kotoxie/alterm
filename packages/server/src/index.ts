@@ -20,6 +20,8 @@ import profileRoutes from './routes/profile.js';
 import usersRoutes from './routes/users.js';
 import auditRoutes from './routes/audit.js';
 import versionRoutes from './routes/version.js';
+import sessionsRoutes from './routes/sessions.js';
+import smbRoutes from './routes/smb.js';
 
 async function main() {
   // Ensure data directories
@@ -56,6 +58,7 @@ async function main() {
       },
     },
   }));
+  app.use('/api/v1/smb/:connectionId/upload', express.raw({ limit: '100mb', type: '*/*' }));
   app.use(express.json());
   app.use(cookieParser());
 
@@ -67,6 +70,8 @@ async function main() {
   app.use('/api/v1/users', usersRoutes);
   app.use('/api/v1/audit', auditRoutes);
   app.use('/api/v1/version', versionRoutes);
+  app.use('/api/v1/sessions', sessionsRoutes);
+  app.use('/api/v1/smb', smbRoutes);
   app.use('/health', healthRoutes);
 
   // Serve frontend static files
