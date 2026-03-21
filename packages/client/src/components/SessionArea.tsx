@@ -1,6 +1,7 @@
 import type { Tab } from '../pages/MainLayout';
 import { RdpSession } from './RdpSession';
 import { SshSession } from './SshSession';
+import { SmbSession } from './SmbSession';
 
 interface SessionAreaProps {
   tabs: Tab[];
@@ -37,9 +38,12 @@ export function SessionArea({ tabs, activeTabId, onStatusChange, onClose }: Sess
               <SshSession tab={tab} isActive={isActive} onStatusChange={onStatusChange} onClose={onClose} />
             )}
             {tab.protocol === 'smb' && (
-              <div className="flex items-center justify-center flex-1 bg-surface">
-                <div className="text-text-secondary">SMB sessions coming soon</div>
-              </div>
+              <SmbSession
+                connectionId={tab.connectionId}
+                connectionName={tab.name}
+                isActive={isActive}
+                onStatusChange={(status) => onStatusChange(tab.id, status)}
+              />
             )}
           </div>
         );

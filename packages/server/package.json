@@ -9,23 +9,24 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "sql.js": "^1.11.0",
+    "@marsaud/smb2": "^0.18.0",
     "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "express": "^4.21.0",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
+    "sql.js": "^1.11.0",
     "ssh2": "^1.16.0",
     "uuid": "^11.0.0",
-    "ws": "^8.18.0",
-    "cookie-parser": "^1.4.7"
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
+    "@types/cookie-parser": "^1.4.7",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/jsonwebtoken": "^9.0.7",
-    "@types/cookie-parser": "^1.4.7",
     "@types/node": "^22.10.0",
     "@types/ssh2": "^1.15.0",
     "@types/uuid": "^10.0.0",

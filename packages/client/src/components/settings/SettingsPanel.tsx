@@ -5,6 +5,7 @@ import { SecuritySettings } from './SecuritySettings';
 import { UsersSettings } from './UsersSettings';
 import { AuditTrail } from './AuditTrail';
 import { GlobalSettings } from './GlobalSettings';
+import { SessionsHistory } from './SessionsHistory';
 
 interface SettingsPanelProps {
   isOpen: boolean;
@@ -12,7 +13,7 @@ interface SettingsPanelProps {
   initialSection?: string;
 }
 
-type Section = 'profile' | 'security' | 'users' | 'audit' | 'global';
+type Section = 'profile' | 'security' | 'users' | 'audit' | 'global' | 'sessions';
 
 interface NavItem {
   id: Section;
@@ -78,12 +79,22 @@ function SlidersIcon() {
   );
 }
 
+function HistoryIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <polyline points="1 4 1 10 7 10" />
+      <path d="M3.51 15a9 9 0 1 0 .49-3.85" />
+    </svg>
+  );
+}
+
 const NAV_ITEMS: NavItem[] = [
   { id: 'profile', label: 'Profile', icon: <UserIcon /> },
   { id: 'security', label: 'Login & Security', icon: <ShieldIcon />, adminOnly: true },
   { id: 'users', label: 'Users', icon: <UsersIcon />, adminOnly: true },
   { id: 'audit', label: 'Audit Trail', icon: <ListIcon />, adminOnly: true },
   { id: 'global', label: 'Global Settings', icon: <SlidersIcon />, adminOnly: true },
+  { id: 'sessions', label: 'Sessions', icon: <HistoryIcon />, adminOnly: true },
 ];
 
 export function SettingsPanel({ isOpen, onClose, initialSection }: SettingsPanelProps) {
@@ -191,6 +202,7 @@ export function SettingsPanel({ isOpen, onClose, initialSection }: SettingsPanel
             {activeSection === 'users' && isAdmin && <UsersSettings />}
             {activeSection === 'audit' && isAdmin && <AuditTrail />}
             {activeSection === 'global' && isAdmin && <GlobalSettings />}
+            {activeSection === 'sessions' && isAdmin && <SessionsHistory />}
           </div>
         </div>
       </div>

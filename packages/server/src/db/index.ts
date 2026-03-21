@@ -192,6 +192,13 @@ function runMigrations() {
           ('security.max_session_minutes', '0');
       `,
     },
+    {
+      version: 4,
+      sql: `
+        ALTER TABLE connections ADD COLUMN tunnels_json TEXT;
+        INSERT OR IGNORE INTO settings (key, value) VALUES ('session.recording_path', 'recordings');
+      `,
+    },
   ];
 
   for (const migration of migrations) {
