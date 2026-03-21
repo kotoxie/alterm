@@ -89,6 +89,7 @@ const NAV_ITEMS: NavItem[] = [
 export function SettingsPanel({ isOpen, onClose, initialSection }: SettingsPanelProps) {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
+  const [expanded, setExpanded] = useState(false);
   const [activeSection, setActiveSection] = useState<Section>(() => {
     if (initialSection && NAV_ITEMS.some((n) => n.id === initialSection)) {
       return initialSection as Section;
@@ -123,7 +124,7 @@ export function SettingsPanel({ isOpen, onClose, initialSection }: SettingsPanel
       />
 
       {/* Panel — slides in from right, full height below header */}
-      <div className="absolute right-0 top-0 bottom-0 w-full max-w-[1280px] flex bg-surface shadow-2xl border-l border-border">
+      <div className={`absolute right-0 top-0 bottom-0 w-full flex bg-surface shadow-2xl border-l border-border transition-[max-width] duration-200 ${expanded ? 'max-w-full' : 'max-w-[1280px]'}`}>
         {/* Left nav */}
         <div className="w-52 bg-surface-alt border-r border-border flex flex-col shrink-0">
           <div className="h-12 flex items-center px-4 border-b border-border">
@@ -154,16 +155,33 @@ export function SettingsPanel({ isOpen, onClose, initialSection }: SettingsPanel
             <span className="text-sm font-semibold text-text-primary">
               {visibleNav.find((n) => n.id === activeSection)?.label}
             </span>
-            <button
-              onClick={onClose}
-              className="p-1.5 rounded hover:bg-surface-hover text-text-secondary"
-              title="Close settings"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setExpanded((e) => !e)}
+                className="p-1.5 rounded hover:bg-surface-hover text-text-secondary"
+                title={expanded ? 'Restore size' : 'Expand to full width'}
+              >
+                {expanded ? (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
+                  </svg>
+                ) : (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+                  </svg>
+                )}
+              </button>
+              <button
+                onClick={onClose}
+                className="p-1.5 rounded hover:bg-surface-hover text-text-secondary"
+                title="Close settings"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
           </div>
 
           {/* Content */}
