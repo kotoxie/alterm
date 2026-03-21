@@ -413,7 +413,7 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
   }, [tab.id, tab.connectionId, token, onStatusChange, reconnectCount]);
 
   return (
-    <div ref={outerRef} className="flex flex-col flex-1 bg-black relative overflow-hidden">
+    <div ref={outerRef} className="absolute inset-0 flex flex-col bg-black overflow-hidden">
       <div ref={containerRef} className="flex-1 w-full" />
 
       {/* Disconnect overlay */}
