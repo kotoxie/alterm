@@ -81,6 +81,15 @@ async function main() {
   app.use('/api/v1/ftp', ftpRoutes);
   app.use('/health', healthRoutes);
 
+  // Global JSON error handler — prevents Express from returning HTML 500 pages
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error('[Alterm] Unhandled error:', err.message);
+    if (!res.headersSent) {
+      res.status(500).json({ error: err.message || 'Internal server error' });
+    }
+  });
+
   // Serve frontend static files
   const clientDir = config.clientDir;
   if (fs.existsSync(clientDir)) {
