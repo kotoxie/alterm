@@ -55,6 +55,17 @@ function makeSmbClient(conn: ConnRow): SMB2 {
   });
 }
 
+// Wrap an SMB operation so synchronous throws (e.g. from crypto) are caught too
+async function smbOp<T>(fn: () => Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    try {
+      fn().then(resolve).catch(reject);
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
 // POST /:connectionId/list — list directory
 router.post('/:connectionId/list', async (req: Request, res: Response) => {
   const userId = req.user!.userId;
@@ -65,7 +76,7 @@ router.post('/:connectionId/list', async (req: Request, res: Response) => {
   const smb = makeSmbClient(conn);
 
   try {
-    const files = await smb.readdir(dirPath, { stats: true });
+    const files = await smbOp(() => smb.readdir(dirPath, { stats: true }));
     res.json({
       files: files.map((f) => ({
         filename: f.name,
@@ -94,7 +105,7 @@ router.get('/:connectionId/download', async (req: Request, res: Response) => {
   const fileName = filePath.split(/[/\\]/).pop() || 'download';
 
   try {
-    const stream = await smb.createReadStream(filePath);
+    const stream = await smbOp(() => smb.createReadStream(filePath));
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
     res.setHeader('Content-Type', 'application/octet-stream');
     stream.pipe(res);
@@ -125,7 +136,7 @@ router.post('/:connectionId/upload', async (req: Request, res: Response) => {
   const smb = makeSmbClient(conn);
 
   try {
-    const stream = await smb.createWriteStream(filePath);
+    const stream = await smbOp(() => smb.createWriteStream(filePath));
     await new Promise<void>((resolve, reject) => {
       req.pipe(stream);
       stream.on('finish', resolve);
@@ -154,7 +165,7 @@ router.post('/:connectionId/mkdir', async (req: Request, res: Response) => {
   const smb = makeSmbClient(conn);
 
   try {
-    await smb.mkdir(dirPath);
+    await smbOp(() => smb.mkdir(dirPath));
     res.json({ success: true });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'SMB error';
@@ -177,7 +188,7 @@ router.delete('/:connectionId/file', async (req: Request, res: Response) => {
   const smb = makeSmbClient(conn);
 
   try {
-    await smb.unlink(filePath);
+    await smbOp(() => smb.unlink(filePath));
     res.json({ success: true });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'SMB error';
