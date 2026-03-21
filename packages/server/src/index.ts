@@ -12,12 +12,11 @@ import { ensureTlsCerts } from './services/tls.js';
 import { setupRdpProxy } from './ws/rdpProxy.js';
 import authRoutes from './routes/auth.js';
 import connectionRoutes from './routes/connections.js';
-import fileRoutes from './routes/files.js';
 import healthRoutes from './routes/health.js';
 
 async function main() {
   // Ensure data directories
-  for (const dir of [config.dataDir, config.certsDir, config.recordingsDir, config.logsDir, config.filesDir]) {
+  for (const dir of [config.dataDir, config.certsDir, config.recordingsDir, config.logsDir]) {
     fs.mkdirSync(dir, { recursive: true });
   }
 
@@ -48,7 +47,6 @@ async function main() {
   // API routes
   app.use('/api/v1/auth', authRoutes);
   app.use('/api/v1/connections', connectionRoutes);
-  app.use('/api/v1/connections', fileRoutes);
   app.use('/health', healthRoutes);
 
   // Serve frontend static files
