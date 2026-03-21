@@ -16,7 +16,13 @@ Browser-based remote access manager — RDP, SSH, and SMB from a single self-hos
 ## Quick start
 
 ```bash
-docker compose up -d
+services:
+    alterm:
+        image: ghcr.io/kotoxie/alterm
+        ports:
+            - '7443:7443'
+        volumes:
+        - ./data:/app/data
 ```
 
 Open **https://localhost:7443** in your browser. On first launch you will be prompted to create an admin account.
