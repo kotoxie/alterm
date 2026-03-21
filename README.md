@@ -26,7 +26,7 @@ services:
         - ./data:/app/data
 ```
 
-Open **https://<IP_ADDRESS>:7443** in your browser. On first launch you will be prompted to create an admin account.
+Open [**https://<IP_ADDRESS>:7443**] in your browser. On first launch you will be prompted to create an admin account.
 
 > The browser will warn about the self-signed certificate — this is expected. Accept the exception to proceed.
 
