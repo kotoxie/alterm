@@ -14,12 +14,12 @@
 }
 
 .dark {
-  --surface: #0f172a;
-  --surface-alt: #1e293b;
-  --surface-hover: #334155;
-  --border: #334155;
-  --text-primary: #f1f5f9;
-  --text-secondary: #94a3b8;
+  --surface: #141414;
+  --surface-alt: #1c1c1c;
+  --surface-hover: #272727;
+  --border: #2e2e2e;
+  --text-primary: #efefef;
+  --text-secondary: #888888;
   --accent: #3b82f6;
   --accent-hover: #60a5fa;
 }

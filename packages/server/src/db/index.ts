@@ -182,6 +182,16 @@ function runMigrations() {
           ('rdp.default_height', '1080');
       `,
     },
+    {
+      version: 3,
+      sql: `
+        ALTER TABLE connections ADD COLUMN shared INTEGER NOT NULL DEFAULT 0;
+
+        INSERT OR IGNORE INTO settings (key, value) VALUES
+          ('security.idle_timeout_minutes', '0'),
+          ('security.max_session_minutes', '0');
+      `,
+    },
   ];
 
   for (const migration of migrations) {
