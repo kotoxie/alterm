@@ -1,6 +1,7 @@
 import { useAuth } from '../hooks/useAuth';
 import { useTheme } from '../hooks/useTheme';
 import { useSettings } from '../hooks/useSettings';
+import { useVersionCheck } from '../hooks/useVersionCheck';
 
 const AVATAR_COLORS = [
   'bg-blue-500', 'bg-purple-500', 'bg-green-500', 'bg-yellow-500',
@@ -32,6 +33,7 @@ export function Header({ onToggleSidebar, onOpenSettings }: HeaderProps) {
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { settings } = useSettings();
+  const { current: appVersion, updateAvailable, latest, releaseUrl } = useVersionCheck();
 
   const appName = settings['app.name'] ?? 'Alterm';
   const username = user?.username ?? '';
@@ -52,6 +54,21 @@ export function Header({ onToggleSidebar, onOpenSettings }: HeaderProps) {
           </svg>
         </button>
         <span className="text-lg font-bold text-text-primary tracking-tight">{appName}</span>
+        <span className="text-xs text-text-secondary opacity-60 font-mono">v{appVersion}</span>
+        {updateAvailable && releaseUrl && (
+          <a
+            href={releaseUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-accent/15 text-accent text-xs font-medium hover:bg-accent/25 transition-colors"
+            title={`New version available: v${latest}`}
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M12 5v14M5 12l7-7 7 7" />
+            </svg>
+            v{latest} available
+          </a>
+        )}
       </div>
       <div className="flex items-center gap-2">
         <button
