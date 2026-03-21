@@ -7,12 +7,16 @@ import { useAuth } from '../hooks/useAuth';
 
 interface SshSessionProps {
   tab: Tab;
+  isActive: boolean;
   onStatusChange: (tabId: string, status: Tab['status']) => void;
   onClose: (tabId: string) => void;
 }
 
-export function SshSession({ tab, onStatusChange, onClose }: SshSessionProps) {
+export function SshSession({ tab, isActive, onStatusChange, onClose }: SshSessionProps) {
   const termRef = useRef<HTMLDivElement>(null);
+  const terminalRef = useRef<Terminal | null>(null);
+  const fitAddonRef = useRef<FitAddon | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
   const { token } = useAuth();
   const [disconnected, setDisconnected] = useState(false);
   const [disconnectMessage, setDisconnectMessage] = useState('');
@@ -23,6 +27,22 @@ export function SshSession({ tab, onStatusChange, onClose }: SshSessionProps) {
     setDisconnectMessage('');
     setReconnectCount((n) => n + 1);
   }, []);
+
+  // Re-fit + notify server when this tab becomes active (was hidden before)
+  useEffect(() => {
+    if (!isActive) return;
+    const timer = setTimeout(() => {
+      const fit = fitAddonRef.current;
+      const term = terminalRef.current;
+      const ws = wsRef.current;
+      if (!fit || !term) return;
+      fit.fit();
+      if (ws?.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+      }
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [isActive]);
 
   useEffect(() => {
     if (!termRef.current || !token) return;
@@ -50,16 +70,22 @@ export function SshSession({ tab, onStatusChange, onClose }: SshSessionProps) {
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     term.open(termRef.current);
+    terminalRef.current = term;
+    fitAddonRef.current = fitAddon;
 
-    // Defer first fit so the DOM has dimensions
-    requestAnimationFrame(() => { if (!cancelled) fitAddon.fit(); });
+    // Use a short timeout so the flex layout fully settles before measuring
+    const fitTimer = setTimeout(() => {
+      if (!cancelled) fitAddon.fit();
+    }, 50);
 
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${proto}//${window.location.host}/ws/ssh?token=${encodeURIComponent(token)}&connectionId=${encodeURIComponent(tab.connectionId)}`;
     const ws = new WebSocket(wsUrl);
     ws.binaryType = 'arraybuffer';
+    wsRef.current = ws;
 
     ws.onopen = () => {
+      // By the time the WebSocket handshake completes the fit has run
       ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
     };
 
@@ -96,20 +122,24 @@ export function SshSession({ tab, onStatusChange, onClose }: SshSessionProps) {
       if (ws.readyState === WebSocket.OPEN)
         ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
     });
-    if (termRef.current) resizeObserver.observe(termRef.current);
+    resizeObserver.observe(termRef.current);
 
     return () => {
       cancelled = true;
+      clearTimeout(fitTimer);
       resizeObserver.disconnect();
       dataDispose.dispose();
       if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) ws.close();
       term.dispose();
+      terminalRef.current = null;
+      fitAddonRef.current = null;
+      wsRef.current = null;
     };
   }, [tab.id, tab.connectionId, token, onStatusChange, reconnectCount]);
 
   return (
-    <div className="flex flex-col flex-1 bg-[#0d0d0d] relative overflow-hidden">
-      <div ref={termRef} className="flex-1 w-full overflow-hidden" />
+    <div className="absolute inset-0 bg-[#0d0d0d] relative">
+      <div ref={termRef} className="absolute inset-0" />
 
       {disconnected && (
         <div className="absolute inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-20">
