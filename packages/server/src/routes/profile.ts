@@ -61,6 +61,16 @@ router.put('/', (req: Request, res: Response) => {
     return;
   }
 
+  // Capture before values for audit diff
+  const currentUser = queryOne<UserRow>(
+    'SELECT display_name, email, avatar_text FROM users WHERE id = ?', [userId],
+  );
+  const before: Record<string, unknown> = {};
+  const after: Record<string, unknown> = {};
+  if (displayName !== undefined) { before.displayName = currentUser?.display_name ?? null; after.displayName = displayName; }
+  if (email !== undefined) { before.email = currentUser?.email ?? null; after.email = email || null; }
+  if (avatarText !== undefined) { before.avatarText = currentUser?.avatar_text ?? null; after.avatarText = avatarText || null; }
+
   updates.push("updated_at = datetime('now')");
   params.push(userId);
 
@@ -69,7 +79,7 @@ router.put('/', (req: Request, res: Response) => {
   logAudit({
     userId,
     eventType: 'profile.updated',
-    details: { fields: updates.slice(0, -1).map((u) => u.split(' = ')[0]) },
+    details: { before, after },
     ipAddress: req.ip,
   });
 
