@@ -79,10 +79,10 @@ export function MainLayout() {
     setActiveTabId(tab.id);
   }, [tabs]);
 
-  const duplicateTab = useCallback((source: Tab) => {
+  const duplicateTab = useCallback((source: { id: string; name: string; protocol: 'ssh' | 'rdp' | 'smb' }) => {
     const tab: Tab = {
       id: crypto.randomUUID(),
-      connectionId: source.connectionId,
+      connectionId: source.id,
       name: source.name,
       protocol: source.protocol,
       status: 'connecting',

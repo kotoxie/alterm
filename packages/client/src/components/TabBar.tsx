@@ -7,7 +7,7 @@ interface TabBarProps {
   activeTabId: string | null;
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
-  onDuplicate: (tab: Tab) => void;
+  onDuplicate: (conn: { id: string; name: string; protocol: 'ssh' | 'rdp' | 'smb' }) => void;
 }
 
 const protocolIcons: Record<string, string> = {
@@ -95,7 +95,7 @@ export function TabBar({ tabs, activeTabId, onSelect, onClose, onDuplicate }: Ta
         >
           <button
             className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
-            onClick={() => { onDuplicate(contextMenu.tab); setContextMenu(null); }}
+            onClick={() => { onDuplicate({ id: contextMenu.tab.connectionId, name: contextMenu.tab.name, protocol: contextMenu.tab.protocol }); setContextMenu(null); }}
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
