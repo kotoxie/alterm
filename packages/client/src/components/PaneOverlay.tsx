@@ -198,7 +198,7 @@ export function PaneOverlay({
           return (
             <button
               key={`close-${paneId}`}
-              className="absolute pointer-events-auto z-20 w-5 h-5 flex items-center justify-center rounded bg-surface/80 hover:bg-red-500/80 text-text-secondary hover:text-white opacity-0 hover:opacity-100 transition-all border border-border/40 shadow"
+              className="absolute pointer-events-auto z-20 w-5 h-5 flex items-center justify-center rounded bg-surface-alt hover:bg-red-500 text-text-secondary hover:text-white opacity-70 hover:opacity-100 transition-all border border-border/60 shadow-md"
               style={{
                 left: rect.x + rect.w - 22,
                 top: rect.y + 4,

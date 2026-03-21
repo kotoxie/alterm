@@ -154,8 +154,12 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
         body: JSON.stringify(body),
       });
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Failed to save');
+        let errMsg = `Server error (${res.status})`;
+        try {
+          const data = await res.json();
+          errMsg = data.error || errMsg;
+        } catch { /* server returned non-JSON (e.g. HTML error page) */ }
+        throw new Error(errMsg);
       }
       onSaved();
     } catch (err: unknown) {
