@@ -48,6 +48,9 @@ VOLUME /app/data
 
 ENV DATA_DIR=/app/data
 ENV NODE_ENV=production
+# @marsaud/smb2 uses ntlm which calls DES-ECB — a legacy cipher disabled in OpenSSL 3.
+# Enable the OpenSSL legacy provider so SMB NTLM authentication works on Node 20.
+ENV NODE_OPTIONS="--openssl-legacy-provider"
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
   CMD curl -fsk https://localhost:7443/health || exit 1
