@@ -103,7 +103,7 @@ export function MainLayout() {
         )}
         <div className="flex flex-col flex-1 overflow-hidden relative">
           <TabBar tabs={tabs} activeTabId={activeTabId} onSelect={setActiveTabId} onClose={closeTab} />
-          <SessionArea tab={activeTab} onStatusChange={updateTabStatus} />
+          <SessionArea tab={activeTab} onStatusChange={updateTabStatus} onClose={closeTab} />
 
           {/* Overlay during sidebar drag — blocks mouse events reaching the RDP canvas
               and keeps the col-resize cursor consistent across the entire screen */}
