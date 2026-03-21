@@ -71,6 +71,21 @@ const SIDEBAR_MIN = 150;
 const SIDEBAR_MAX = 480;
 const SIDEBAR_DEFAULT = 240;
 
+function buildPaneTree(paneIds: string[]): PaneNode {
+  if (paneIds.length === 1) {
+    return { type: 'leaf', id: paneIds[0] };
+  }
+  const mid = Math.ceil(paneIds.length / 2);
+  return {
+    type: 'split',
+    id: crypto.randomUUID(),
+    dir: 'h',
+    ratio: 0.5,
+    a: buildPaneTree(paneIds.slice(0, mid)),
+    b: buildPaneTree(paneIds.slice(mid)),
+  };
+}
+
 function deriveTabBarItems(views: ViewData[], tabs: Tab[]): TabBarItem[] {
   return views.map((view) => {
     const paneCount = countLeaves(view.paneRoot);
@@ -115,6 +130,9 @@ export function MainLayout() {
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<string | undefined>(undefined);
+
+  const { token } = useAuth();
+  const hasRestoredRef = useRef(false);
 
   const onOpenSettings = useCallback((section?: string) => {
     setSettingsSection(section);
@@ -227,6 +245,35 @@ export function MainLayout() {
     [],
   );
 
+  // ---------- openMultipleTabs ----------
+  // Opens multiple connections as separate views atomically (used for "Connect All").
+
+  const openMultipleTabs = useCallback(
+    (connections: Array<{ id: string; name: string; protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' }>) => {
+      if (connections.length === 0) return;
+      const newTabs: Tab[] = connections.map((conn) => ({
+        id: crypto.randomUUID(),
+        connectionId: conn.id,
+        name: conn.name,
+        protocol: conn.protocol,
+        status: 'connecting' as const,
+      }));
+      const newViews: ViewData[] = connections.map((_, i) => {
+        const paneId = crypto.randomUUID();
+        return {
+          id: crypto.randomUUID(),
+          paneRoot: { type: 'leaf', id: paneId } as PaneNode,
+          paneTabMap: { [paneId]: newTabs[i].id },
+          activePaneId: paneId,
+        };
+      });
+      setTabs((prev) => [...prev, ...newTabs]);
+      setViews((prev) => [...prev, ...newViews]);
+      setActiveViewId(newViews[0].id);
+    },
+    [],
+  );
+
   // ---------- splitView ----------
   // Adds a new empty pane to the specified view's pane tree alongside activePaneId.
 
@@ -324,6 +371,14 @@ export function MainLayout() {
   // ---------- closeView ----------
   // Closes all sessions in a view and removes it from the bar.
 
+  // ---------- closeAllViews ----------
+
+  const closeAllViews = useCallback(() => {
+    setTabs([]);
+    setViews([]);
+    setActiveViewId(null);
+  }, []);
+
   const closeView = useCallback((viewId: string) => {
     const currentViews = viewsRef.current;
     const currentActiveViewId = activeViewIdRef.current;
@@ -370,6 +425,82 @@ export function MainLayout() {
     setTabs((prev) => prev.map((t) => (t.id === tabId ? { ...t, status } : t)));
   }, []);
 
+  // ---------- Session persistence ----------
+
+  // Restore sessions from localStorage on first authenticated load
+  useEffect(() => {
+    if (!token || hasRestoredRef.current) return;
+    hasRestoredRef.current = true;
+
+    const saved = localStorage.getItem('alterm-sessions');
+    if (!saved) return;
+
+    try {
+      const savedViews: Array<Array<{ connectionId: string; name: string; protocol: Tab['protocol'] }>> =
+        JSON.parse(saved);
+      if (!savedViews.length) return;
+
+      const allNewTabs: Tab[] = [];
+      const allNewViews: ViewData[] = [];
+
+      for (const connList of savedViews) {
+        if (!connList.length) continue;
+        const connTabs: Tab[] = connList.map((c) => ({
+          id: crypto.randomUUID(),
+          connectionId: c.connectionId,
+          name: c.name,
+          protocol: c.protocol,
+          status: 'connecting' as const,
+        }));
+        const paneIds = connTabs.map(() => crypto.randomUUID());
+        const view: ViewData = {
+          id: crypto.randomUUID(),
+          paneRoot: buildPaneTree(paneIds),
+          paneTabMap: Object.fromEntries(paneIds.map((pid, i) => [pid, connTabs[i].id])),
+          activePaneId: paneIds[0],
+        };
+        allNewTabs.push(...connTabs);
+        allNewViews.push(view);
+      }
+
+      if (allNewViews.length > 0) {
+        setTabs(allNewTabs);
+        setViews(allNewViews);
+        setActiveViewId(allNewViews[allNewViews.length - 1].id);
+      }
+    } catch {
+      localStorage.removeItem('alterm-sessions');
+    }
+  }, [token]);
+
+  // Save sessions to localStorage whenever views/tabs change
+  useEffect(() => {
+    if (!hasRestoredRef.current) return;
+    if (views.length === 0) {
+      localStorage.removeItem('alterm-sessions');
+      return;
+    }
+    const saved = views
+      .map((view) =>
+        getLeafIds(view.paneRoot)
+          .map((paneId) => {
+            const tabId = view.paneTabMap[paneId];
+            if (!tabId) return null;
+            const tab = tabs.find((t) => t.id === tabId);
+            if (!tab) return null;
+            return { connectionId: tab.connectionId, name: tab.name, protocol: tab.protocol };
+          })
+          .filter(Boolean),
+      )
+      .filter((group) => group.length > 0);
+
+    if (saved.length > 0) {
+      localStorage.setItem('alterm-sessions', JSON.stringify(saved));
+    } else {
+      localStorage.removeItem('alterm-sessions');
+    }
+  }, [views, tabs]);
+
   // ---------- Derived values ----------
 
   const activeView = useMemo(
@@ -396,7 +527,7 @@ export function MainLayout() {
       <div className="flex flex-1 overflow-hidden">
         {sidebarOpen && (
           <>
-            <Sidebar onConnect={openTab} width={sidebarWidth} />
+            <Sidebar onConnect={openTab} onConnectMultiple={openMultipleTabs} width={sidebarWidth} />
             <div
               className="w-1 cursor-col-resize bg-border hover:bg-accent/60 active:bg-accent transition-colors shrink-0"
               onMouseDown={onDragStart}
@@ -412,6 +543,7 @@ export function MainLayout() {
             onSplitH={(viewId) => splitView(viewId, 'h')}
             onSplitV={(viewId) => splitView(viewId, 'v')}
             canSplit={canSplit}
+            onCloseAll={closeAllViews}
           />
 
           {/* Sessions container: relative parent for both layers */}

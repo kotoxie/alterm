@@ -10,6 +10,7 @@ interface TabBarProps {
   onSplitH: (tabId: string) => void;
   onSplitV: (tabId: string) => void;
   canSplit: boolean;
+  onCloseAll?: () => void;
 }
 
 const protocolIcons: Record<string, string> = {
@@ -42,6 +43,7 @@ export function TabBar({
   onSplitH,
   onSplitV,
   canSplit,
+  onCloseAll,
 }: TabBarProps) {
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -73,7 +75,8 @@ export function TabBar({
 
   return (
     <>
-      <div className="flex items-center h-9 bg-surface-alt border-b border-border overflow-x-auto shrink-0">
+      <div className="flex items-center h-9 bg-surface-alt border-b border-border shrink-0">
+        <div className="flex items-center h-full overflow-x-auto flex-1 min-w-0">
         {tabs.map((tab) => (
           <div
             key={tab.id}
@@ -99,6 +102,19 @@ export function TabBar({
             </button>
           </div>
         ))}
+        </div>
+        {onCloseAll && tabs.length > 0 && (
+          <button
+            onClick={onCloseAll}
+            className="flex items-center gap-1.5 px-3 h-full text-xs text-text-secondary hover:text-red-400 hover:bg-surface-hover border-l border-border shrink-0 transition-colors"
+            title="Close all sessions"
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+            Close All
+          </button>
+        )}
       </div>
 
       {contextMenu && (

@@ -28,6 +28,7 @@ interface FlatGroup {
 
 interface SidebarProps {
   onConnect: (conn: { id: string; name: string; protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' }) => void;
+  onConnectMultiple?: (conns: Array<{ id: string; name: string; protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' }>) => void;
   width?: number;
 }
 
@@ -50,6 +51,13 @@ function flattenGroups(groups: ConnectionGroup[], prefix = ''): FlatGroup[] {
     result.push(...flattenGroups(g.children, prefix + '\u00a0\u00a0'));
   }
   return result;
+}
+
+function getAllConnectionsInGroup(group: ConnectionGroup): Connection[] {
+  return [
+    ...group.connections,
+    ...group.children.flatMap(getAllConnectionsInGroup),
+  ];
 }
 
 const PROTOCOL_ICONS: Record<string, string> = {
@@ -112,7 +120,7 @@ const PenIcon = () => (
   </svg>
 );
 
-export function Sidebar({ onConnect, width }: SidebarProps) {
+export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
   const { token } = useAuth();
   const [groups, setGroups] = useState<ConnectionGroup[]>([]);
   const [ungrouped, setUngrouped] = useState<Connection[]>([]);
@@ -788,6 +796,22 @@ export function Sidebar({ onConnect, width }: SidebarProps) {
           className="fixed z-50 bg-surface-alt border border-border rounded shadow-lg py-1 text-sm min-w-[180px]"
           style={{ left: folderContextMenu.x, top: folderContextMenu.y }}
         >
+          {onConnectMultiple && (
+            <button
+              className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
+              onClick={() => {
+                const conns = getAllConnectionsInGroup(folderContextMenu.group);
+                if (conns.length > 0) onConnectMultiple(conns);
+                setFolderContextMenu(null);
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M5 12h14M12 5l7 7-7 7" />
+              </svg>
+              Connect All ({getAllConnectionsInGroup(folderContextMenu.group).length})
+            </button>
+          )}
+          {onConnectMultiple && <div className="border-t border-border my-1" />}
           <button
             className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
             onClick={() => { openNewConnectionInFolder(folderContextMenu.group.id); setFolderContextMenu(null); }}
