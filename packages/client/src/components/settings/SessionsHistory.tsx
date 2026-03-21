@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -27,8 +27,14 @@ function formatDate(iso: string) {
   try { return new Date(iso).toLocaleString(); } catch { return iso; }
 }
 
+function formatTime(secs: number): string {
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
 interface CastEvent { time: number; data: string; }
-interface CastHeader { width: number; height: number; }
+interface CastHeader { width: number; height: number; title?: string; }
 
 function parseCast(text: string): { header: CastHeader; events: CastEvent[] } {
   const lines = text.trim().split('\n');
@@ -43,112 +49,318 @@ function parseCast(text: string): { header: CastHeader; events: CastEvent[] } {
   return { header, events };
 }
 
-function RecordingPlayer({ sessionId, token, onClose }: { sessionId: string; token: string; onClose: () => void }) {
+function RecordingPlayer({
+  sessionId, token, onClose,
+}: { sessionId: string; token: string; onClose: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
+  const fitRef = useRef<FitAddon | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const eventsRef = useRef<CastEvent[]>([]);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [totalTime, setTotalTime] = useState(0);
+  const [title, setTitle] = useState('');
 
-  useEffect(() => {
-    return () => {
-      termRef.current?.dispose();
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
+  const eventsRef = useRef<CastEvent[]>([]);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const playingRef = useRef(false);
+  const speedRef = useRef(1);
+  const isSeeking = useRef(false);
+
+  // Cancel any in-flight playback
+  const cancelPlayback = useCallback(() => {
+    playingRef.current = false;
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
   }, []);
 
+  // Replay from a given index with the current speed
+  const scheduleFrom = useCallback((startIdx: number) => {
+    const events = eventsRef.current;
+    if (startIdx >= events.length) { setPlaying(false); return; }
+
+    playingRef.current = true;
+    setPlaying(true);
+
+    let i = startIdx;
+    function next() {
+      if (!playingRef.current) return;
+      if (i >= events.length) { setPlaying(false); return; }
+      const ev = events[i];
+      const prevTime = i > 0 ? events[i - 1].time : ev.time;
+      const delay = i === startIdx ? 0 : Math.max(0, (ev.time - prevTime) * 1000 / speedRef.current);
+      timerRef.current = setTimeout(() => {
+        if (!playingRef.current) return;
+        termRef.current?.write(ev.data);
+        setCurrentTime(ev.time);
+        i++;
+        next();
+      }, delay);
+    }
+    next();
+  }, []);
+
+  // Seek to a specific time (instant write up to that point, then schedule the rest)
+  const seekTo = useCallback((targetTime: number, resume = true) => {
+    cancelPlayback();
+    if (!termRef.current) return;
+
+    const events = eventsRef.current;
+    termRef.current.reset();
+    let nextIdx = 0;
+    for (let i = 0; i < events.length; i++) {
+      if (events[i].time <= targetTime) {
+        termRef.current.write(events[i].data);
+        nextIdx = i + 1;
+      } else {
+        break;
+      }
+    }
+    setCurrentTime(targetTime);
+    if (resume && nextIdx < events.length) {
+      scheduleFrom(nextIdx);
+    } else {
+      setPlaying(false);
+    }
+  }, [cancelPlayback, scheduleFrom]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      cancelPlayback();
+      termRef.current?.dispose();
+    };
+  }, [cancelPlayback]);
+
+  // Open recording, init terminal
   useEffect(() => {
     if (!containerRef.current) return;
-    const term = new Terminal({ cols: 120, rows: 30, fontSize: 13, theme: { background: '#141414' }, convertEol: true });
+
+    const term = new Terminal({
+      fontSize: 14,
+      fontFamily: 'Cascadia Code, Fira Code, Menlo, Monaco, Courier New, monospace',
+      theme: { background: '#0a0a0a', foreground: '#efefef', cursor: '#3b82f6' },
+      convertEol: true,
+      disableStdin: true,
+      scrollback: 0,
+    });
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(containerRef.current);
     fit.fit();
     termRef.current = term;
+    fitRef.current = fit;
 
     async function load() {
       try {
         const res = await fetch(`/api/v1/sessions/${sessionId}/recording`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (!res.ok) throw new Error('Failed to load recording');
+        if (!res.ok) throw new Error('Recording not found or unavailable');
         const text = await res.text();
-        const { events } = parseCast(text);
+        const { header, events } = parseCast(text);
         eventsRef.current = events;
+        const duration = events.length > 0 ? events[events.length - 1].time : 0;
+        setTotalTime(duration);
+        setTitle(header.title ?? '');
         setLoading(false);
-        // Start playing
-        playEvents(events, term, speed);
-        setPlaying(true);
+        // Auto-play
+        scheduleFrom(0);
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Failed');
+        setError(e instanceof Error ? e.message : 'Failed to load');
         setLoading(false);
       }
     }
     load();
+
+    // Handle window resize → refit terminal
+    const observer = new ResizeObserver(() => { fitRef.current?.fit(); });
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, token]);
 
-  function playEvents(events: CastEvent[], term: Terminal, spd: number) {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    term.reset();
-    let i = 0;
-    function scheduleNext() {
-      if (i >= events.length) { setPlaying(false); return; }
-      const event = events[i];
-      const delay = i === 0 ? 0 : Math.max(0, (event.time - events[i - 1].time) * 1000 / spd);
-      timerRef.current = setTimeout(() => {
-        term.write(event.data);
-        i++;
-        scheduleNext();
-      }, delay);
+  function handlePauseResume() {
+    if (playing) {
+      cancelPlayback();
+      setPlaying(false);
+    } else {
+      // Resume from currentTime
+      seekTo(currentTime, true);
     }
-    scheduleNext();
   }
 
   function handleReplay() {
-    if (!termRef.current) return;
-    setPlaying(true);
-    playEvents(eventsRef.current, termRef.current, speed);
+    seekTo(0, true);
   }
 
-  function handleSpeedChange(newSpeed: number) {
-    setSpeed(newSpeed);
-    if (playing && termRef.current) {
-      playEvents(eventsRef.current, termRef.current, newSpeed);
+  function handleSpeedChange(s: number) {
+    setSpeed(s);
+    speedRef.current = s;
+    // If playing, restart from current position with new speed
+    if (playingRef.current) {
+      seekTo(currentTime, true);
     }
   }
 
+  function handleScrub(e: React.ChangeEvent<HTMLInputElement>) {
+    const t = parseFloat(e.target.value);
+    isSeeking.current = true;
+    seekTo(t, false); // seek but don't auto-resume while dragging
+  }
+
+  function handleScrubEnd(e: React.MouseEvent<HTMLInputElement> | React.TouchEvent<HTMLInputElement>) {
+    const t = parseFloat((e.target as HTMLInputElement).value);
+    isSeeking.current = false;
+    seekTo(t, true); // resume after scrub ends
+  }
+
+  // Close on Escape
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [onClose]);
+
+  const progress = totalTime > 0 ? (currentTime / totalTime) * 100 : 0;
+
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70">
-      <div className="bg-surface-alt border border-border rounded-lg shadow-2xl w-[900px] max-w-[95vw] max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
-          <span className="text-sm font-semibold text-text-primary">Session Recording</span>
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-text-secondary">Speed:</span>
-            {[0.5, 1, 2, 4].map((s) => (
-              <button key={s} onClick={() => handleSpeedChange(s)}
-                className={`px-2 py-0.5 text-xs rounded ${speed === s ? 'bg-accent text-white' : 'border border-border text-text-secondary hover:bg-surface-hover'}`}>
-                {s}×
-              </button>
-            ))}
-            <button onClick={handleReplay} disabled={loading || playing}
-              className="px-3 py-1 text-xs bg-surface-hover border border-border rounded text-text-primary hover:bg-surface disabled:opacity-40">
-              Replay
-            </button>
-            <button onClick={onClose} className="p-1 rounded hover:bg-surface-hover text-text-secondary">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+    <div className="fixed inset-0 z-[60] flex flex-col bg-[#0a0a0a]">
+      {/* Top bar */}
+      <div className="flex items-center gap-3 px-4 py-2 bg-[#141414] border-b border-[#2e2e2e] shrink-0">
+        <span className="text-sm font-semibold text-[#efefef] truncate max-w-xs">
+          {title || 'Session Recording'}
+        </span>
+
+        <div className="flex-1" />
+
+        {/* Speed */}
+        <span className="text-xs text-[#888]">Speed:</span>
+        {[0.25, 0.5, 1, 2, 4, 8].map((s) => (
+          <button
+            key={s}
+            onClick={() => handleSpeedChange(s)}
+            className={`px-2 py-0.5 text-xs rounded transition-colors ${
+              speed === s
+                ? 'bg-blue-500 text-white'
+                : 'border border-[#2e2e2e] text-[#888] hover:border-[#444] hover:text-[#efefef]'
+            }`}
+          >
+            {s}×
+          </button>
+        ))}
+
+        {/* Pause/Resume */}
+        <button
+          onClick={handlePauseResume}
+          disabled={loading || !!error}
+          className="px-3 py-1 text-xs border border-[#2e2e2e] rounded text-[#efefef] hover:bg-[#1c1c1c] disabled:opacity-40 flex items-center gap-1.5"
+        >
+          {playing ? (
+            <>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" />
               </svg>
-            </button>
+              Pause
+            </>
+          ) : (
+            <>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="5 3 19 12 5 21 5 3" />
+              </svg>
+              {currentTime > 0 ? 'Resume' : 'Play'}
+            </>
+          )}
+        </button>
+
+        {/* Replay */}
+        <button
+          onClick={handleReplay}
+          disabled={loading || !!error}
+          className="px-3 py-1 text-xs border border-[#2e2e2e] rounded text-[#888] hover:text-[#efefef] hover:bg-[#1c1c1c] disabled:opacity-40"
+          title="Replay from beginning"
+        >
+          ↺ Replay
+        </button>
+
+        {/* Close */}
+        <button
+          onClick={onClose}
+          className="p-1.5 rounded hover:bg-[#272727] text-[#888] hover:text-[#efefef]"
+          title="Close (Esc)"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Terminal area */}
+      <div className="flex-1 overflow-hidden p-3">
+        {loading && (
+          <div className="flex items-center justify-center h-full text-[#888] text-sm">
+            Loading recording...
           </div>
+        )}
+        {error && (
+          <div className="flex items-center justify-center h-full text-red-400 text-sm">
+            {error}
+          </div>
+        )}
+        <div
+          ref={containerRef}
+          className="w-full h-full"
+          style={{ display: loading || error ? 'none' : 'block' }}
+        />
+      </div>
+
+      {/* Timeline bar */}
+      <div className="shrink-0 px-4 py-3 bg-[#141414] border-t border-[#2e2e2e] space-y-1.5">
+        {/* Time display */}
+        <div className="flex items-center justify-between text-xs font-mono">
+          <span className="text-[#888]">{formatTime(currentTime)}</span>
+          <span className="text-[#555]">
+            {playing ? (
+              <span className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse inline-block" />
+                PLAYING {speed !== 1 ? `(${speed}×)` : ''}
+              </span>
+            ) : currentTime >= totalTime && totalTime > 0 ? (
+              <span className="text-green-500/70">FINISHED</span>
+            ) : (
+              'PAUSED'
+            )}
+          </span>
+          <span className="text-[#888]">{formatTime(totalTime)}</span>
         </div>
-        <div className="flex-1 overflow-hidden bg-[#141414] rounded-b-lg p-2">
-          {loading && <p className="text-text-secondary text-sm p-4">Loading recording...</p>}
-          {error && <p className="text-red-400 text-sm p-4">{error}</p>}
-          <div ref={containerRef} className="w-full h-full" style={{ display: loading || error ? 'none' : 'block' }} />
+
+        {/* Scrubber */}
+        <div className="relative">
+          {/* Progress fill */}
+          <div
+            className="absolute top-1/2 left-0 h-1 rounded-full bg-blue-500/60 pointer-events-none -translate-y-1/2"
+            style={{ width: `${progress}%` }}
+          />
+          <input
+            type="range"
+            min={0}
+            max={totalTime || 1}
+            step={0.1}
+            value={currentTime}
+            onChange={handleScrub}
+            onMouseUp={handleScrubEnd}
+            onTouchEnd={handleScrubEnd}
+            disabled={loading || !!error || totalTime === 0}
+            className="w-full h-1 appearance-none bg-[#2e2e2e] rounded-full cursor-pointer disabled:opacity-40
+              [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5
+              [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500
+              [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:shadow-sm
+              [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:rounded-full
+              [&::-moz-range-thumb]:bg-blue-500 [&::-moz-range-thumb]:border-none [&::-moz-range-thumb]:cursor-pointer"
+            style={{ background: 'transparent' }}
+          />
         </div>
       </div>
     </div>
@@ -182,9 +394,16 @@ export function SessionsHistory() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-base font-semibold text-text-primary">Session History</h2>
-        <button onClick={loadSessions} className="text-xs text-text-secondary hover:text-text-primary px-2 py-1 rounded hover:bg-surface-hover">Refresh</button>
+        <button
+          onClick={loadSessions}
+          className="text-xs text-text-secondary hover:text-text-primary px-2 py-1 rounded hover:bg-surface-hover"
+        >
+          ↻ Refresh
+        </button>
       </div>
-      {sessions.length === 0 && <p className="text-text-secondary text-sm">No sessions recorded yet.</p>}
+      {sessions.length === 0 && (
+        <p className="text-text-secondary text-sm">No sessions recorded yet.</p>
+      )}
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -203,7 +422,9 @@ export function SessionsHistory() {
                 <td className="py-2 pr-4 text-text-primary">{s.connectionName ?? '—'}</td>
                 <td className="py-2 pr-4 text-text-secondary">{s.username ?? '—'}</td>
                 <td className="py-2 pr-4">
-                  <span className="px-1.5 py-0.5 rounded text-xs bg-surface-hover text-text-secondary uppercase font-mono">{s.protocol}</span>
+                  <span className="px-1.5 py-0.5 rounded text-xs bg-surface-hover text-text-secondary uppercase font-mono">
+                    {s.protocol}
+                  </span>
                 </td>
                 <td className="py-2 pr-4 text-text-secondary text-xs">{formatDate(s.startedAt)}</td>
                 <td className="py-2 pr-4 text-text-secondary text-xs">{formatDuration(s.startedAt, s.endedAt)}</td>
@@ -211,8 +432,11 @@ export function SessionsHistory() {
                   {s.hasRecording ? (
                     <button
                       onClick={() => setPlayingId(s.id)}
-                      className="px-2 py-1 text-xs bg-accent/10 text-accent rounded hover:bg-accent/20 border border-accent/20"
+                      className="px-2 py-1 text-xs bg-accent/10 text-accent rounded hover:bg-accent/20 border border-accent/20 flex items-center gap-1"
                     >
+                      <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor">
+                        <polygon points="5 3 19 12 5 21 5 3" />
+                      </svg>
                       Play
                     </button>
                   ) : (
