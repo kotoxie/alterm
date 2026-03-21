@@ -4,7 +4,7 @@ import { useAuth } from '../hooks/useAuth';
 interface Connection {
   id: string;
   name: string;
-  protocol: 'ssh' | 'rdp' | 'smb';
+  protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp';
   host: string;
   port: number;
   groupId: string | null;
@@ -18,7 +18,7 @@ interface FlatGroup {
 
 export interface ConnectionPrefill {
   name: string;
-  protocol: 'ssh' | 'rdp' | 'smb';
+  protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp';
   host: string;
   port: number;
   username: string;
@@ -44,12 +44,15 @@ const defaultPorts: Record<string, number> = {
   ssh: 22,
   rdp: 3389,
   smb: 445,
+  vnc: 5900,
+  sftp: 22,
+  ftp: 21,
 };
 
 export function ConnectionModal({ connection, groups, onClose, onSaved, prefill }: ConnectionModalProps) {
   const { token } = useAuth();
   const [name, setName] = useState(prefill?.name ?? connection?.name ?? '');
-  const [protocol, setProtocol] = useState<'ssh' | 'rdp' | 'smb'>(prefill?.protocol ?? connection?.protocol ?? 'rdp');
+  const [protocol, setProtocol] = useState<'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp'>(prefill?.protocol ?? connection?.protocol ?? 'rdp');
   const [host, setHost] = useState(prefill?.host ?? connection?.host ?? '');
   const [port, setPort] = useState(prefill?.port ?? connection?.port ?? 3389);
   const [username, setUsername] = useState(prefill?.username ?? '');
@@ -88,7 +91,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
       .catch(() => {});
   }, [connection?.id, token]);
 
-  function handleProtocolChange(p: 'ssh' | 'rdp' | 'smb') {
+  function handleProtocolChange(p: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp') {
     setProtocol(p);
     if (!connection) setPort(defaultPorts[p]);
   }
@@ -162,14 +165,22 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
     }
   }
 
+  // Track whether the mousedown started on the backdrop (not inside the modal).
+  // This prevents the modal closing when the user selects text inside and releases outside.
+  const backdropMouseDownRef = useRef(false);
+
   const isCopy = !connection && !!prefill;
   const title = connection ? 'Edit Connection' : isCopy ? `New Connection — copy of "${prefill!.name.replace(/ - copy$/, '')}"` : 'New Connection';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onMouseDown={(e) => { backdropMouseDownRef.current = e.target === e.currentTarget; }}
+      onMouseUp={(e) => { if (backdropMouseDownRef.current && e.target === e.currentTarget) onClose(); backdropMouseDownRef.current = false; }}
+    >
       <div
         className="bg-surface-alt border border-border rounded-lg shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
       >
         <h2 className="text-lg font-bold text-text-primary mb-4">{title}</h2>
         <form onSubmit={handleSubmit} className="space-y-3">
@@ -188,20 +199,22 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
           <div>
             <label className="block text-sm font-medium text-text-secondary mb-1">Protocol</label>
             <div className="flex gap-2">
-              {(['rdp', 'ssh', 'smb'] as const).map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => handleProtocolChange(p)}
-                  className={`flex-1 py-2 rounded text-sm font-medium border ${
-                    protocol === p
-                      ? 'bg-accent text-white border-accent'
-                      : 'bg-surface border-border text-text-secondary hover:bg-surface-hover'
-                  }`}
-                >
-                  {p.toUpperCase()}
-                </button>
-              ))}
+              <div className="flex flex-wrap gap-2 w-full">
+                {(['rdp', 'ssh', 'smb', 'vnc', 'sftp', 'ftp'] as const).map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => handleProtocolChange(p)}
+                    className={`px-4 py-2 rounded text-sm font-medium border ${
+                      protocol === p
+                        ? 'bg-accent text-white border-accent'
+                        : 'bg-surface border-border text-text-secondary hover:bg-surface-hover'
+                    }`}
+                  >
+                    {p.toUpperCase()}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
