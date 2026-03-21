@@ -16,11 +16,26 @@ interface FlatGroup {
   name: string;
 }
 
+export interface ConnectionPrefill {
+  name: string;
+  protocol: 'ssh' | 'rdp' | 'smb';
+  host: string;
+  port: number;
+  username: string;
+  groupId: string | null;
+  shared: boolean;
+  smbShare: string;
+  smbDomain: string;
+  tunnels: TunnelDef[];
+}
+
 interface ConnectionModalProps {
   connection: Connection | null;
   groups: FlatGroup[];
   onClose: () => void;
   onSaved: () => void;
+  /** Pre-fill fields for duplicate/copy mode (connection must be null) */
+  prefill?: ConnectionPrefill;
 }
 
 interface TunnelDef { id: string; localPort: string; remoteHost: string; remotePort: string; }
@@ -31,32 +46,36 @@ const defaultPorts: Record<string, number> = {
   smb: 445,
 };
 
-export function ConnectionModal({ connection, groups, onClose, onSaved }: ConnectionModalProps) {
+export function ConnectionModal({ connection, groups, onClose, onSaved, prefill }: ConnectionModalProps) {
   const { token } = useAuth();
-  const [name, setName] = useState(connection?.name ?? '');
-  const [protocol, setProtocol] = useState<'ssh' | 'rdp' | 'smb'>(connection?.protocol ?? 'rdp');
-  const [host, setHost] = useState(connection?.host ?? '');
-  const [port, setPort] = useState(connection?.port ?? 3389);
-  const [username, setUsername] = useState('');
+  const [name, setName] = useState(prefill?.name ?? connection?.name ?? '');
+  const [protocol, setProtocol] = useState<'ssh' | 'rdp' | 'smb'>(prefill?.protocol ?? connection?.protocol ?? 'rdp');
+  const [host, setHost] = useState(prefill?.host ?? connection?.host ?? '');
+  const [port, setPort] = useState(prefill?.port ?? connection?.port ?? 3389);
+  const [username, setUsername] = useState(prefill?.username ?? '');
   const [password, setPassword] = useState('');
   const [privateKey, setPrivateKey] = useState('');
-  const [groupId, setGroupId] = useState<string>(connection?.groupId ?? '');
-  const [shared, setShared] = useState<boolean>(connection ? (connection.shared === 1) : false);
+  const [groupId, setGroupId] = useState<string>(prefill?.groupId ?? connection?.groupId ?? '');
+  const [shared, setShared] = useState<boolean>(
+    prefill ? prefill.shared : connection ? (connection.shared === 1) : false,
+  );
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [localGroups, setLocalGroups] = useState<FlatGroup[]>(groups);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
-  const [tunnels, setTunnels] = useState<TunnelDef[]>([]);
-  const [smbShare, setSmbShare] = useState('');
-  const [smbDomain, setSmbDomain] = useState('');
+  const [tunnels, setTunnels] = useState<TunnelDef[]>(prefill?.tunnels ?? []);
+  const [smbShare, setSmbShare] = useState(prefill?.smbShare ?? '');
+  const [smbDomain, setSmbDomain] = useState(prefill?.smbDomain ?? '');
   const newFolderInputRef = useRef<HTMLInputElement>(null);
 
+  // Load full details when editing an existing connection
   useEffect(() => {
     if (!connection?.id || !token) return;
     fetch(`/api/v1/connections/${connection.id}`, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => r.json())
       .then((d) => {
+        if (d.username) setUsername(d.username);
         if (d.tunnels) setTunnels(d.tunnels.map((t: Omit<TunnelDef, 'id'> & { localPort: number; remotePort: number }) => ({
           id: crypto.randomUUID(),
           localPort: String(t.localPort),
@@ -105,11 +124,12 @@ export function ConnectionModal({ connection, groups, onClose, onSaved }: Connec
         host,
         port,
         username,
-        password,
         groupId: groupId || null,
         shared,
         ...(protocol === 'ssh' && privateKey ? { privateKey } : {}),
       };
+      // Only include password if the user typed one
+      if (password) body.password = password;
       if (protocol === 'ssh') {
         body.tunnels = tunnelsClean.map(({ localPort, remoteHost, remotePort }) => ({
           localPort: parseInt(localPort, 10),
@@ -142,15 +162,16 @@ export function ConnectionModal({ connection, groups, onClose, onSaved }: Connec
     }
   }
 
+  const isCopy = !connection && !!prefill;
+  const title = connection ? 'Edit Connection' : isCopy ? `New Connection — copy of "${prefill!.name.replace(/ - copy$/, '')}"` : 'New Connection';
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
       <div
         className="bg-surface-alt border border-border rounded-lg shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-lg font-bold text-text-primary mb-4">
-          {connection ? 'Edit Connection' : 'New Connection'}
-        </h2>
+        <h2 className="text-lg font-bold text-text-primary mb-4">{title}</h2>
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
             <label className="block text-sm font-medium text-text-secondary mb-1">Name</label>

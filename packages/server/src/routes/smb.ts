@@ -80,10 +80,11 @@ router.post('/:connectionId/list', async (req: Request, res: Response) => {
   if (!conn) { res.status(404).json({ error: 'Connection not found' }); return; }
 
   const { path: dirPath = '' } = req.body as { path?: string };
-  const smb = makeSmbClient(conn);
+  let smb: SMB2 | null = null;
 
   try {
-    const files = await smbOp(() => smb.readdir(dirPath, { stats: true }));
+    smb = makeSmbClient(conn);
+    const files = await smbOp(() => smb!.readdir(dirPath, { stats: true }));
     res.json({
       files: files.map((f) => ({
         filename: f.name,
@@ -95,7 +96,7 @@ router.post('/:connectionId/list', async (req: Request, res: Response) => {
     console.error('[smb] list error:', msg);
     res.status(500).json({ error: msg });
   } finally {
-    smb.disconnect();
+    smb?.disconnect();
   }
 });
 
@@ -108,11 +109,12 @@ router.get('/:connectionId/download', async (req: Request, res: Response) => {
   const filePath = req.query.path as string;
   if (!filePath) { res.status(400).json({ error: 'path required' }); return; }
 
-  const smb = makeSmbClient(conn);
   const fileName = filePath.split(/[/\\]/).pop() || 'download';
+  let smb: SMB2 | null = null;
 
   try {
-    const stream = await smbOp(() => smb.createReadStream(filePath));
+    smb = makeSmbClient(conn);
+    const stream = await smbOp(() => smb!.createReadStream(filePath));
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
     res.setHeader('Content-Type', 'application/octet-stream');
     stream.pipe(res);
@@ -127,7 +129,7 @@ router.get('/:connectionId/download', async (req: Request, res: Response) => {
     console.error('[smb] download error:', msg);
     if (!res.headersSent) res.status(500).json({ error: msg });
   } finally {
-    smb.disconnect();
+    smb?.disconnect();
   }
 });
 
@@ -140,10 +142,11 @@ router.post('/:connectionId/upload', async (req: Request, res: Response) => {
   const filePath = req.query.path as string;
   if (!filePath) { res.status(400).json({ error: 'path required' }); return; }
 
-  const smb = makeSmbClient(conn);
+  let smb: SMB2 | null = null;
 
   try {
-    const stream = await smbOp(() => smb.createWriteStream(filePath));
+    smb = makeSmbClient(conn);
+    const stream = await smbOp(() => smb!.createWriteStream(filePath));
     await new Promise<void>((resolve, reject) => {
       req.pipe(stream);
       stream.on('finish', resolve);
@@ -156,7 +159,7 @@ router.post('/:connectionId/upload', async (req: Request, res: Response) => {
     console.error('[smb] upload error:', msg);
     res.status(500).json({ error: msg });
   } finally {
-    smb.disconnect();
+    smb?.disconnect();
   }
 });
 
@@ -169,17 +172,18 @@ router.post('/:connectionId/mkdir', async (req: Request, res: Response) => {
   const { path: dirPath } = req.body as { path?: string };
   if (!dirPath) { res.status(400).json({ error: 'path required' }); return; }
 
-  const smb = makeSmbClient(conn);
+  let smb: SMB2 | null = null;
 
   try {
-    await smbOp(() => smb.mkdir(dirPath));
+    smb = makeSmbClient(conn);
+    await smbOp(() => smb!.mkdir(dirPath));
     res.json({ success: true });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'SMB error';
     console.error('[smb] mkdir error:', msg);
     res.status(500).json({ error: msg });
   } finally {
-    smb.disconnect();
+    smb?.disconnect();
   }
 });
 
@@ -192,17 +196,18 @@ router.delete('/:connectionId/file', async (req: Request, res: Response) => {
   const filePath = req.query.path as string;
   if (!filePath) { res.status(400).json({ error: 'path required' }); return; }
 
-  const smb = makeSmbClient(conn);
+  let smb: SMB2 | null = null;
 
   try {
-    await smbOp(() => smb.unlink(filePath));
+    smb = makeSmbClient(conn);
+    await smbOp(() => smb!.unlink(filePath));
     res.json({ success: true });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'SMB error';
     console.error('[smb] delete error:', msg);
     res.status(500).json({ error: msg });
   } finally {
-    smb.disconnect();
+    smb?.disconnect();
   }
 });
 
