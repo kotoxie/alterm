@@ -1,4 +1,4 @@
-# Alterm
+# Alterm - Alternative Terminal
 
 Browser-based remote access manager — RDP, SSH, and SMB from a single self-hosted Docker container. No client software required.
 
@@ -26,7 +26,7 @@ services:
         - ./data:/app/data
 ```
 
-Open **https://localhost:7443** in your browser. On first launch you will be prompted to create an admin account.
+Open **https://<IP_ADDRESS>:7443** in your browser. On first launch you will be prompted to create an admin account.
 
 > The browser will warn about the self-signed certificate — this is expected. Accept the exception to proceed.
 
