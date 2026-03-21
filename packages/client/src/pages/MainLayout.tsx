@@ -51,6 +51,8 @@ export interface Tab {
   name: string;
   protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp';
   status: 'connecting' | 'connected' | 'disconnected';
+  /** Stable across page refreshes — used to reattach SSH sessions without reconnecting. */
+  clientSessionId: string;
 }
 
 export interface ViewData {
@@ -205,6 +207,7 @@ export function MainLayout() {
         name: connection.name,
         protocol: connection.protocol,
         status: 'connecting',
+        clientSessionId: crypto.randomUUID(),
       };
 
       // Case 1: active view has an empty pane — fill it
@@ -257,6 +260,7 @@ export function MainLayout() {
         name: conn.name,
         protocol: conn.protocol,
         status: 'connecting' as const,
+        clientSessionId: crypto.randomUUID(),
       }));
       const newViews: ViewData[] = connections.map((_, i) => {
         const paneId = crypto.randomUUID();
@@ -436,7 +440,7 @@ export function MainLayout() {
     if (!saved) return;
 
     try {
-      const savedViews: Array<Array<{ connectionId: string; name: string; protocol: Tab['protocol'] }>> =
+      const savedViews: Array<Array<{ connectionId: string; name: string; protocol: Tab['protocol']; clientSessionId: string }>> =
         JSON.parse(saved);
       if (!savedViews.length) return;
 
@@ -451,6 +455,7 @@ export function MainLayout() {
           name: c.name,
           protocol: c.protocol,
           status: 'connecting' as const,
+          clientSessionId: c.clientSessionId || crypto.randomUUID(),
         }));
         const paneIds = connTabs.map(() => crypto.randomUUID());
         const view: ViewData = {
@@ -488,7 +493,7 @@ export function MainLayout() {
             if (!tabId) return null;
             const tab = tabs.find((t) => t.id === tabId);
             if (!tab) return null;
-            return { connectionId: tab.connectionId, name: tab.name, protocol: tab.protocol };
+            return { connectionId: tab.connectionId, name: tab.name, protocol: tab.protocol, clientSessionId: tab.clientSessionId };
           })
           .filter(Boolean),
       )

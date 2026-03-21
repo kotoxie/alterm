@@ -96,7 +96,7 @@ export function SshSession({ tab, isActive, onStatusChange, onClose }: SshSessio
     }, 50);
 
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${proto}//${window.location.host}/ws/ssh?token=${encodeURIComponent(token)}&connectionId=${encodeURIComponent(tab.connectionId)}`;
+    const wsUrl = `${proto}//${window.location.host}/ws/ssh?token=${encodeURIComponent(token)}&connectionId=${encodeURIComponent(tab.connectionId)}&sessionId=${encodeURIComponent(tab.clientSessionId)}`;
     const ws = new WebSocket(wsUrl);
     ws.binaryType = 'arraybuffer';
     wsRef.current = ws;
@@ -110,7 +110,7 @@ export function SshSession({ tab, isActive, onStatusChange, onClose }: SshSessio
       if (typeof e.data === 'string') {
         try {
           const msg = JSON.parse(e.data);
-          if (msg.type === 'status' && msg.message === 'Connected') {
+          if (msg.type === 'status' && (msg.message === 'Connected' || msg.message === 'Reattached')) {
             onStatusChange(tab.id, 'connected');
             term.focus();
             // Re-send current dimensions now that the server is ready to accept resize
