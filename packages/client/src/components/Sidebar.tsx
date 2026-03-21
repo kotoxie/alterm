@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent as RMouseEvent } from 'react';
 import { clsx } from 'clsx';
 import { useAuth } from '../hooks/useAuth';
-import { ConnectionModal } from './ConnectionModal';
+import { ConnectionModal, type ConnectionPrefill } from './ConnectionModal';
 
 interface ConnectionGroup {
   id: string;
@@ -28,7 +28,6 @@ interface FlatGroup {
 
 interface SidebarProps {
   onConnect: (conn: { id: string; name: string; protocol: 'ssh' | 'rdp' | 'smb' }) => void;
-  onDuplicate: (conn: { id: string; name: string; protocol: 'ssh' | 'rdp' | 'smb' }) => void;
   width?: number;
 }
 
@@ -75,7 +74,7 @@ const FolderIcon = ({ size = 13 }: { size?: number }) => (
   </svg>
 );
 
-export function Sidebar({ onConnect, onDuplicate, width }: SidebarProps) {
+export function Sidebar({ onConnect, width }: SidebarProps) {
   const { token } = useAuth();
   const [groups, setGroups] = useState<ConnectionGroup[]>([]);
   const [ungrouped, setUngrouped] = useState<Connection[]>([]);
@@ -88,6 +87,7 @@ export function Sidebar({ onConnect, onDuplicate, width }: SidebarProps) {
   const [draggingConnId, setDraggingConnId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
+  const [duplicatePrefill, setDuplicatePrefill] = useState<ConnectionPrefill | null>(null);
   const [healthMap, setHealthMap] = useState<Record<string, 'checking' | 'up' | 'down'>>({});
   const newFolderInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -196,6 +196,36 @@ export function Sidebar({ onConnect, onDuplicate, width }: SidebarProps) {
       headers: { Authorization: `Bearer ${token}` },
     });
     fetchConnections();
+  }
+
+  async function handleDuplicate(conn: Connection) {
+    if (!token) return;
+    try {
+      const res = await fetch(`/api/v1/connections/${conn.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      const d = await res.json();
+      const prefill: ConnectionPrefill = {
+        name: `${conn.name} - copy`,
+        protocol: conn.protocol,
+        host: conn.host,
+        port: conn.port,
+        username: d.username ?? '',
+        groupId: conn.groupId,
+        shared: d.shared === 1,
+        smbShare: d.extraConfig?.share ?? '',
+        smbDomain: d.extraConfig?.domain ?? '',
+        tunnels: (d.tunnels ?? []).map((t: { localPort: number; remoteHost: string; remotePort: number }) => ({
+          id: crypto.randomUUID(),
+          localPort: String(t.localPort),
+          remoteHost: t.remoteHost,
+          remotePort: String(t.remotePort),
+        })),
+      };
+      setDuplicatePrefill(prefill);
+      setShowModal(true);
+    } catch { /* ignore */ }
   }
 
   async function createFolder() {
@@ -528,8 +558,9 @@ export function Sidebar({ onConnect, onDuplicate, width }: SidebarProps) {
         <ConnectionModal
           connection={editingConnection}
           groups={flatGroups}
-          onClose={() => { setShowModal(false); setEditingConnection(null); }}
-          onSaved={() => { setShowModal(false); setEditingConnection(null); fetchConnections(); }}
+          prefill={duplicatePrefill ?? undefined}
+          onClose={() => { setShowModal(false); setEditingConnection(null); setDuplicatePrefill(null); }}
+          onSaved={() => { setShowModal(false); setEditingConnection(null); setDuplicatePrefill(null); fetchConnections(); }}
         />
       )}
 
@@ -550,13 +581,13 @@ export function Sidebar({ onConnect, onDuplicate, width }: SidebarProps) {
           </button>
           <button
             className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
-            onClick={() => { onDuplicate(contextMenu.conn); setContextMenu(null); }}
+            onClick={() => { handleDuplicate(contextMenu.conn); setContextMenu(null); }}
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
               <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
             </svg>
-            Duplicate Session
+            Duplicate Configuration
           </button>
           {!contextMenu.conn.isShared && (
             <>

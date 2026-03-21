@@ -7,7 +7,6 @@ interface TabBarProps {
   activeTabId: string | null;
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
-  onDuplicate: (conn: { id: string; name: string; protocol: 'ssh' | 'rdp' | 'smb' }) => void;
 }
 
 const protocolIcons: Record<string, string> = {
@@ -28,7 +27,7 @@ interface ContextMenu {
   tab: Tab;
 }
 
-export function TabBar({ tabs, activeTabId, onSelect, onClose, onDuplicate }: TabBarProps) {
+export function TabBar({ tabs, activeTabId, onSelect, onClose }: TabBarProps) {
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -93,17 +92,6 @@ export function TabBar({ tabs, activeTabId, onSelect, onClose, onDuplicate }: Ta
           className="fixed z-50 bg-surface-alt border border-border rounded shadow-lg py-1 text-sm min-w-[140px]"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
-          <button
-            className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
-            onClick={() => { onDuplicate({ id: contextMenu.tab.connectionId, name: contextMenu.tab.name, protocol: contextMenu.tab.protocol }); setContextMenu(null); }}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-            </svg>
-            Duplicate Session
-          </button>
-          <div className="border-t border-border my-1" />
           <button
             className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-red-400 flex items-center gap-2"
             onClick={() => { onClose(contextMenu.tab.id); setContextMenu(null); }}
