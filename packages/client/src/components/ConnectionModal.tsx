@@ -30,6 +30,7 @@ export function ConnectionModal({ connection, onClose, onSaved }: ConnectionModa
   const [port, setPort] = useState(connection?.port ?? 3389);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [privateKey, setPrivateKey] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -43,7 +44,7 @@ export function ConnectionModal({ connection, onClose, onSaved }: ConnectionModa
     setError('');
     setSaving(true);
     try {
-      const body = { name, protocol, host, port, username, password };
+      const body = { name, protocol, host, port, username, password, ...(protocol === 'ssh' && privateKey ? { privateKey } : {}) };
       const url = connection ? `/api/v1/connections/${connection.id}` : '/api/v1/connections';
       const method = connection ? 'PUT' : 'POST';
       const res = await fetch(url, {
@@ -149,10 +150,19 @@ export function ConnectionModal({ connection, onClose, onSaved }: ConnectionModa
               className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
             />
           </div>
-          {protocol === 'rdp' && (
-            <p className="text-xs text-text-secondary">
-              Note: Audio redirection is not supported for RDP connections.
-            </p>
+          {protocol === 'ssh' && (
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-1">
+                Private Key <span className="text-text-secondary font-normal">(optional, overrides password)</span>
+              </label>
+              <textarea
+                value={privateKey}
+                onChange={(e) => setPrivateKey(e.target.value)}
+                rows={4}
+                placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
+                className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent font-mono text-xs resize-none"
+              />
+            </div>
           )}
           {error && <p className="text-red-500 text-sm">{error}</p>}
           <div className="flex gap-3 pt-2">
