@@ -46,9 +46,11 @@ function semverGt(a: string, b: string): boolean {
 
 const router = Router();
 
-router.get('/', async (_req: Request, res: Response) => {
-  // Refresh cache if stale
-  if (!cache || Date.now() - cache.fetchedAt > CACHE_TTL_MS) {
+router.get('/', async (req: Request, res: Response) => {
+  // ?force=true bypasses the cache (used by manual refresh button)
+  const force = req.query.force === 'true';
+
+  if (force || !cache || Date.now() - cache.fetchedAt > CACHE_TTL_MS) {
     const fresh = await fetchLatestRelease();
     if (fresh) cache = fresh;
   }

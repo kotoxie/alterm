@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme } from '../hooks/useTheme';
 import { useSettings } from '../hooks/useSettings';
@@ -33,7 +34,21 @@ export function Header({ onToggleSidebar, onOpenSettings }: HeaderProps) {
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { settings } = useSettings();
-  const { current: appVersion, updateAvailable, latest, releaseUrl, refresh: refreshVersion } = useVersionCheck();
+  const { current: appVersion, updateAvailable, latest, releaseUrl, checking, refresh: refreshVersion } = useVersionCheck();
+  const [upToDate, setUpToDate] = useState(false);
+
+  // Show "Up to date" flash after a successful manual refresh that finds no update
+  useEffect(() => {
+    if (!checking && upToDate) {
+      const t = setTimeout(() => setUpToDate(false), 2500);
+      return () => clearTimeout(t);
+    }
+  }, [checking, upToDate]);
+
+  async function handleVersionClick() {
+    await refreshVersion();
+    setUpToDate(true);
+  }
 
   const appName = settings['app.name'] ?? 'Alterm';
   const username = user?.username ?? '';
@@ -55,13 +70,19 @@ export function Header({ onToggleSidebar, onOpenSettings }: HeaderProps) {
         </button>
         <span className="text-lg font-bold text-text-primary tracking-tight">{appName}</span>
         <button
-          onClick={refreshVersion}
-          className="text-xs text-text-secondary opacity-60 font-mono hover:opacity-100 transition-opacity"
+          onClick={handleVersionClick}
+          disabled={checking}
+          className="flex items-center gap-1 text-xs text-text-secondary opacity-60 font-mono hover:opacity-100 transition-opacity disabled:cursor-wait"
           title="Check for updates"
         >
+          {checking && (
+            <svg className="animate-spin" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+            </svg>
+          )}
           v{appVersion}
         </button>
-        {updateAvailable && releaseUrl && (
+        {updateAvailable && releaseUrl ? (
           <a
             href={releaseUrl}
             target="_blank"
@@ -74,7 +95,14 @@ export function Header({ onToggleSidebar, onOpenSettings }: HeaderProps) {
             </svg>
             v{latest} available
           </a>
-        )}
+        ) : upToDate && !checking ? (
+          <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-500/15 text-green-400 text-xs font-medium">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+            Up to date
+          </span>
+        ) : null}
       </div>
       <div className="flex items-center gap-2">
         <button
