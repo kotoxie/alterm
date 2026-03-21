@@ -8,6 +8,27 @@ import { getSetting } from '../services/settings.js';
 
 const router = Router();
 
+// In-memory tracker for non-existent usernames (resets on restart — acceptable for single-container)
+interface AttemptRecord { count: number; lockedUntil: Date | null; }
+const unknownAttempts = new Map<string, AttemptRecord>();
+
+function checkUnknownLock(username: string): Date | null {
+  const rec = unknownAttempts.get(username);
+  if (rec?.lockedUntil && rec.lockedUntil > new Date()) return rec.lockedUntil;
+  return null;
+}
+
+function recordUnknownFail(username: string, maxFailed: number, lockoutMinutes: number): void {
+  const rec = unknownAttempts.get(username) ?? { count: 0, lockedUntil: null };
+  rec.count += 1;
+  if (rec.count >= maxFailed) {
+    const until = new Date();
+    until.setMinutes(until.getMinutes() + lockoutMinutes);
+    rec.lockedUntil = until;
+  }
+  unknownAttempts.set(username, rec);
+}
+
 interface UserRow {
   id: string;
   username: string;
@@ -77,9 +98,19 @@ router.post('/login', async (req: Request, res: Response) => {
     return;
   }
 
+  const maxFailed = parseInt(getSetting('security.max_failed_logins'), 10) || 5;
+  const lockoutMinutes = parseInt(getSetting('security.lockout_minutes'), 10) || 30;
+
   const user = queryOne<UserRow>('SELECT * FROM users WHERE username = ?', [username]);
 
   if (!user) {
+    // Apply lockout to unknown usernames too (in-memory, resets on restart)
+    const lockedUntil = checkUnknownLock(username);
+    if (lockedUntil) {
+      res.status(429).json({ error: `Account locked until ${lockedUntil.toLocaleString()}` });
+      return;
+    }
+    recordUnknownFail(username, maxFailed, lockoutMinutes);
     logAudit({
       eventType: 'auth.login_failed',
       target: username,
@@ -100,8 +131,6 @@ router.post('/login', async (req: Request, res: Response) => {
 
   const valid = await bcrypt.compare(password, user.password_hash);
   if (!valid) {
-    const maxFailed = parseInt(getSetting('security.max_failed_logins'), 10) || 5;
-    const lockoutMinutes = parseInt(getSetting('security.lockout_minutes'), 10) || 30;
     const newCount = (user.failed_login_count ?? 0) + 1;
 
     if (newCount >= maxFailed) {

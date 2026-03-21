@@ -79,6 +79,18 @@ export function MainLayout() {
     setActiveTabId(tab.id);
   }, [tabs]);
 
+  const duplicateTab = useCallback((source: Tab) => {
+    const tab: Tab = {
+      id: crypto.randomUUID(),
+      connectionId: source.connectionId,
+      name: source.name,
+      protocol: source.protocol,
+      status: 'connecting',
+    };
+    setTabs((prev) => [...prev, tab]);
+    setActiveTabId(tab.id);
+  }, []);
+
   const closeTab = useCallback((tabId: string) => {
     setTabs((prev) => {
       const next = prev.filter((t) => t.id !== tabId);
@@ -109,7 +121,7 @@ export function MainLayout() {
           </>
         )}
         <div className="flex flex-col flex-1 overflow-hidden relative">
-          <TabBar tabs={tabs} activeTabId={activeTabId} onSelect={setActiveTabId} onClose={closeTab} />
+          <TabBar tabs={tabs} activeTabId={activeTabId} onSelect={setActiveTabId} onClose={closeTab} onDuplicate={duplicateTab} />
           <SessionArea tabs={tabs} activeTabId={activeTabId} onStatusChange={updateTabStatus} onClose={closeTab} />
 
           {/* Overlay during sidebar drag — blocks mouse events reaching the RDP canvas

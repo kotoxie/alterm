@@ -96,7 +96,7 @@ router.post('/', async (req: Request, res: Response) => {
     userId: req.user!.userId,
     eventType: 'user.created',
     target: username,
-    details: { newUserId: id, role: userRole },
+    details: { after: { username, displayName, email: email || null, role: userRole } },
     ipAddress: req.ip,
   });
 
@@ -123,7 +123,9 @@ router.put('/:id', (req: Request, res: Response) => {
     role?: string;
   };
 
-  const user = queryOne<UserRow>('SELECT id FROM users WHERE id = ?', [id]);
+  const user = queryOne<UserRow>(
+    'SELECT id, username, display_name, email, role FROM users WHERE id = ?', [id],
+  );
   if (!user) {
     res.status(404).json({ error: 'User not found' });
     return;
@@ -148,6 +150,12 @@ router.put('/:id', (req: Request, res: Response) => {
     return;
   }
 
+  const before: Record<string, unknown> = {};
+  const after: Record<string, unknown> = {};
+  if (displayName !== undefined) { before.displayName = user.display_name; after.displayName = displayName; }
+  if (email !== undefined) { before.email = user.email; after.email = email || null; }
+  if (role !== undefined) { before.role = user.role; after.role = role; }
+
   updates.push("updated_at = datetime('now')");
   params.push(id);
 
@@ -156,8 +164,8 @@ router.put('/:id', (req: Request, res: Response) => {
   logAudit({
     userId: req.user!.userId,
     eventType: 'user.updated',
-    target: id,
-    details: { fields: Object.keys(req.body) },
+    target: user.username,
+    details: { before, after },
     ipAddress: req.ip,
   });
 
@@ -175,7 +183,7 @@ router.delete('/:id', (req: Request, res: Response) => {
     return;
   }
 
-  const user = queryOne<{ username: string }>('SELECT username FROM users WHERE id = ?', [id]);
+  const user = queryOne<UserRow>('SELECT id, username, display_name, email, role FROM users WHERE id = ?', [id]);
   if (!user) {
     res.status(404).json({ error: 'User not found' });
     return;
@@ -187,7 +195,7 @@ router.delete('/:id', (req: Request, res: Response) => {
     userId: req.user!.userId,
     eventType: 'user.deleted',
     target: user.username,
-    details: { deletedUserId: id },
+    details: { before: { username: user.username, displayName: user.display_name, email: user.email, role: user.role } },
     ipAddress: req.ip,
   });
 
