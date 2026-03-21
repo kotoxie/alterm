@@ -28,9 +28,6 @@ export const config = {
   get jwtSecretPath() {
     return path.join(this.dataDir, 'jwt.secret');
   },
-  get filesDir() {
-    return path.join(this.dataDir, 'files');
-  },
   get clientDir() {
     return path.resolve(__dirname, '../../client/dist');
   },
