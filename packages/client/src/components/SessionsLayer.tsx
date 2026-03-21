@@ -1,4 +1,4 @@
-import type { Tab } from '../pages/MainLayout';
+import type { Tab, ViewData } from '../pages/MainLayout';
 import type { PaneRect } from '../types/panes';
 import { RdpSession } from './RdpSession';
 import { SshSession } from './SshSession';
@@ -9,50 +9,65 @@ import { FtpSession } from './FtpSession';
 
 interface SessionsLayerProps {
   tabs: Tab[];
-  paneTabMap: Record<string, string | null>;
-  leafRects: Record<string, PaneRect>;
-  activePaneId: string;
+  views: ViewData[];
+  activeViewId: string | null;
+  leafRects: Record<string, PaneRect>; // rects for the active view only
+  activePaneId: string | null;
   onStatusChange: (tabId: string, status: Tab['status']) => void;
   onClose: (tabId: string) => void;
 }
 
 export function SessionsLayer({
   tabs,
-  paneTabMap,
+  views,
+  activeViewId,
   leafRects,
   activePaneId,
   onStatusChange,
   onClose,
 }: SessionsLayerProps) {
-  // Build reverse map: tabId -> paneId
-  const tabPaneMap: Record<string, string> = {};
-  for (const [paneId, tabId] of Object.entries(paneTabMap)) {
-    if (tabId) tabPaneMap[tabId] = paneId;
+  // Build map: tabId -> { viewId, paneId }
+  const tabLocation: Record<string, { viewId: string; paneId: string }> = {};
+  for (const view of views) {
+    for (const [paneId, tabId] of Object.entries(view.paneTabMap)) {
+      if (tabId) tabLocation[tabId] = { viewId: view.id, paneId };
+    }
   }
 
   return (
     <div className="absolute inset-0 z-0">
       {tabs.map((tab) => {
-        const paneId = tabPaneMap[tab.id];
-        const rect = paneId ? leafRects[paneId] : undefined;
-        const isActive = paneId === activePaneId;
+        const location = tabLocation[tab.id];
 
-        // No rect means not assigned to any visible pane
-        const style: React.CSSProperties = rect
-          ? {
+        // Determine visibility and position
+        let style: React.CSSProperties;
+        let isActive = false;
+
+        if (!location) {
+          // Tab not assigned to any pane
+          style = { position: 'absolute', display: 'none' };
+        } else if (location.viewId !== activeViewId) {
+          // Tab belongs to a background view — keep mounted but hidden
+          style = { position: 'absolute', display: 'none' };
+        } else {
+          // Tab belongs to the active view — position it using leafRects
+          const rect = leafRects[location.paneId];
+          if (!rect) {
+            style = { position: 'absolute', display: 'none' };
+          } else {
+            isActive = location.paneId === activePaneId;
+            style = {
               position: 'absolute',
               left: rect.x,
               top: rect.y,
               width: rect.w,
               height: rect.h,
-              // Active pane gets pointer events; unfocused panes are blocked by PaneOverlay click blocker
+              // Active pane receives pointer events; inactive panes are blocked by PaneOverlay
               pointerEvents: isActive ? 'auto' : 'none',
               zIndex: isActive ? 1 : 0,
-            }
-          : {
-              position: 'absolute',
-              display: 'none',
             };
+          }
+        }
 
         return (
           <div key={tab.id} style={style}>

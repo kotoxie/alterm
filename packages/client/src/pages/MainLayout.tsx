@@ -53,17 +53,56 @@ export interface Tab {
   status: 'connecting' | 'connected' | 'disconnected';
 }
 
+export interface ViewData {
+  id: string;
+  paneRoot: PaneNode;
+  paneTabMap: Record<string, string | null>;
+  activePaneId: string;
+}
+
+export interface TabBarItem {
+  id: string;
+  label: string;
+  protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' | 'split';
+  status: 'connecting' | 'connected' | 'disconnected';
+}
+
 const SIDEBAR_MIN = 150;
 const SIDEBAR_MAX = 480;
 const SIDEBAR_DEFAULT = 240;
 
-const INIT_PANE = 'pane-0';
+function deriveTabBarItems(views: ViewData[], tabs: Tab[]): TabBarItem[] {
+  return views.map((view) => {
+    const paneCount = countLeaves(view.paneRoot);
+    const isSplit = paneCount > 1;
+
+    const tabIds = Object.values(view.paneTabMap).filter(Boolean) as string[];
+    const viewTabs = tabIds.map((id) => tabs.find((t) => t.id === id)).filter(Boolean) as Tab[];
+
+    let label: string;
+    let protocol: TabBarItem['protocol'];
+    if (isSplit) {
+      label = 'Split';
+      protocol = 'split';
+    } else {
+      const tab = viewTabs[0];
+      label = tab?.name ?? 'Empty';
+      protocol = tab?.protocol ?? 'ssh';
+    }
+
+    let status: Tab['status'] = 'connected';
+    if (viewTabs.some((t) => t.status === 'disconnected')) status = 'disconnected';
+    else if (viewTabs.some((t) => t.status === 'connecting')) status = 'connecting';
+
+    return { id: view.id, label, protocol, status };
+  });
+}
 
 export function MainLayout() {
   const [tabs, setTabs] = useState<Tab[]>([]);
-  const [paneRoot, setPaneRoot] = useState<PaneNode>({ type: 'leaf', id: INIT_PANE });
-  const [paneTabMap, setPaneTabMap] = useState<Record<string, string | null>>({ [INIT_PANE]: null });
-  const [activePaneId, setActivePaneId] = useState<string>(INIT_PANE);
+  const [views, setViews] = useState<ViewData[]>([]);
+  const [activeViewId, setActiveViewId] = useState<string | null>(null);
+
   const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
   const sessionsContainerRef = useRef<HTMLDivElement>(null);
 
@@ -81,6 +120,12 @@ export function MainLayout() {
     setSettingsSection(section);
     setSettingsOpen(true);
   }, []);
+
+  // Refs for synchronous reads inside event-triggered callbacks
+  const viewsRef = useRef<ViewData[]>(views);
+  const activeViewIdRef = useRef<string | null>(activeViewId);
+  useEffect(() => { viewsRef.current = views; }, [views]);
+  useEffect(() => { activeViewIdRef.current = activeViewId; }, [activeViewId]);
 
   // Measure sessions container for pane rect computation
   useEffect(() => {
@@ -124,164 +169,225 @@ export function MainLayout() {
     e.preventDefault();
   };
 
+  // ---------- openTab ----------
+  // Opens a session from the sidebar.
+  // Rule: if active view has an empty pane, fill it; otherwise create a new view.
+
   const openTab = useCallback(
     (connection: { id: string; name: string; protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' }) => {
-      setTabs((prevTabs) => {
-        const existing = prevTabs.find(
-          (t) => t.connectionId === connection.id && t.status !== 'disconnected',
+      const currentViews = viewsRef.current;
+      const currentActiveViewId = activeViewIdRef.current;
+      const activeView = currentActiveViewId
+        ? currentViews.find((v) => v.id === currentActiveViewId) ?? null
+        : null;
+
+      const newTab: Tab = {
+        id: crypto.randomUUID(),
+        connectionId: connection.id,
+        name: connection.name,
+        protocol: connection.protocol,
+        status: 'connecting',
+      };
+
+      // Case 1: active view has an empty pane — fill it
+      if (activeView) {
+        const emptyPaneEntry = Object.entries(activeView.paneTabMap).find(
+          ([, tId]) => tId === null,
         );
-        if (existing) {
-          // Focus the pane showing this tab
-          setPaneTabMap((prevMap) => {
-            const entry = Object.entries(prevMap).find(([, tId]) => tId === existing.id);
-            if (entry) setActivePaneId(entry[0]);
-            return prevMap;
-          });
-          return prevTabs;
+        if (emptyPaneEntry) {
+          const [emptyPaneId] = emptyPaneEntry;
+          setTabs((prev) => [...prev, newTab]);
+          setViews((prev) =>
+            prev.map((v) =>
+              v.id === activeView.id
+                ? {
+                    ...v,
+                    paneTabMap: { ...v.paneTabMap, [emptyPaneId]: newTab.id },
+                    activePaneId: emptyPaneId,
+                  }
+                : v,
+            ),
+          );
+          return;
         }
+      }
 
-        const tab: Tab = {
-          id: crypto.randomUUID(),
-          connectionId: connection.id,
-          name: connection.name,
-          protocol: connection.protocol,
-          status: 'connecting',
-        };
-
-        setPaneTabMap((prevMap) => {
-          const paneCount = Object.keys(prevMap).length;
-          // Try active pane if empty
-          if (prevMap[activePaneId] === null || prevMap[activePaneId] === undefined) {
-            setActivePaneId(activePaneId);
-            return { ...prevMap, [activePaneId]: tab.id };
-          }
-          // Try any empty pane
-          const emptyEntry = Object.entries(prevMap).find(([, tId]) => tId === null);
-          if (emptyEntry) {
-            setActivePaneId(emptyEntry[0]);
-            return { ...prevMap, [emptyEntry[0]]: tab.id };
-          }
-          // In split mode (multiple panes) all occupied: add tab to bar without replacing any pane.
-          // In single-pane mode: replace the current pane.
-          if (paneCount > 1) {
-            return prevMap; // tab exists in prevTabs but is unassigned — visible in tab bar only
-          }
-          setActivePaneId(activePaneId);
-          return { ...prevMap, [activePaneId]: tab.id };
-        });
-
-        return [...prevTabs, tab];
-      });
+      // Case 2: create a new view
+      const newPaneId = crypto.randomUUID();
+      const newView: ViewData = {
+        id: crypto.randomUUID(),
+        paneRoot: { type: 'leaf', id: newPaneId },
+        paneTabMap: { [newPaneId]: newTab.id },
+        activePaneId: newPaneId,
+      };
+      setTabs((prev) => [...prev, newTab]);
+      setViews((prev) => [...prev, newView]);
+      setActiveViewId(newView.id);
     },
-    [activePaneId],
+    [],
   );
 
-  const closeTab = useCallback((tabId: string) => {
-    setTabs((prev) => prev.filter((t) => t.id !== tabId));
-    setPaneTabMap((prev) => {
-      const next: Record<string, string | null> = {};
-      for (const [pId, tId] of Object.entries(prev)) {
-        next[pId] = tId === tabId ? null : tId;
-      }
-      return next;
-    });
-  }, []);
+  // ---------- splitView ----------
+  // Adds a new empty pane to the specified view's pane tree alongside activePaneId.
 
-  const splitPane = useCallback(
-    (tabId: string, dir: 'h' | 'v') => {
-      setPaneRoot((prevRoot) => {
-        if (countLeaves(prevRoot) >= 4) return prevRoot;
+  const splitView = useCallback((viewId: string, dir: 'h' | 'v') => {
+    setViews((prev) =>
+      prev.map((v) => {
+        if (v.id !== viewId) return v;
+        if (countLeaves(v.paneRoot) >= 4) return v;
 
-        const assignedPaneId = Object.entries(paneTabMap).find(([, t]) => t === tabId)?.[0];
-        // Split alongside the tab's pane if it has one, otherwise the active pane
-        const splitAlong = assignedPaneId ?? activePaneId;
         const newPaneId = crypto.randomUUID();
-
-        const newRoot = addSplit(prevRoot, splitAlong, dir, newPaneId);
-
-        setPaneTabMap((prev) => ({
-          ...prev,
-          // If the tab was unassigned, put it directly in the new pane
-          [newPaneId]: assignedPaneId ? null : tabId,
-        }));
-        setActivePaneId(newPaneId);
-
-        return newRoot;
-      });
-    },
-    [paneTabMap, activePaneId],
-  );
-
-  const closePane = useCallback(
-    (paneId: string) => {
-      setPaneRoot((prevRoot) => {
-        if (countLeaves(prevRoot) <= 1) return prevRoot;
-
-        // Keep the session alive — only unassign it from this pane (don't close the tab).
-        // The tab remains in the tab bar and the session stays connected (mounted hidden).
-        const newRoot = removeLeaf(prevRoot, paneId);
-        if (!newRoot) return prevRoot;
-
-        setPaneTabMap((prev) => {
-          const next = { ...prev };
-          delete next[paneId];
-          return next;
-        });
-
-        if (paneId === activePaneId) {
-          const remaining = getLeafIds(newRoot);
-          setActivePaneId(remaining[0] ?? INIT_PANE);
-        }
-
-        return newRoot;
-      });
-    },
-    [activePaneId],
-  );
-
-  const handleTabSelect = useCallback(
-    (tabId: string) => {
-      // If the tab is already visible in a pane, just focus that pane.
-      const entry = Object.entries(paneTabMap).find(([, tId]) => tId === tabId);
-      if (entry) {
-        setActivePaneId(entry[0]);
-        return;
-      }
-
-      // Tab is not in any pane. Fill an empty pane if one exists.
-      const emptyEntry = Object.entries(paneTabMap).find(([, tId]) => tId === null);
-      if (emptyEntry) {
-        setActivePaneId(emptyEntry[0]);
-        setPaneTabMap((prev) => ({ ...prev, [emptyEntry[0]]: tabId }));
-        return;
-      }
-
-      // All panes occupied: swap the tab into the active pane.
-      // The displaced session stays alive — it becomes an unassigned (background) tab
-      // in the tab bar, still connected, and can be brought back by clicking it.
-      setPaneTabMap((prev) => ({ ...prev, [activePaneId]: tabId }));
-    },
-    [paneTabMap, activePaneId],
-  );
-
-  const handleUpdateRatio = useCallback((splitId: string, ratio: number) => {
-    setPaneRoot((prev) => updateRatio(prev, splitId, ratio));
+        const newRoot = addSplit(v.paneRoot, v.activePaneId, dir, newPaneId);
+        return {
+          ...v,
+          paneRoot: newRoot,
+          paneTabMap: { ...v.paneTabMap, [newPaneId]: null },
+          activePaneId: newPaneId,
+        };
+      }),
+    );
   }, []);
+
+  // ---------- closePaneInView ----------
+  // Closes the session in a pane and removes that pane from the view's layout.
+  // If it was the last pane, removes the entire view.
+
+  const closePaneInView = useCallback((paneId: string) => {
+    const currentViews = viewsRef.current;
+    const currentActiveViewId = activeViewIdRef.current;
+
+    const ownerView = currentViews.find((v) => paneId in v.paneTabMap);
+    if (!ownerView) return;
+
+    const tabIdInPane = ownerView.paneTabMap[paneId] ?? null;
+    const paneCount = countLeaves(ownerView.paneRoot);
+
+    if (paneCount <= 1) {
+      // Last pane — close the entire view
+      if (tabIdInPane) {
+        setTabs((prev) => prev.filter((t) => t.id !== tabIdInPane));
+      }
+      setViews((prev) => prev.filter((v) => v.id !== ownerView.id));
+      if (currentActiveViewId === ownerView.id) {
+        const remaining = currentViews.filter((v) => v.id !== ownerView.id);
+        setActiveViewId(remaining.length > 0 ? remaining[remaining.length - 1].id : null);
+      }
+      return;
+    }
+
+    // Multiple panes: remove this pane from layout and close its tab
+    if (tabIdInPane) {
+      setTabs((prev) => prev.filter((t) => t.id !== tabIdInPane));
+    }
+    setViews((prev) =>
+      prev.map((v) => {
+        if (v.id !== ownerView.id) return v;
+        const newRoot = removeLeaf(v.paneRoot, paneId);
+        if (!newRoot) return v;
+        const newPaneTabMap = { ...v.paneTabMap };
+        delete newPaneTabMap[paneId];
+        const newActivePaneId =
+          v.activePaneId === paneId
+            ? (getLeafIds(newRoot)[0] ?? v.activePaneId)
+            : v.activePaneId;
+        return {
+          ...v,
+          paneRoot: newRoot,
+          paneTabMap: newPaneTabMap,
+          activePaneId: newActivePaneId,
+        };
+      }),
+    );
+  }, []);
+
+  // ---------- closeTabCallback ----------
+  // Called from SessionsLayer when a session closes itself (passes tabId).
+  // Finds which pane holds the tab and delegates to closePaneInView.
+
+  const closeTabCallback = useCallback(
+    (tabId: string) => {
+      const currentViews = viewsRef.current;
+      for (const v of currentViews) {
+        for (const [paneId, tId] of Object.entries(v.paneTabMap)) {
+          if (tId === tabId) {
+            closePaneInView(paneId);
+            return;
+          }
+        }
+      }
+      // Fallback: tab not in any pane map — just remove from tabs list
+      setTabs((prev) => prev.filter((t) => t.id !== tabId));
+    },
+    [closePaneInView],
+  );
+
+  // ---------- closeView ----------
+  // Closes all sessions in a view and removes it from the bar.
+
+  const closeView = useCallback((viewId: string) => {
+    const currentViews = viewsRef.current;
+    const currentActiveViewId = activeViewIdRef.current;
+
+    const view = currentViews.find((v) => v.id === viewId);
+    if (!view) return;
+
+    const tabIdsInView = Object.values(view.paneTabMap).filter(Boolean) as string[];
+    setTabs((prev) => prev.filter((t) => !tabIdsInView.includes(t.id)));
+    setViews((prev) => prev.filter((v) => v.id !== viewId));
+
+    if (currentActiveViewId === viewId) {
+      const remaining = currentViews.filter((v) => v.id !== viewId);
+      setActiveViewId(remaining.length > 0 ? remaining[remaining.length - 1].id : null);
+    }
+  }, []);
+
+  // ---------- focusPaneInView ----------
+
+  const focusPaneInView = useCallback((paneId: string) => {
+    setViews((prev) =>
+      prev.map((v) => {
+        if (!(paneId in v.paneTabMap)) return v;
+        return { ...v, activePaneId: paneId };
+      }),
+    );
+  }, []);
+
+  // ---------- updateRatioInView ----------
+
+  const updateRatioInView = useCallback((splitId: string, ratio: number) => {
+    const currentActiveViewId = activeViewIdRef.current;
+    setViews((prev) =>
+      prev.map((v) => {
+        if (v.id !== currentActiveViewId) return v;
+        return { ...v, paneRoot: updateRatio(v.paneRoot, splitId, ratio) };
+      }),
+    );
+  }, []);
+
+  // ---------- updateTabStatus ----------
 
   const updateTabStatus = useCallback((tabId: string, status: Tab['status']) => {
     setTabs((prev) => prev.map((t) => (t.id === tabId ? { ...t, status } : t)));
   }, []);
 
+  // ---------- Derived values ----------
+
+  const activeView = useMemo(
+    () => views.find((v) => v.id === activeViewId) ?? null,
+    [views, activeViewId],
+  );
+
   const leafRects = useMemo(() => {
-    if (containerSize.w === 0) return {};
-    return computeLeafRects(paneRoot, 0, 0, containerSize.w, containerSize.h);
-  }, [paneRoot, containerSize]);
+    if (!activeView || containerSize.w === 0) return {};
+    return computeLeafRects(activeView.paneRoot, 0, 0, containerSize.w, containerSize.h);
+  }, [activeView, containerSize]);
 
-  const paneCount = useMemo(() => countLeaves(paneRoot), [paneRoot]);
-  const canSplit = paneCount < 4;
+  const tabBarItems = useMemo(() => deriveTabBarItems(views, tabs), [views, tabs]);
 
-  // Derive activeTabId for TabBar highlighting: tab shown in active pane
-  const activeTabId = paneTabMap[activePaneId] ?? null;
+  const canSplit = useMemo(
+    () => (activeView ? countLeaves(activeView.paneRoot) < 4 : false),
+    [activeView],
+  );
 
   return (
     <div className="flex flex-col h-screen bg-surface select-none">
@@ -299,12 +405,12 @@ export function MainLayout() {
         )}
         <div className="flex flex-col flex-1 overflow-hidden relative">
           <TabBar
-            tabs={tabs}
-            activeTabId={activeTabId}
-            onTabSelect={handleTabSelect}
-            onClose={closeTab}
-            onSplitH={(tabId) => splitPane(tabId, 'h')}
-            onSplitV={(tabId) => splitPane(tabId, 'v')}
+            tabs={tabBarItems}
+            activeTabId={activeViewId}
+            onTabSelect={setActiveViewId}
+            onClose={closeView}
+            onSplitH={(viewId) => splitView(viewId, 'h')}
+            onSplitV={(viewId) => splitView(viewId, 'v')}
             canSplit={canSplit}
           />
 
@@ -315,27 +421,31 @@ export function MainLayout() {
           >
             <SessionsLayer
               tabs={tabs}
-              paneTabMap={paneTabMap}
+              views={views}
+              activeViewId={activeViewId}
               leafRects={leafRects}
-              activePaneId={activePaneId}
+              activePaneId={activeView?.activePaneId ?? null}
               onStatusChange={updateTabStatus}
-              onClose={closeTab}
-            />
-            <PaneOverlay
-              paneRoot={paneRoot}
-              leafRects={leafRects}
-              paneTabMap={paneTabMap}
-              activePaneId={activePaneId}
-              tabs={tabs}
-              onFocusPane={setActivePaneId}
-              onClosePane={closePane}
-              onUpdateRatio={handleUpdateRatio}
-              containerW={containerSize.w}
-              containerH={containerSize.h}
+              onClose={closeTabCallback}
             />
 
-            {/* No sessions at all: full empty state */}
-            {tabs.length === 0 && paneCount === 1 && (
+            {activeView && (
+              <PaneOverlay
+                paneRoot={activeView.paneRoot}
+                leafRects={leafRects}
+                paneTabMap={activeView.paneTabMap}
+                activePaneId={activeView.activePaneId}
+                tabs={tabs}
+                onFocusPane={focusPaneInView}
+                onClosePane={closePaneInView}
+                onUpdateRatio={updateRatioInView}
+                containerW={containerSize.w}
+                containerH={containerSize.h}
+              />
+            )}
+
+            {/* No views: full empty state */}
+            {views.length === 0 && (
               <div className="absolute inset-0 flex items-center justify-center bg-surface pointer-events-none">
                 <div className="text-center text-text-secondary">
                   <p className="text-lg">No active session</p>
