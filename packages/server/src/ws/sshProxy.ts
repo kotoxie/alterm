@@ -51,15 +51,41 @@ export function setupSshProxy(server: https.Server): void {
 
     const ssh = new SshClient();
     let cols = 80, rows = 24;
+    let shellStream: import('ssh2').ClientChannel | null = null;
+
+    ssh.on('banner', (message: string) => {
+      if (ws.readyState === WebSocket.OPEN) ws.send(Buffer.from(message));
+    });
 
     ssh.on('ready', () => {
       ws.send(JSON.stringify({ type: 'status', message: 'Connected' }));
+
+      // Register message handler BEFORE shell opens so resize messages sent
+      // immediately after 'Connected' are not lost.
+      ws.on('message', (msg: Buffer | string) => {
+        try {
+          const json = JSON.parse(typeof msg === 'string' ? msg : msg.toString('utf8'));
+          if (json.type === 'resize') {
+            cols = json.cols; rows = json.rows;
+            if (shellStream) shellStream.setWindow(rows, cols, 0, 0);
+          } else if (json.type === 'data') {
+            if (shellStream) shellStream.write(json.data);
+          }
+        } catch {
+          if (shellStream) shellStream.write(msg as Buffer);
+        }
+      });
+
       ssh.shell({ term: 'xterm-256color', cols, rows }, (err, stream) => {
         if (err) {
           if (ws.readyState === WebSocket.OPEN)
             ws.send(JSON.stringify({ type: 'error', message: err.message }));
           ws.close(4003, 'Shell error'); return;
         }
+        shellStream = stream;
+        // Apply any resize that arrived between 'Connected' and shell open
+        stream.setWindow(rows, cols, 0, 0);
+
         stream.on('data', (data: Buffer) => {
           if (ws.readyState === WebSocket.OPEN) ws.send(data);
         });
@@ -69,19 +95,6 @@ export function setupSshProxy(server: https.Server): void {
         stream.on('close', () => {
           if (ws.readyState === WebSocket.OPEN) ws.close(1000, 'Shell closed');
           ssh.end();
-        });
-        ws.on('message', (msg: Buffer | string) => {
-          try {
-            const json = JSON.parse(typeof msg === 'string' ? msg : msg.toString('utf8'));
-            if (json.type === 'resize') {
-              cols = json.cols; rows = json.rows;
-              stream.setWindow(rows, cols, 0, 0);
-            } else if (json.type === 'data') {
-              stream.write(json.data);
-            }
-          } catch {
-            stream.write(msg as Buffer);
-          }
         });
       });
     });
