@@ -19,6 +19,7 @@ Browser-based remote access manager — RDP, SSH, and SMB from a single self-hos
 services:
     alterm:
         image: ghcr.io/kotoxie/alterm
+        container_name: alterm
         ports:
             - '7443:7443'
         volumes:
