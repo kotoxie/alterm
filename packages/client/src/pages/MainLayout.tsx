@@ -149,6 +149,7 @@ export function MainLayout() {
         };
 
         setPaneTabMap((prevMap) => {
+          const paneCount = Object.keys(prevMap).length;
           // Try active pane if empty
           if (prevMap[activePaneId] === null || prevMap[activePaneId] === undefined) {
             setActivePaneId(activePaneId);
@@ -160,7 +161,11 @@ export function MainLayout() {
             setActivePaneId(emptyEntry[0]);
             return { ...prevMap, [emptyEntry[0]]: tab.id };
           }
-          // Assign to active pane (replace)
+          // In split mode (multiple panes) all occupied: add tab to bar without replacing any pane.
+          // In single-pane mode: replace the current pane.
+          if (paneCount > 1) {
+            return prevMap; // tab exists in prevTabs but is unassigned — visible in tab bar only
+          }
           setActivePaneId(activePaneId);
           return { ...prevMap, [activePaneId]: tab.id };
         });
@@ -237,10 +242,16 @@ export function MainLayout() {
       // Find the pane already showing this tab
       const entry = Object.entries(paneTabMap).find(([, tId]) => tId === tabId);
       if (entry) {
+        // Tab is visible in a pane — just focus that pane
         setActivePaneId(entry[0]);
       } else {
-        // Assign to active pane
-        setPaneTabMap((prev) => ({ ...prev, [activePaneId]: tabId }));
+        // Tab is not in any pane. Only place it in the active pane if that pane is empty.
+        // In split mode with all panes occupied the user must close a pane first to show it.
+        const activePaneEmpty = paneTabMap[activePaneId] === null || paneTabMap[activePaneId] === undefined;
+        if (activePaneEmpty) {
+          setPaneTabMap((prev) => ({ ...prev, [activePaneId]: tabId }));
+        }
+        // If active pane is occupied in split mode, do nothing — preserve all sessions.
       }
     },
     [paneTabMap, activePaneId],
