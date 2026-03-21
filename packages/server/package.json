@@ -1,6 +1,6 @@
 {
   "name": "@alterm/server",
-  "version": "0.3.12",
+  "version": "0.3.23",
   "private": true,
   "type": "module",
   "scripts": {
