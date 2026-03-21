@@ -96,6 +96,10 @@ export function SshSession({ tab, isActive, onStatusChange, onClose }: SshSessio
           if (msg.type === 'status' && msg.message === 'Connected') {
             onStatusChange(tab.id, 'connected');
             term.focus();
+            // Re-send current dimensions now that the server is ready to accept resize
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+            }
           } else if (msg.type === 'error') {
             if (!cancelled) { setDisconnectMessage(msg.message); setDisconnected(true); onStatusChange(tab.id, 'disconnected'); }
           }
