@@ -199,6 +199,34 @@ function runMigrations() {
         INSERT OR IGNORE INTO settings (key, value) VALUES ('session.recording_path', 'recordings');
       `,
     },
+    {
+      version: 5,
+      sql: `
+        CREATE TABLE connections_new (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          group_id TEXT REFERENCES connection_groups(id) ON DELETE SET NULL,
+          name TEXT NOT NULL,
+          protocol TEXT NOT NULL CHECK(protocol IN ('ssh', 'rdp', 'smb', 'vnc', 'sftp', 'ftp')),
+          host TEXT NOT NULL,
+          port INTEGER NOT NULL,
+          username TEXT,
+          encrypted_password TEXT,
+          private_key TEXT,
+          extra_config_json TEXT,
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          recording_enabled INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+          shared INTEGER NOT NULL DEFAULT 0,
+          tunnels_json TEXT
+        );
+        INSERT INTO connections_new SELECT id, user_id, group_id, name, protocol, host, port, username, encrypted_password, private_key, extra_config_json, sort_order, recording_enabled, created_at, updated_at, shared, tunnels_json FROM connections;
+        DROP TABLE connections;
+        ALTER TABLE connections_new RENAME TO connections;
+        CREATE INDEX IF NOT EXISTS idx_connections_user ON connections(user_id);
+      `,
+    },
   ];
 
   for (const migration of migrations) {
