@@ -86,8 +86,6 @@ export function MainLayout() {
     setTabs((prev) => prev.map((t) => (t.id === tabId ? { ...t, status } : t)));
   }, []);
 
-  const activeTab = tabs.find((t) => t.id === activeTabId) ?? null;
-
   return (
     <div className="flex flex-col h-screen bg-surface select-none">
       <Header onToggleSidebar={() => setSidebarOpen((o) => !o)} />
@@ -103,7 +101,7 @@ export function MainLayout() {
         )}
         <div className="flex flex-col flex-1 overflow-hidden relative">
           <TabBar tabs={tabs} activeTabId={activeTabId} onSelect={setActiveTabId} onClose={closeTab} />
-          <SessionArea tab={activeTab} onStatusChange={updateTabStatus} onClose={closeTab} />
+          <SessionArea tabs={tabs} activeTabId={activeTabId} onStatusChange={updateTabStatus} onClose={closeTab} />
 
           {/* Overlay during sidebar drag — blocks mouse events reaching the RDP canvas
               and keeps the col-resize cursor consistent across the entire screen */}
