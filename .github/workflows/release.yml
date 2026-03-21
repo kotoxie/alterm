@@ -55,7 +55,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          prerelease: ${{ startsWith(github.ref_name, '0.') || contains(github.ref_name, '-') }}
+          prerelease: ${{ contains(github.ref_name, '-') }}
           body: |
             ## Container image
 
