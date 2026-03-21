@@ -242,16 +242,12 @@ export function MainLayout() {
       // Find the pane already showing this tab
       const entry = Object.entries(paneTabMap).find(([, tId]) => tId === tabId);
       if (entry) {
-        // Tab is visible in a pane — just focus that pane
+        // Tab is already visible — just focus its pane
         setActivePaneId(entry[0]);
       } else {
-        // Tab is not in any pane. Only place it in the active pane if that pane is empty.
-        // In split mode with all panes occupied the user must close a pane first to show it.
-        const activePaneEmpty = paneTabMap[activePaneId] === null || paneTabMap[activePaneId] === undefined;
-        if (activePaneEmpty) {
-          setPaneTabMap((prev) => ({ ...prev, [activePaneId]: tabId }));
-        }
-        // If active pane is occupied in split mode, do nothing — preserve all sessions.
+        // Tab is not in any pane. The user explicitly clicked it in the tab bar,
+        // so show it in the active pane (swapping its current session).
+        setPaneTabMap((prev) => ({ ...prev, [activePaneId]: tabId }));
       }
     },
     [paneTabMap, activePaneId],
