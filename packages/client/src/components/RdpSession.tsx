@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { Tab } from '../pages/MainLayout';
 import { useAuth } from '../hooks/useAuth';
+import { FileManager } from './FileManager';
 
 let rdpInitialized = false;
 let Backend: Record<string, unknown> | null = null;
@@ -83,6 +84,7 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
   const [disconnectMessage, setDisconnectMessage] = useState('');
   const [reconnectCount, setReconnectCount] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showFiles, setShowFiles] = useState(false);
 
   // ── Fullscreen + Keyboard Lock ─────────────────────────────────────────────
   const toggleFullscreen = useCallback(() => {
@@ -152,6 +154,7 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
         canvas.style.width = '100%';
         canvas.style.height = '100%';
         canvas.style.display = 'block';
+        canvas.tabIndex = 0;
         canvas.width = container.clientWidth || 1280;
         canvas.height = Math.max((container.clientHeight || 720) - STATUS_BAR_H, 1);
         container.innerHTML = '';
@@ -258,6 +261,7 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
 
         let clipboardPermissionRequested = false;
         const onMouseDown = (e: MouseEvent) => {
+          canvas.focus();
           e.preventDefault();
           applyEvents(DeviceEvent.mouseButtonPressed(e.button));
           if (e.button === 2) {
@@ -283,6 +287,18 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
         // the clipboard bridge. OS-level shortcuts (Alt+Tab, Win+*) are unreachable
         // from JS; use fullscreen + Keyboard Lock for browser-level ones (Ctrl+Tab etc.).
         const onKey = (e: KeyboardEvent) => {
+          // Don't capture keyboard when a text input elsewhere on the page has focus
+          // (e.g. the connection modal, search boxes, etc.)
+          const active = document.activeElement;
+          if (
+            active &&
+            active !== canvas &&
+            (active.tagName === 'INPUT' ||
+              active.tagName === 'TEXTAREA' ||
+              active.tagName === 'SELECT' ||
+              (active as HTMLElement).isContentEditable)
+          ) return;
+
           const isBrowserClipboard =
             (e.code === 'KeyC' || e.code === 'KeyV') && e.ctrlKey && !e.altKey && !e.metaKey;
           if (!isBrowserClipboard) e.preventDefault();
@@ -426,6 +442,15 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
         </div>
       )}
 
+      {/* File manager panel */}
+      {showFiles && token && (
+        <FileManager
+          connectionId={tab.connectionId}
+          token={token}
+          onClose={() => setShowFiles(false)}
+        />
+      )}
+
       {/* Status bar */}
       <div className="absolute bottom-0 left-0 right-0 h-6 bg-black/60 flex items-center px-3 text-xs text-gray-400 z-10">
         <span className="flex items-center gap-2 flex-1">
@@ -436,12 +461,22 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
           />
           {disconnected ? 'Disconnected' : status}
         </span>
+        {/* Files toggle */}
+        <button
+          onClick={() => setShowFiles((v) => !v)}
+          title="File transfer"
+          className={`ml-auto mr-2 opacity-60 hover:opacity-100 transition-opacity ${showFiles ? 'opacity-100 text-accent' : ''}`}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+          </svg>
+        </button>
         {/* Fullscreen toggle — enables Keyboard Lock so browser shortcuts (Ctrl+Tab etc.)
             are forwarded to the RDP session. OS shortcuts (Alt+Tab, Win+*) remain with OS. */}
         <button
           onClick={toggleFullscreen}
           title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen — enables full keyboard capture (Ctrl+Tab, F-keys, etc.)'}
-          className="ml-auto opacity-60 hover:opacity-100 transition-opacity"
+          className="opacity-60 hover:opacity-100 transition-opacity"
         >
           {isFullscreen ? (
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
