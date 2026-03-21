@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { clsx } from 'clsx';
-import type { Tab } from '../pages/MainLayout';
+import type { TabBarItem } from '../pages/MainLayout';
 
 interface TabBarProps {
-  tabs: Tab[];
+  tabs: TabBarItem[];
   activeTabId: string | null;
   onTabSelect: (id: string) => void;
   onClose: (id: string) => void;
@@ -19,6 +19,7 @@ const protocolIcons: Record<string, string> = {
   vnc: '🖱',
   sftp: '📂',
   ftp: '🗂',
+  split: '⊞',
 };
 
 const statusColors: Record<string, string> = {
@@ -30,7 +31,7 @@ const statusColors: Record<string, string> = {
 interface ContextMenu {
   x: number;
   y: number;
-  tab: Tab;
+  tab: TabBarItem;
 }
 
 export function TabBar({
@@ -65,7 +66,7 @@ export function TabBar({
 
   if (tabs.length === 0) return null;
 
-  function handleContextMenu(e: React.MouseEvent, tab: Tab) {
+  function handleContextMenu(e: React.MouseEvent, tab: TabBarItem) {
     e.preventDefault();
     setContextMenu({ x: e.clientX, y: e.clientY, tab });
   }
@@ -87,7 +88,7 @@ export function TabBar({
           >
             <span className={clsx('w-2 h-2 rounded-full shrink-0', statusColors[tab.status])} />
             <span className="text-xs opacity-60">{protocolIcons[tab.protocol] ?? tab.protocol}</span>
-            <span className="max-w-[120px] truncate">{tab.name}</span>
+            <span className="max-w-[120px] truncate">{tab.label}</span>
             <button
               onClick={(e) => { e.stopPropagation(); onClose(tab.id); }}
               className="ml-1 p-0.5 rounded hover:bg-surface-hover text-text-secondary hover:text-text-primary"
