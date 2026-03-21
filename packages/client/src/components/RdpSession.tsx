@@ -203,6 +203,14 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
         const onMouseDown = (e: MouseEvent) => {
           e.preventDefault();
           applyEvents(DeviceEvent.mouseButtonPressed(e.button));
+          // Right-click: proactively refresh the clipboard cache from the browser clipboard.
+          // forceClipboardUpdateCallback fires ~1s later (after user clicks Paste in the
+          // guest context menu), so the async read has time to complete before it's needed.
+          if (e.button === 2) {
+            navigator.clipboard.readText().then((text) => {
+              if (text) localClipboardText = text;
+            }).catch(() => {});
+          }
         };
         const onMouseUp = (e: MouseEvent) => {
           e.preventDefault();
