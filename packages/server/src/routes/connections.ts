@@ -246,6 +246,7 @@ router.get('/:id/session', (req: Request, res: Response) => {
 });
 
 // --- Connection Groups ---
+// IMPORTANT: these routes must be defined BEFORE /:id routes to avoid shadowing
 
 router.post('/groups', (req: Request, res: Response) => {
   const userId = req.user!.userId;
