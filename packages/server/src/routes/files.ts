@@ -18,14 +18,15 @@ function connFilesDir(connectionId: string): string {
 
 // List files for a connection
 router.get('/:id/files', (req: Request, res: Response) => {
-  const dir = connFilesDir(req.params.id);
+  const id = String(req.params.id);
+  const dir = connFilesDir(id);
   const entries = fs.readdirSync(dir).map((name) => {
     const st = fs.statSync(path.join(dir, name));
     return { name, size: st.size, mtime: st.mtimeMs };
   });
   res.json({
     files: entries,
-    hostPath: `/app/data/files/${path.basename(req.params.id)}`,
+    hostPath: `/app/data/files/${path.basename(id)}`,
   });
 });
 
@@ -34,8 +35,8 @@ router.put(
   '/:id/files/:filename',
   express.raw({ type: '*/*', limit: '500mb' }),
   (req: Request, res: Response) => {
-    const dir = connFilesDir(req.params.id);
-    const filename = path.basename(req.params.filename);
+    const dir = connFilesDir(String(req.params.id));
+    const filename = path.basename(String(req.params.filename));
     if (!filename) {
       res.status(400).json({ error: 'Invalid filename' });
       return;
@@ -47,8 +48,8 @@ router.put(
 
 // Download a file
 router.get('/:id/files/:filename', (req: Request, res: Response) => {
-  const dir = connFilesDir(req.params.id);
-  const filename = path.basename(req.params.filename);
+  const dir = connFilesDir(String(req.params.id));
+  const filename = path.basename(String(req.params.filename));
   const filePath = path.join(dir, filename);
   if (!fs.existsSync(filePath)) {
     res.status(404).json({ error: 'Not found' });
@@ -59,8 +60,8 @@ router.get('/:id/files/:filename', (req: Request, res: Response) => {
 
 // Delete a file
 router.delete('/:id/files/:filename', (req: Request, res: Response) => {
-  const dir = connFilesDir(req.params.id);
-  const filename = path.basename(req.params.filename);
+  const dir = connFilesDir(String(req.params.id));
+  const filename = path.basename(String(req.params.filename));
   const filePath = path.join(dir, filename);
   if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
   res.json({ ok: true });
