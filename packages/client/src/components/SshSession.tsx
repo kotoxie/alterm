@@ -69,6 +69,7 @@ export function SshSession({ tab, onStatusChange, onClose }: SshSessionProps) {
           const msg = JSON.parse(e.data);
           if (msg.type === 'status' && msg.message === 'Connected') {
             onStatusChange(tab.id, 'connected');
+            term.focus();
           } else if (msg.type === 'error') {
             if (!cancelled) { setDisconnectMessage(msg.message); setDisconnected(true); onStatusChange(tab.id, 'disconnected'); }
           }
