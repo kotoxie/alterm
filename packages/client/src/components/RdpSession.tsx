@@ -83,6 +83,7 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
   const [reconnectCount, setReconnectCount] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
+  const autoCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Fullscreen + Keyboard Lock ─────────────────────────────────────────────
   const toggleFullscreen = useCallback(() => {
@@ -109,6 +110,18 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
     document.addEventListener('fullscreenchange', onFsChange);
     return () => document.removeEventListener('fullscreenchange', onFsChange);
   }, []);
+
+  // ── Auto-open panel on connect, close after 3 s ────────────────────────────
+  useEffect(() => {
+    if (status === 'Connected') {
+      setPanelOpen(true);
+      if (autoCloseTimer.current) clearTimeout(autoCloseTimer.current);
+      autoCloseTimer.current = setTimeout(() => setPanelOpen(false), 3000);
+    }
+    return () => {
+      if (autoCloseTimer.current) clearTimeout(autoCloseTimer.current);
+    };
+  }, [status]);
 
   // ── Reconnect handler ──────────────────────────────────────────────────────
   const handleReconnect = useCallback(() => {
@@ -453,16 +466,16 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
       <button
         onClick={() => setPanelOpen((o) => !o)}
         title="Session controls"
-        className="absolute right-0 top-1/2 -translate-y-1/2 z-30 flex flex-col items-center justify-center gap-1.5 w-5 py-3 bg-black/60 hover:bg-black/80 text-gray-400 hover:text-white transition-colors rounded-l-md"
+        className="absolute right-0 top-1/2 -translate-y-1/2 z-30 flex flex-col items-center justify-center gap-2 w-7 py-4 bg-black/60 hover:bg-black/80 text-gray-400 hover:text-white transition-colors rounded-l-md"
         style={{ writingMode: 'vertical-rl' }}
       >
         <span
-          className={`w-2 h-2 rounded-full shrink-0 ${
+          className={`w-2.5 h-2.5 rounded-full shrink-0 ${
             disconnected ? 'bg-red-500' : status === 'Connected' ? 'bg-green-500' : 'bg-yellow-500'
           }`}
           style={{ writingMode: 'horizontal-tb' }}
         />
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ writingMode: 'horizontal-tb' }} className={`transition-transform ${panelOpen ? 'rotate-180' : ''}`}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ writingMode: 'horizontal-tb' }} className={`transition-transform ${panelOpen ? 'rotate-180' : ''}`}>
           <polyline points="15 18 9 12 15 6" />
         </svg>
       </button>
