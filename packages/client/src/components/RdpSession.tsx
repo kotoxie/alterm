@@ -216,10 +216,12 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
         };
 
         const onKey = (e: KeyboardEvent) => {
-          // Do NOT preventDefault for Ctrl+V: we need the browser paste event to fire
-          // so we can capture clipboard text and push it to the guest.
-          const isBrowserPaste = (e.code === 'KeyV') && e.ctrlKey && !e.altKey && !e.metaKey;
-          if (!isBrowserPaste) e.preventDefault();
+          // Do NOT preventDefault for Ctrl+C / Ctrl+V so browser copy/paste events fire.
+          // Ctrl+C → browser 'copy' event → our onCopy handler writes localClipboardText to clipboard.
+          // Ctrl+V → browser 'paste' event → our onPaste handler reads clipboardData and pushes to guest.
+          const isBrowserClipboard =
+            (e.code === 'KeyC' || e.code === 'KeyV') && e.ctrlKey && !e.altKey && !e.metaKey;
+          if (!isBrowserClipboard) e.preventDefault();
 
           const pressed = e.type === 'keydown';
           const scancode = CODE_TO_SCANCODE[e.code];
@@ -235,10 +237,20 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
         const onBlur = () => session.releaseAllInputs();
         const onContextMenu = (e: Event) => e.preventDefault();
 
-        // Clipboard: host → guest via browser paste event.
-        // When user presses Ctrl+V (or right-click paste), the paste event fires with
-        // the actual clipboard text. We update our cache AND immediately push it to the
-        // guest so it's available before the guest processes the Ctrl+V key.
+        // Clipboard: guest → host via browser 'copy' event.
+        // navigator.clipboard.writeText() can fail silently from a WASM callback context.
+        // Intercepting the copy event is reliable: it fires synchronously from the user's
+        // Ctrl+C keystroke (which we no longer preventDefault) and needs no API permission.
+        const onCopy = (e: ClipboardEvent) => {
+          if (localClipboardText) {
+            e.clipboardData?.setData('text/plain', localClipboardText);
+            e.preventDefault();
+          }
+        };
+
+        // Clipboard: host → guest via browser 'paste' event.
+        // Fires when Ctrl+V is pressed (no longer preventDefault'd). We read the actual
+        // clipboard text from the event and push it to the guest immediately.
         const onPaste = (e: ClipboardEvent) => {
           const text = e.clipboardData?.getData('text/plain') ?? '';
           if (text) {
@@ -255,6 +267,7 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
         window.addEventListener('keydown', onKey, false);
         window.addEventListener('keyup', onKey, false);
         window.addEventListener('blur', onBlur, false);
+        document.addEventListener('copy', onCopy, true);
         window.addEventListener('paste', onPaste, false);
 
         await session.run();
@@ -269,6 +282,7 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
         window.removeEventListener('keydown', onKey);
         window.removeEventListener('keyup', onKey);
         window.removeEventListener('blur', onBlur);
+        document.removeEventListener('copy', onCopy, true);
         window.removeEventListener('paste', onPaste);
 
         if (!cancelled) {
