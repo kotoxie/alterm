@@ -19,6 +19,7 @@ import settingsRoutes from './routes/settings.js';
 import profileRoutes from './routes/profile.js';
 import usersRoutes from './routes/users.js';
 import auditRoutes from './routes/audit.js';
+import versionRoutes from './routes/version.js';
 
 async function main() {
   // Ensure data directories
@@ -65,6 +66,7 @@ async function main() {
   app.use('/api/v1/profile', profileRoutes);
   app.use('/api/v1/users', usersRoutes);
   app.use('/api/v1/audit', auditRoutes);
+  app.use('/api/v1/version', versionRoutes);
   app.use('/health', healthRoutes);
 
   // Serve frontend static files
