@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import type { Tab } from '../pages/MainLayout';
 import { useAuth } from '../hooks/useAuth';
 
@@ -55,26 +55,80 @@ const CODE_TO_SCANCODE: Record<string, number> = Object.fromEntries(
 );
 
 const STATUS_BAR_H = 24;
-// Debounce resize calls — avoid hammering session.resize during continuous drag/resize
 const RESIZE_DEBOUNCE_MS = 150;
+
+// Keys locked via Keyboard Lock API when in fullscreen.
+// This lets the browser forward shortcuts it would normally intercept
+// (Ctrl+Tab, Ctrl+W, Ctrl+T, F11, etc.) to our keydown handler instead.
+// OS-level shortcuts (Alt+Tab, Win+R, Win+D) remain with the OS regardless.
+const KEYBOARD_LOCK_KEYS = [
+  'Tab', 'Escape', 'MetaLeft', 'MetaRight',
+  'F1','F2','F3','F4','F5','F6','F7','F8','F9','F10','F11','F12',
+];
 
 interface RdpSessionProps {
   tab: Tab;
   onStatusChange: (tabId: string, status: Tab['status']) => void;
+  onClose: (tabId: string) => void;
 }
 
-export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
+export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
+  const outerRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sessionRef = useRef<any>(null);
   const { token } = useAuth();
-  const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string>('Initializing...');
+  const [disconnected, setDisconnected] = useState(false);
+  const [disconnectMessage, setDisconnectMessage] = useState('');
+  const [reconnectCount, setReconnectCount] = useState(0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
+  // ── Fullscreen + Keyboard Lock ─────────────────────────────────────────────
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      outerRef.current?.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  }, []);
+
+  useEffect(() => {
+    const onFsChange = () => {
+      const inFs = !!document.fullscreenElement;
+      setIsFullscreen(inFs);
+      if (inFs) {
+        // Lock browser-intercepted keys so they pass through to our keydown handler
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (navigator as any).keyboard?.lock(KEYBOARD_LOCK_KEYS).catch(() => {});
+      } else {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (navigator as any).keyboard?.unlock?.();
+      }
+    };
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+  }, []);
+
+  // ── Reconnect handler ──────────────────────────────────────────────────────
+  const handleReconnect = useCallback(() => {
+    setDisconnected(false);
+    setDisconnectMessage('');
+    setStatus('Initializing...');
+    setReconnectCount((n) => n + 1);
+  }, []);
+
+  // ── RDP session ────────────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
     let resizeObserver: ResizeObserver | null = null;
     let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const showDisconnect = (msg: string) => {
+      setDisconnected(true);
+      setDisconnectMessage(msg);
+      onStatusChange(tab.id, 'disconnected');
+    };
 
     const run = async () => {
       if (!token || !containerRef.current) return;
@@ -110,8 +164,6 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { SessionBuilder, DesktopSize, ClipboardData } = Backend as any;
 
-        // Local clipboard text cache — used synchronously in forceClipboardUpdateCallback
-        // (IronRDP may not await async callbacks)
         let localClipboardText = '';
 
         const pushClipboardToGuest = (text: string) => {
@@ -121,16 +173,13 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
           sessionRef.current.onClipboardPaste(data).catch(() => {});
         };
 
-        // Read host clipboard and push to guest. Requires clipboard-read permission:
-        // - Chrome shows a one-time permission prompt on the first call from a user gesture.
-        // - After the user grants it, all subsequent calls are silent.
         const syncHostClipboardToGuest = () => {
           navigator.clipboard.readText().then((text) => {
             if (text && text !== localClipboardText) {
               localClipboardText = text;
               pushClipboardToGuest(text);
             }
-          }).catch(() => { /* permission denied or not yet granted */ });
+          }).catch(() => {});
         };
 
         const session = await new SessionBuilder()
@@ -153,7 +202,6 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
               }
             },
           )
-          // Guest clipboard → host: guest copied something, write to browser clipboard
           .remoteClipboardChangedCallback((clipData: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
             const items = (clipData.items() as any[]) ?? []; // eslint-disable-line @typescript-eslint/no-explicit-any
             const textItem = items.find((i: any) => i.mimeType() === 'text/plain'); // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -163,15 +211,10 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
               navigator.clipboard.writeText(text).catch(() => {});
             }
           })
-          // IronRDP requests current local clipboard (e.g. when guest wants to paste).
-          // Push cached value synchronously first, then also trigger an async refresh so
-          // subsequent pastes pick up the latest host clipboard (covers right-click paste).
           .forceClipboardUpdateCallback(() => {
             pushClipboardToGuest(localClipboardText);
             syncHostClipboardToGuest();
           })
-          // Enable RDPEDISP virtual channel so session.resize() actually changes
-          // the guest desktop resolution (not just the local canvas).
           .extension(displayControl!(true))
           .connect();
 
@@ -184,7 +227,7 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
         setStatus('Connected');
         onStatusChange(tab.id, 'connected');
 
-        // ── Auto-resize (debounced) ──────────────────────────────────────────
+        // ── Auto-resize (debounced) ────────────────────────────────────────
         resizeObserver = new ResizeObserver(() => {
           if (resizeTimer) clearTimeout(resizeTimer);
           resizeTimer = setTimeout(() => {
@@ -192,14 +235,12 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
             const w = containerRef.current.clientWidth;
             const h = Math.max(containerRef.current.clientHeight - STATUS_BAR_H, 1);
             if (w <= 0 || h <= 0) return;
-            // session.resize() updates canvas dimensions internally (IronRDP owns it).
-            // Do NOT set canvas.width/height here — that clears the framebuffer.
             sessionRef.current.resize(w, h);
           }, RESIZE_DEBOUNCE_MS);
         });
         resizeObserver.observe(container);
 
-        // ── Input event wiring ───────────────────────────────────────────────
+        // ── Input event wiring ─────────────────────────────────────────────
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { InputTransaction, DeviceEvent } = Backend as any;
 
@@ -214,19 +255,14 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
           const scaleY = canvas.height / canvas.clientHeight;
           applyEvents(DeviceEvent.mouseMove(Math.round(e.offsetX * scaleX), Math.round(e.offsetY * scaleY)));
         };
+
         let clipboardPermissionRequested = false;
         const onMouseDown = (e: MouseEvent) => {
           e.preventDefault();
           applyEvents(DeviceEvent.mouseButtonPressed(e.button));
           if (e.button === 2) {
-            // Right-click: refresh clipboard cache NOW. The user still needs to navigate
-            // the guest context menu before forceClipboardUpdateCallback fires (~500ms+),
-            // so this async read completes in time.
             syncHostClipboardToGuest();
           } else if (!clipboardPermissionRequested) {
-            // First left-click in the canvas: request clipboard-read permission once.
-            // Doing it here (not on right-click) avoids the Chrome permission dialog
-            // appearing simultaneously with the guest right-click context menu.
             clipboardPermissionRequested = true;
             syncHostClipboardToGuest();
           }
@@ -239,13 +275,14 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
           e.preventDefault();
           const isVertical = Math.abs(e.deltaY) >= Math.abs(e.deltaX);
           const delta = isVertical ? e.deltaY : e.deltaX;
-          applyEvents(DeviceEvent.wheelRotations(isVertical, -delta, 0 /* Pixel */));
+          applyEvents(DeviceEvent.wheelRotations(isVertical, -delta, 0));
         };
 
+        // Keyboard — capture phase so our preventDefault fires before browser shortcuts.
+        // Ctrl+C / Ctrl+V are excluded so browser copy/paste events still fire for
+        // the clipboard bridge. OS-level shortcuts (Alt+Tab, Win+*) are unreachable
+        // from JS; use fullscreen + Keyboard Lock for browser-level ones (Ctrl+Tab etc.).
         const onKey = (e: KeyboardEvent) => {
-          // Do NOT preventDefault for Ctrl+C / Ctrl+V so browser copy/paste events fire.
-          // Ctrl+C → browser 'copy' event → our onCopy handler writes localClipboardText to clipboard.
-          // Ctrl+V → browser 'paste' event → our onPaste handler reads clipboardData and pushes to guest.
           const isBrowserClipboard =
             (e.code === 'KeyC' || e.code === 'KeyV') && e.ctrlKey && !e.altKey && !e.metaKey;
           if (!isBrowserClipboard) e.preventDefault();
@@ -262,15 +299,9 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
         };
 
         const onBlur = () => session.releaseAllInputs();
-        // When the browser window regains focus (user Alt+Tabs back after copying something),
-        // refresh the clipboard cache so subsequent right-click paste has the latest content.
         const onWindowFocus = () => syncHostClipboardToGuest();
         const onContextMenu = (e: Event) => e.preventDefault();
 
-        // Clipboard: guest → host via browser 'copy' event.
-        // navigator.clipboard.writeText() can fail silently from a WASM callback context.
-        // Intercepting the copy event is reliable: it fires synchronously from the user's
-        // Ctrl+C keystroke (which we no longer preventDefault) and needs no API permission.
         const onCopy = (e: ClipboardEvent) => {
           if (localClipboardText) {
             e.clipboardData?.setData('text/plain', localClipboardText);
@@ -278,9 +309,6 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
           }
         };
 
-        // Clipboard: host → guest via browser 'paste' event.
-        // Fires when Ctrl+V is pressed (no longer preventDefault'd). We read the actual
-        // clipboard text from the event and push it to the guest immediately.
         const onPaste = (e: ClipboardEvent) => {
           const text = e.clipboardData?.getData('text/plain') ?? '';
           if (text) {
@@ -294,8 +322,9 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
         canvas.addEventListener('mouseup', onMouseUp);
         canvas.addEventListener('wheel', onWheel, { passive: false });
         canvas.addEventListener('contextmenu', onContextMenu);
-        window.addEventListener('keydown', onKey, false);
-        window.addEventListener('keyup', onKey, false);
+        // Capture phase: our handler runs before the browser acts on shortcuts
+        window.addEventListener('keydown', onKey, true);
+        window.addEventListener('keyup', onKey, true);
         window.addEventListener('blur', onBlur, false);
         window.addEventListener('focus', onWindowFocus, false);
         document.addEventListener('copy', onCopy, true);
@@ -310,22 +339,19 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
         canvas.removeEventListener('mouseup', onMouseUp);
         canvas.removeEventListener('wheel', onWheel);
         canvas.removeEventListener('contextmenu', onContextMenu);
-        window.removeEventListener('keydown', onKey);
-        window.removeEventListener('keyup', onKey);
+        window.removeEventListener('keydown', onKey, true);
+        window.removeEventListener('keyup', onKey, true);
         window.removeEventListener('blur', onBlur);
         window.removeEventListener('focus', onWindowFocus);
         document.removeEventListener('copy', onCopy, true);
         window.removeEventListener('paste', onPaste);
 
-        if (!cancelled) {
-          setStatus('Disconnected');
-          onStatusChange(tab.id, 'disconnected');
-        }
+        if (!cancelled) showDisconnect('The remote session has ended.');
       } catch (err) {
         if (!cancelled) {
-          let msg: string;
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const e = err as any;
+          let msg: string;
           if (e && typeof e.kind === 'function') {
             const kindNum: number = e.kind();
             const kindNames: Record<number, string> = {
@@ -339,8 +365,7 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
             msg = err instanceof Error ? err.message : String(err);
           }
           console.error('[RDP] Session error:', err, msg);
-          setError(`RDP error: ${msg}`);
-          onStatusChange(tab.id, 'disconnected');
+          showDisconnect(msg);
         }
       }
     };
@@ -356,25 +381,78 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
         sessionRef.current = null;
       }
     };
-  }, [tab.id, tab.connectionId, token, onStatusChange]);
+    // reconnectCount is intentionally included: incrementing it re-runs this effect
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab.id, tab.connectionId, token, onStatusChange, reconnectCount]);
 
   return (
-    <div className="flex flex-col flex-1 bg-black relative overflow-hidden">
-      {error && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-red-500/90 text-white px-4 py-2 rounded text-sm z-10 max-w-md text-center">
-          {error}
+    <div ref={outerRef} className="flex flex-col flex-1 bg-black relative overflow-hidden">
+      <div ref={containerRef} className="flex-1 w-full" />
+
+      {/* Disconnect overlay */}
+      {disconnected && (
+        <div className="absolute inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-20">
+          <div className="bg-surface border border-border rounded-xl p-6 shadow-2xl flex flex-col items-center gap-4 w-72">
+            <div className="w-12 h-12 rounded-full bg-red-500/15 flex items-center justify-center">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-red-400">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <circle cx="12" cy="16" r="0.5" fill="currentColor" />
+              </svg>
+            </div>
+            <div className="text-center">
+              <h3 className="text-text-primary font-semibold">Session Disconnected</h3>
+              {disconnectMessage && (
+                <p className="text-text-secondary text-xs mt-1 break-words max-w-xs">
+                  {disconnectMessage}
+                </p>
+              )}
+            </div>
+            <div className="flex gap-3 w-full">
+              <button
+                onClick={() => onClose(tab.id)}
+                className="flex-1 py-2 px-3 text-sm border border-border rounded-lg hover:bg-surface-hover text-text-secondary transition-colors"
+              >
+                Exit
+              </button>
+              <button
+                onClick={handleReconnect}
+                className="flex-1 py-2 px-3 text-sm bg-accent text-white rounded-lg hover:bg-accent-hover font-medium transition-colors"
+              >
+                Reconnect
+              </button>
+            </div>
+          </div>
         </div>
       )}
-      <div ref={containerRef} className="flex-1 w-full" />
-      <div className="absolute bottom-0 left-0 right-0 h-6 bg-black/60 flex items-center px-3 text-xs text-gray-400">
-        <span className="flex items-center gap-2">
+
+      {/* Status bar */}
+      <div className="absolute bottom-0 left-0 right-0 h-6 bg-black/60 flex items-center px-3 text-xs text-gray-400 z-10">
+        <span className="flex items-center gap-2 flex-1">
           <span
             className={`w-2 h-2 rounded-full ${
-              error ? 'bg-red-500' : status === 'Connected' ? 'bg-green-500' : 'bg-yellow-500'
+              disconnected ? 'bg-red-500' : status === 'Connected' ? 'bg-green-500' : 'bg-yellow-500'
             }`}
           />
-          {status}
+          {disconnected ? 'Disconnected' : status}
         </span>
+        {/* Fullscreen toggle — enables Keyboard Lock so browser shortcuts (Ctrl+Tab etc.)
+            are forwarded to the RDP session. OS shortcuts (Alt+Tab, Win+*) remain with OS. */}
+        <button
+          onClick={toggleFullscreen}
+          title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen — enables full keyboard capture (Ctrl+Tab, F-keys, etc.)'}
+          className="ml-auto opacity-60 hover:opacity-100 transition-opacity"
+        >
+          {isFullscreen ? (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
+            </svg>
+          ) : (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+            </svg>
+          )}
+        </button>
       </div>
     </div>
   );
