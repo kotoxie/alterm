@@ -202,6 +202,37 @@ router.delete('/:id', (req: Request, res: Response) => {
   res.json({ success: true });
 });
 
+// POST /:id/reset-password — admin resets a user's password
+router.post('/:id/reset-password', async (req: Request, res: Response) => {
+  if (!requireAdmin(req, res)) return;
+
+  const id = req.params.id as string;
+  const { newPassword } = req.body as { newPassword?: string };
+
+  if (!newPassword || newPassword.length < 8) {
+    res.status(400).json({ error: 'New password must be at least 8 characters' });
+    return;
+  }
+
+  const user = queryOne<UserRow>('SELECT id, username FROM users WHERE id = ?', [id]);
+  if (!user) {
+    res.status(404).json({ error: 'User not found' });
+    return;
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, 12);
+  execute("UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?", [passwordHash, id]);
+
+  logAudit({
+    userId: req.user!.userId,
+    eventType: 'user.password_reset',
+    target: user.username,
+    ipAddress: req.ip,
+  });
+
+  res.json({ success: true });
+});
+
 // POST /:id/unlock — reset lockout
 router.post('/:id/unlock', (req: Request, res: Response) => {
   if (!requireAdmin(req, res)) return;

@@ -162,7 +162,8 @@ router.post('/login', async (req: Request, res: Response) => {
     [user.id],
   );
 
-  const token = signToken({ userId: user.id, username: user.username, role: user.role });
+  const maxSessionMinutes = parseInt(getSetting('security.max_session_minutes') ?? '0', 10);
+  const token = signToken({ userId: user.id, username: user.username, role: user.role }, maxSessionMinutes || undefined);
 
   logAudit({
     userId: user.id,

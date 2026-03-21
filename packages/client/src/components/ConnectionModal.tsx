@@ -8,6 +8,7 @@ interface Connection {
   host: string;
   port: number;
   groupId: string | null;
+  shared?: number;
 }
 
 interface FlatGroup {
@@ -38,6 +39,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved }: Connec
   const [password, setPassword] = useState('');
   const [privateKey, setPrivateKey] = useState('');
   const [groupId, setGroupId] = useState<string>(connection?.groupId ?? '');
+  const [shared, setShared] = useState<boolean>(connection ? (connection.shared === 1) : false);
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [localGroups, setLocalGroups] = useState<FlatGroup[]>(groups);
@@ -82,6 +84,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved }: Connec
         username,
         password,
         groupId: groupId || null,
+        shared,
         ...(protocol === 'ssh' && privateKey ? { privateKey } : {}),
       };
       const url = connection ? `/api/v1/connections/${connection.id}` : '/api/v1/connections';
@@ -261,6 +264,19 @@ export function ConnectionModal({ connection, groups, onClose, onSaved }: Connec
                 + Create new folder
               </button>
             )}
+          </div>
+
+          <div className="flex items-center gap-3 pt-1">
+            <button
+              type="button"
+              onClick={() => setShared((v) => !v)}
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                shared ? 'bg-accent' : 'bg-surface-hover border border-border'
+              }`}
+            >
+              <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${shared ? 'translate-x-4' : 'translate-x-0.5'}`} />
+            </button>
+            <span className="text-sm text-text-secondary">Share with all users</span>
           </div>
 
           {error && <p className="text-red-500 text-sm">{error}</p>}

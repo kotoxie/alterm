@@ -15,11 +15,13 @@ interface ConnectionRow {
   host: string;
   port: number;
   group_id: string | null;
+  user_id: string;
   username: string | null;
   encrypted_password: string | null;
   private_key: string | null;
   sort_order: number;
   recording_enabled: number;
+  shared: number;
 }
 
 interface GroupRow {
@@ -39,7 +41,13 @@ router.get('/', (req: Request, res: Response) => {
   );
 
   const connections = queryAll<ConnectionRow>(
-    'SELECT id, name, protocol, host, port, group_id, username, sort_order FROM connections WHERE user_id = ? ORDER BY sort_order',
+    'SELECT id, name, protocol, host, port, group_id, username, sort_order, shared FROM connections WHERE user_id = ? ORDER BY sort_order',
+    [userId],
+  );
+
+  // Shared connections from other users
+  const sharedConnections = queryAll<ConnectionRow>(
+    'SELECT id, name, protocol, host, port, username, shared, user_id FROM connections WHERE shared = 1 AND user_id != ? ORDER BY name',
     [userId],
   );
 
@@ -49,7 +57,7 @@ router.get('/', (req: Request, res: Response) => {
     name: string;
     parentId: string | null;
     children: GroupNode[];
-    connections: { id: string; name: string; protocol: string; host: string; port: number; groupId: string | null }[];
+    connections: { id: string; name: string; protocol: string; host: string; port: number; groupId: string | null; isShared: boolean }[];
   }
 
   const groupMap = new Map<string, GroupNode>();
@@ -67,7 +75,7 @@ router.get('/', (req: Request, res: Response) => {
   }
 
   const connMapped = connections.map((c) => ({
-    id: c.id, name: c.name, protocol: c.protocol, host: c.host, port: c.port, groupId: c.group_id,
+    id: c.id, name: c.name, protocol: c.protocol, host: c.host, port: c.port, groupId: c.group_id, isShared: false,
   }));
 
   for (const conn of connMapped) {
@@ -78,13 +86,17 @@ router.get('/', (req: Request, res: Response) => {
 
   const ungrouped = connMapped.filter((c) => !c.groupId || !groupMap.has(c.groupId));
 
-  res.json({ groups: rootGroups, ungrouped });
+  const sharedMapped = sharedConnections.map((c) => ({
+    id: c.id, name: c.name, protocol: c.protocol, host: c.host, port: c.port, groupId: null, isShared: true,
+  }));
+
+  res.json({ groups: rootGroups, ungrouped, sharedConnections: sharedMapped });
 });
 
 // Create connection
 router.post('/', (req: Request, res: Response) => {
   const userId = req.user!.userId;
-  const { name, protocol, host, port, username, password, groupId, privateKey, extraConfig } = req.body;
+  const { name, protocol, host, port, username, password, groupId, privateKey, extraConfig, shared } = req.body;
 
   if (!name || !protocol || !host || !port) {
     res.status(400).json({ error: 'Name, protocol, host, and port are required' });
@@ -101,12 +113,13 @@ router.post('/', (req: Request, res: Response) => {
   const encryptedKey = privateKey ? encrypt(privateKey) : null;
 
   execute(
-    `INSERT INTO connections (id, user_id, group_id, name, protocol, host, port, username, encrypted_password, private_key, extra_config_json, sort_order)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO connections (id, user_id, group_id, name, protocol, host, port, username, encrypted_password, private_key, extra_config_json, sort_order, shared)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id, userId, groupId || null, name, protocol, host, port,
       username || null, encryptedPassword, encryptedKey,
       extraConfig ? JSON.stringify(extraConfig) : null, 0,
+      shared ? 1 : 0,
     ],
   );
 
@@ -119,7 +132,7 @@ router.post('/', (req: Request, res: Response) => {
   });
 
   res.status(201).json({
-    id, name, protocol, host, port, username, groupId: groupId || null,
+    id, name, protocol, host, port, username, groupId: groupId || null, shared: shared ? 1 : 0,
   });
 });
 
@@ -127,6 +140,7 @@ router.post('/', (req: Request, res: Response) => {
 router.put('/:id', (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const id = req.params.id as string;
+  const isAdmin = req.user!.role === 'admin';
 
   interface ExistingConnectionRow {
     id: string;
@@ -136,14 +150,21 @@ router.put('/:id', (req: Request, res: Response) => {
     port: number;
     username: string | null;
     group_id: string | null;
+    user_id: string;
+    shared: number;
   }
 
   const existing = queryOne<ExistingConnectionRow>(
-    'SELECT id, name, protocol, host, port, username, group_id FROM connections WHERE id = ? AND user_id = ?',
-    [id, userId],
+    'SELECT id, name, protocol, host, port, username, group_id, user_id, shared FROM connections WHERE id = ?',
+    [id],
   );
   if (!existing) {
     res.status(404).json({ error: 'Connection not found' });
+    return;
+  }
+
+  if (existing.user_id !== userId && !isAdmin) {
+    res.status(403).json({ error: 'Not authorized' });
     return;
   }
 
@@ -156,7 +177,7 @@ router.put('/:id', (req: Request, res: Response) => {
     groupId: existing.group_id,
   };
 
-  const { name, protocol, host, port, username, password, groupId, privateKey } = req.body;
+  const { name, protocol, host, port, username, password, groupId, privateKey, shared } = req.body;
 
   const updates: string[] = [];
   const params: unknown[] = [];
@@ -169,6 +190,7 @@ router.put('/:id', (req: Request, res: Response) => {
   if (password) { updates.push('encrypted_password = ?'); params.push(encrypt(password)); }
   if (privateKey !== undefined) { updates.push('private_key = ?'); params.push(privateKey ? encrypt(privateKey) : null); }
   if (groupId !== undefined) { updates.push('group_id = ?'); params.push(groupId || null); }
+  if (shared !== undefined) { updates.push('shared = ?'); params.push(shared ? 1 : 0); }
 
   if (updates.length === 0) {
     res.status(400).json({ error: 'No fields to update' });
@@ -176,9 +198,9 @@ router.put('/:id', (req: Request, res: Response) => {
   }
 
   updates.push("updated_at = datetime('now')");
-  params.push(id, userId);
+  params.push(id);
 
-  execute(`UPDATE connections SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`, params);
+  execute(`UPDATE connections SET ${updates.join(', ')} WHERE id = ?`, params);
 
   const after = {
     name: name !== undefined ? name : before.name,
@@ -205,12 +227,17 @@ router.delete('/:id', (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const id = req.params.id as string;
 
-  execute('DELETE FROM connections WHERE id = ? AND user_id = ?', [id, userId]);
-  const changes = getChanges();
-  if (changes === 0) {
+  const conn = queryOne<{ user_id: string }>('SELECT user_id FROM connections WHERE id = ?', [id]);
+  if (!conn) {
     res.status(404).json({ error: 'Connection not found' });
     return;
   }
+  if (conn.user_id !== userId && req.user!.role !== 'admin') {
+    res.status(403).json({ error: 'Not authorized' });
+    return;
+  }
+
+  execute('DELETE FROM connections WHERE id = ?', [id]);
 
   logAudit({
     userId,
@@ -228,7 +255,7 @@ router.get('/:id', (req: Request, res: Response) => {
   const id = req.params.id as string;
 
   const conn = queryOne<ConnectionRow>(
-    'SELECT * FROM connections WHERE id = ? AND user_id = ?',
+    'SELECT * FROM connections WHERE id = ? AND (user_id = ? OR shared = 1)',
     [id, userId],
   );
 
@@ -248,6 +275,7 @@ router.get('/:id', (req: Request, res: Response) => {
     recordingEnabled: conn.recording_enabled,
     hasPassword: !!conn.encrypted_password,
     hasPrivateKey: !!conn.private_key,
+    shared: conn.shared,
   });
 });
 
@@ -257,7 +285,7 @@ router.get('/:id/session', (req: Request, res: Response) => {
   const id = req.params.id as string;
 
   const conn = queryOne<ConnectionRow>(
-    'SELECT * FROM connections WHERE id = ? AND user_id = ?',
+    'SELECT * FROM connections WHERE id = ? AND (user_id = ? OR shared = 1)',
     [id, userId],
   );
 
