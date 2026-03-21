@@ -80,9 +80,9 @@ function SlidersIcon() {
 
 const NAV_ITEMS: NavItem[] = [
   { id: 'profile', label: 'Profile', icon: <UserIcon /> },
-  { id: 'security', label: 'Login & Security', icon: <ShieldIcon /> },
+  { id: 'security', label: 'Login & Security', icon: <ShieldIcon />, adminOnly: true },
   { id: 'users', label: 'Users', icon: <UsersIcon />, adminOnly: true },
-  { id: 'audit', label: 'Audit Trail', icon: <ListIcon /> },
+  { id: 'audit', label: 'Audit Trail', icon: <ListIcon />, adminOnly: true },
   { id: 'global', label: 'Global Settings', icon: <SlidersIcon />, adminOnly: true },
 ];
 
@@ -187,9 +187,9 @@ export function SettingsPanel({ isOpen, onClose, initialSection }: SettingsPanel
           {/* Content */}
           <div className="flex-1 overflow-y-auto p-6">
             {activeSection === 'profile' && <ProfileSettings />}
-            {activeSection === 'security' && <SecuritySettings />}
+            {activeSection === 'security' && isAdmin && <SecuritySettings />}
             {activeSection === 'users' && isAdmin && <UsersSettings />}
-            {activeSection === 'audit' && <AuditTrail />}
+            {activeSection === 'audit' && isAdmin && <AuditTrail />}
             {activeSection === 'global' && isAdmin && <GlobalSettings />}
           </div>
         </div>

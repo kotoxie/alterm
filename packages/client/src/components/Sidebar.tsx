@@ -18,6 +18,7 @@ interface Connection {
   host: string;
   port: number;
   groupId: string | null;
+  isShared?: boolean;
 }
 
 interface FlatGroup {
@@ -78,6 +79,7 @@ export function Sidebar({ onConnect, onDuplicate, width }: SidebarProps) {
   const { token } = useAuth();
   const [groups, setGroups] = useState<ConnectionGroup[]>([]);
   const [ungrouped, setUngrouped] = useState<Connection[]>([]);
+  const [sharedConnections, setSharedConnections] = useState<Connection[]>([]);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [showModal, setShowModal] = useState(false);
   const [editingConnection, setEditingConnection] = useState<Connection | null>(null);
@@ -114,6 +116,7 @@ export function Sidebar({ onConnect, onDuplicate, width }: SidebarProps) {
       const data = await res.json();
       setGroups(data.groups || []);
       setUngrouped(data.ungrouped || []);
+      setSharedConnections(data.sharedConnections || []);
     } catch { /* ignore */ }
   }, [token]);
 
@@ -360,13 +363,37 @@ export function Sidebar({ onConnect, onDuplicate, width }: SidebarProps) {
           {groups.map(renderGroup)}
           {ungrouped.map(renderConnection)}
 
+          {sharedConnections.length > 0 && (
+            <div className="mt-2">
+              <div className="flex items-center gap-1.5 px-3 py-1 text-xs text-text-secondary font-medium uppercase tracking-wider">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+                  <polyline points="16 6 12 2 8 6" />
+                  <line x1="12" y1="2" x2="12" y2="15" />
+                </svg>
+                Shared
+              </div>
+              {sharedConnections.map((conn) => (
+                <div
+                  key={conn.id}
+                  onClick={() => onConnect(conn)}
+                  onContextMenu={(e) => handleConnContextMenu(e, conn)}
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-surface-hover rounded mx-1"
+                >
+                  <ProtocolBadge protocol={conn.protocol} />
+                  <span className="truncate flex-1 text-text-primary">{conn.name}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
           {draggingConnId && (
             <p className="text-xs text-text-secondary text-center py-2 opacity-60">
               Drop here to remove from folder
             </p>
           )}
 
-          {groups.length === 0 && ungrouped.length === 0 && (
+          {groups.length === 0 && ungrouped.length === 0 && sharedConnections.length === 0 && (
             <p className="text-xs text-text-secondary text-center px-4 mt-8 leading-relaxed">
               No connections yet.<br />
               Click "+ New Connection" to get started.
@@ -409,29 +436,33 @@ export function Sidebar({ onConnect, onDuplicate, width }: SidebarProps) {
             </svg>
             Duplicate Session
           </button>
-          <div className="border-t border-border my-1" />
-          <button
-            className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
-            onClick={() => { setEditingConnection(contextMenu.conn); setShowModal(true); setContextMenu(null); }}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-            </svg>
-            Edit
-          </button>
-          <button
-            className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-red-400 flex items-center gap-2"
-            onClick={() => { deleteConnection(contextMenu.conn.id); setContextMenu(null); }}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="3 6 5 6 21 6" />
-              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-              <path d="M10 11v6M14 11v6" />
-              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-            </svg>
-            Delete
-          </button>
+          {!contextMenu.conn.isShared && (
+            <>
+              <div className="border-t border-border my-1" />
+              <button
+                className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
+                onClick={() => { setEditingConnection(contextMenu.conn); setShowModal(true); setContextMenu(null); }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                </svg>
+                Edit
+              </button>
+              <button
+                className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-red-400 flex items-center gap-2"
+                onClick={() => { deleteConnection(contextMenu.conn.id); setContextMenu(null); }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                  <path d="M10 11v6M14 11v6" />
+                  <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                </svg>
+                Delete
+              </button>
+            </>
+          )}
         </div>
       )}
     </>

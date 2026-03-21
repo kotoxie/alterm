@@ -4,6 +4,36 @@ import { Sidebar } from '../components/Sidebar';
 import { TabBar } from '../components/TabBar';
 import { SessionArea } from '../components/SessionArea';
 import { SettingsPanel } from '../components/settings/SettingsPanel';
+import { useSettings } from '../hooks/useSettings';
+import { useAuth } from '../hooks/useAuth';
+
+function IdleMonitor() {
+  const { settings } = useSettings();
+  const { logout } = useAuth();
+  const lastActivity = useRef(Date.now());
+  const idleMs = parseInt(settings['security.idle_timeout_minutes'] ?? '0', 10) * 60 * 1000;
+
+  useEffect(() => {
+    if (idleMs <= 0) return;
+    const resetTimer = () => { lastActivity.current = Date.now(); };
+    window.addEventListener('mousemove', resetTimer);
+    window.addEventListener('keydown', resetTimer);
+    window.addEventListener('click', resetTimer);
+    window.addEventListener('scroll', resetTimer, true);
+    const interval = setInterval(() => {
+      if (Date.now() - lastActivity.current > idleMs) logout();
+    }, 30_000);
+    return () => {
+      window.removeEventListener('mousemove', resetTimer);
+      window.removeEventListener('keydown', resetTimer);
+      window.removeEventListener('click', resetTimer);
+      window.removeEventListener('scroll', resetTimer, true);
+      clearInterval(interval);
+    };
+  }, [idleMs, logout]);
+
+  return null;
+}
 
 export interface Tab {
   id: string;
@@ -109,6 +139,7 @@ export function MainLayout() {
 
   return (
     <div className="flex flex-col h-screen bg-surface select-none">
+      <IdleMonitor />
       <Header onToggleSidebar={() => setSidebarOpen((o) => !o)} onOpenSettings={onOpenSettings} />
       <div className="flex flex-1 overflow-hidden">
         {sidebarOpen && (

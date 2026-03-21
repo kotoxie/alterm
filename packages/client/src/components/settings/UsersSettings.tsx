@@ -58,6 +58,12 @@ export function UsersSettings() {
   // Per-row messages
   const [rowMsgs, setRowMsgs] = useState<Record<string, { type: 'success' | 'error'; text: string }>>({});
 
+  // Reset password state
+  const [resetPasswordUserId, setResetPasswordUserId] = useState<string | null>(null);
+  const [resetPasswordValue, setResetPasswordValue] = useState('');
+  const [resetPasswordMsg, setResetPasswordMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [resettingPassword, setResettingPassword] = useState(false);
+
   async function loadUsers() {
     if (!token) return;
     setLoading(true);
@@ -126,6 +132,30 @@ export function UsersSettings() {
     } else {
       const d = await res.json();
       setRowMsg(userId, { type: 'error', text: d.error || 'Failed.' });
+    }
+  }
+
+  async function handleResetPassword(userId: string) {
+    if (!token || !resetPasswordValue) return;
+    setResettingPassword(true);
+    setResetPasswordMsg(null);
+    try {
+      const res = await fetch(`/api/v1/users/${userId}/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ newPassword: resetPasswordValue }),
+      });
+      const d = await res.json();
+      if (res.ok) {
+        setResetPasswordMsg({ type: 'success', text: 'Password reset.' });
+        setTimeout(() => { setResetPasswordUserId(null); setResetPasswordValue(''); setResetPasswordMsg(null); }, 1500);
+      } else {
+        setResetPasswordMsg({ type: 'error', text: d.error || 'Failed.' });
+      }
+    } catch {
+      setResetPasswordMsg({ type: 'error', text: 'Network error.' });
+    } finally {
+      setResettingPassword(false);
     }
   }
 
@@ -290,6 +320,43 @@ export function UsersSettings() {
                           className="px-2 py-1 text-xs bg-surface-hover border border-border rounded hover:bg-surface text-text-primary"
                         >
                           Unlock
+                        </button>
+                      )}
+                      {resetPasswordUserId === u.id ? (
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="password"
+                            value={resetPasswordValue}
+                            onChange={(e) => setResetPasswordValue(e.target.value)}
+                            placeholder="New password"
+                            className="px-2 py-1 text-xs bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-1 focus:ring-accent w-28"
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => handleResetPassword(u.id)}
+                            disabled={resettingPassword || !resetPasswordValue}
+                            className="px-2 py-1 text-xs bg-accent text-white rounded hover:bg-accent-hover disabled:opacity-50"
+                          >
+                            {resettingPassword ? '...' : '✓'}
+                          </button>
+                          <button
+                            onClick={() => { setResetPasswordUserId(null); setResetPasswordValue(''); setResetPasswordMsg(null); }}
+                            className="px-2 py-1 text-xs border border-border rounded text-text-secondary hover:bg-surface-hover"
+                          >
+                            ✕
+                          </button>
+                          {resetPasswordMsg && (
+                            <span className={`text-xs ${resetPasswordMsg.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+                              {resetPasswordMsg.text}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => { setResetPasswordUserId(u.id); setResetPasswordValue(''); }}
+                          className="px-2 py-1 text-xs border border-border rounded text-text-secondary hover:bg-surface-hover"
+                        >
+                          Reset Password
                         </button>
                       )}
                       <button

@@ -15,6 +15,8 @@ export function SecuritySettings() {
 
   // Session & lockout state
   const [sessionTimeout, setSessionTimeout] = useState('0');
+  const [idleTimeout, setIdleTimeout] = useState('0');
+  const [maxSessionMinutes, setMaxSessionMinutes] = useState('0');
   const [maxFailed, setMaxFailed] = useState('5');
   const [lockoutMinutes, setLockoutMinutes] = useState('30');
   const [lockoutMsg, setLockoutMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -37,6 +39,8 @@ export function SecuritySettings() {
 
   useEffect(() => {
     setSessionTimeout(settings['security.session_timeout_minutes'] ?? '0');
+    setIdleTimeout(settings['security.idle_timeout_minutes'] ?? '0');
+    setMaxSessionMinutes(settings['security.max_session_minutes'] ?? '0');
     setMaxFailed(settings['security.max_failed_logins'] ?? '5');
     setLockoutMinutes(settings['security.lockout_minutes'] ?? '30');
     setIpRulesEnabled(settings['security.ip_rules_enabled'] === 'true');
@@ -76,6 +80,8 @@ export function SecuritySettings() {
       await saveSetting(
         {
           'security.session_timeout_minutes': sessionTimeout,
+          'security.idle_timeout_minutes': idleTimeout,
+          'security.max_session_minutes': maxSessionMinutes,
           'security.max_failed_logins': maxFailed,
           'security.lockout_minutes': lockoutMinutes,
         },
@@ -160,6 +166,30 @@ export function SecuritySettings() {
               min="0"
               value={sessionTimeout}
               onChange={(e) => setSessionTimeout(e.target.value)}
+              className="w-40 px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-1">
+              Max session time (minutes) <span className="font-normal">— 0 = no limit</span>
+            </label>
+            <input
+              type="number"
+              min="0"
+              value={maxSessionMinutes}
+              onChange={(e) => setMaxSessionMinutes(e.target.value)}
+              className="w-40 px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-1">
+              Idle timeout (minutes) <span className="font-normal">— 0 = disabled</span>
+            </label>
+            <input
+              type="number"
+              min="0"
+              value={idleTimeout}
+              onChange={(e) => setIdleTimeout(e.target.value)}
               className="w-40 px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
             />
           </div>
