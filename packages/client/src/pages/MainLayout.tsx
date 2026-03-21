@@ -113,7 +113,7 @@ export function MainLayout() {
       <div className="flex flex-1 overflow-hidden">
         {sidebarOpen && (
           <>
-            <Sidebar onConnect={openTab} width={sidebarWidth} />
+            <Sidebar onConnect={openTab} onDuplicate={duplicateTab} width={sidebarWidth} />
             <div
               className="w-1 cursor-col-resize bg-border hover:bg-accent/60 active:bg-accent transition-colors shrink-0"
               onMouseDown={onDragStart}

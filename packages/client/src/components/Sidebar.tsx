@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type MouseEvent as RMouseEvent } from 'react';
 import { clsx } from 'clsx';
 import { useAuth } from '../hooks/useAuth';
 import { ConnectionModal } from './ConnectionModal';
@@ -27,7 +27,14 @@ interface FlatGroup {
 
 interface SidebarProps {
   onConnect: (conn: { id: string; name: string; protocol: 'ssh' | 'rdp' | 'smb' }) => void;
+  onDuplicate: (conn: { id: string; name: string; protocol: 'ssh' | 'rdp' | 'smb' }) => void;
   width?: number;
+}
+
+interface ContextMenu {
+  x: number;
+  y: number;
+  conn: Connection;
 }
 
 function flattenGroups(groups: ConnectionGroup[], prefix = ''): FlatGroup[] {
@@ -67,7 +74,7 @@ const FolderIcon = ({ size = 13 }: { size?: number }) => (
   </svg>
 );
 
-export function Sidebar({ onConnect, width }: SidebarProps) {
+export function Sidebar({ onConnect, onDuplicate, width }: SidebarProps) {
   const { token } = useAuth();
   const [groups, setGroups] = useState<ConnectionGroup[]>([]);
   const [ungrouped, setUngrouped] = useState<Connection[]>([]);
@@ -78,7 +85,22 @@ export function Sidebar({ onConnect, width }: SidebarProps) {
   const [newFolderName, setNewFolderName] = useState('');
   const [draggingConnId, setDraggingConnId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
   const newFolderInputRef = useRef<HTMLInputElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    function onDown(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setContextMenu(null);
+    }
+    function onEsc(e: KeyboardEvent) {
+      if (e.key === 'Escape') setContextMenu(null);
+    }
+    window.addEventListener('mousedown', onDown);
+    window.addEventListener('keydown', onEsc);
+    return () => { window.removeEventListener('mousedown', onDown); window.removeEventListener('keydown', onEsc); };
+  }, [contextMenu]);
 
   const flatGroups = flattenGroups(groups);
 
@@ -185,6 +207,11 @@ export function Sidebar({ onConnect, width }: SidebarProps) {
     setDragOverId(null);
   }
 
+  function handleConnContextMenu(e: RMouseEvent, conn: Connection) {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, conn });
+  }
+
   function renderConnection(conn: Connection) {
     return (
       <div
@@ -193,6 +220,7 @@ export function Sidebar({ onConnect, width }: SidebarProps) {
         onDragStart={(e) => handleDragStart(e, conn.id)}
         onDragEnd={handleDragEnd}
         onClick={() => onConnect(conn)}
+        onContextMenu={(e) => handleConnContextMenu(e, conn)}
         className="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-surface-hover rounded mx-1 group/conn"
       >
         <ProtocolBadge protocol={conn.protocol} />
@@ -354,6 +382,57 @@ export function Sidebar({ onConnect, width }: SidebarProps) {
           onClose={() => { setShowModal(false); setEditingConnection(null); }}
           onSaved={() => { setShowModal(false); setEditingConnection(null); fetchConnections(); }}
         />
+      )}
+
+      {contextMenu && (
+        <div
+          ref={menuRef}
+          className="fixed z-50 bg-surface-alt border border-border rounded shadow-lg py-1 text-sm min-w-[160px]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          <button
+            className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
+            onClick={() => { onConnect(contextMenu.conn); setContextMenu(null); }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
+            Connect
+          </button>
+          <button
+            className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
+            onClick={() => { onDuplicate(contextMenu.conn); setContextMenu(null); }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+            </svg>
+            Duplicate Session
+          </button>
+          <div className="border-t border-border my-1" />
+          <button
+            className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
+            onClick={() => { setEditingConnection(contextMenu.conn); setShowModal(true); setContextMenu(null); }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+            </svg>
+            Edit
+          </button>
+          <button
+            className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-red-400 flex items-center gap-2"
+            onClick={() => { deleteConnection(contextMenu.conn.id); setContextMenu(null); }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+              <path d="M10 11v6M14 11v6" />
+              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+            </svg>
+            Delete
+          </button>
+        </div>
       )}
     </>
   );
