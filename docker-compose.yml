@@ -1,6 +1,6 @@
 services:
   alterm:
-    image: ghcr.io/kotoxie/alterm:latest
+    build: .
     ports:
       - "7443:7443"
     volumes:
