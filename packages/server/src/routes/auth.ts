@@ -4,6 +4,7 @@ import { v4 as uuid } from 'uuid';
 import { queryOne, execute } from '../db/helpers.js';
 import { signToken, verifyToken } from '../services/jwt.js';
 import { logAudit } from '../services/audit.js';
+import { getSetting } from '../services/settings.js';
 
 const router = Router();
 
@@ -14,6 +15,8 @@ interface UserRow {
   display_name: string;
   role: string;
   theme: string | null;
+  failed_login_count: number;
+  locked_until: string | null;
 }
 
 // Check if setup is needed
@@ -87,24 +90,52 @@ router.post('/login', async (req: Request, res: Response) => {
     return;
   }
 
+  // Check if account is locked
+  if (user.locked_until && new Date(user.locked_until) > new Date()) {
+    res.status(429).json({ error: `Account locked until ${user.locked_until}` });
+    return;
+  }
+
   const valid = await bcrypt.compare(password, user.password_hash);
   if (!valid) {
+    const maxFailed = parseInt(getSetting('security.max_failed_logins'), 10) || 5;
+    const lockoutMinutes = parseInt(getSetting('security.lockout_minutes'), 10) || 30;
+    const newCount = (user.failed_login_count ?? 0) + 1;
+
+    if (newCount >= maxFailed) {
+      execute(
+        `UPDATE users SET failed_login_count = ?, locked_until = datetime('now', '+${lockoutMinutes} minutes'), updated_at = datetime('now') WHERE id = ?`,
+        [newCount, user.id],
+      );
+    } else {
+      execute(
+        "UPDATE users SET failed_login_count = ?, updated_at = datetime('now') WHERE id = ?",
+        [newCount, user.id],
+      );
+    }
+
     logAudit({
       userId: user.id,
       eventType: 'auth.login_failed',
       target: username,
-      details: { reason: 'invalid_password' },
+      details: { reason: 'invalid_password', failedCount: newCount },
       ipAddress: req.ip,
     });
     res.status(401).json({ error: 'Invalid username or password' });
     return;
   }
 
+  // Reset lockout on success
+  execute(
+    "UPDATE users SET failed_login_count = 0, locked_until = NULL, last_login_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
+    [user.id],
+  );
+
   const token = signToken({ userId: user.id, username: user.username, role: user.role });
 
   logAudit({
     userId: user.id,
-    eventType: 'auth.login',
+    eventType: 'auth.login_success',
     target: username,
     ipAddress: req.ip,
   });
