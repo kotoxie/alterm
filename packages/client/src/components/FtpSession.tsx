@@ -121,8 +121,9 @@ export function FtpSession({ connectionId, connectionName, isActive, onStatusCha
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ path: dirPath }),
       });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error || 'Failed');
+      let d: { files?: FileEntry[]; error?: string };
+      try { d = await res.json(); } catch { throw new Error(`Server error (${res.status})`); }
+      if (!res.ok) throw new Error(d.error || `Server error (${res.status})`);
       setFiles((d.files as FileEntry[]).filter((f) => f.filename !== '.' && f.filename !== '..'));
       setStatus('connected');
       setPath(dirPath);
