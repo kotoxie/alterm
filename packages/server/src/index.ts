@@ -11,6 +11,7 @@ import { initEncryption } from './services/encryption.js';
 import { ensureTlsCerts } from './services/tls.js';
 import { setupRdpProxy } from './ws/rdpProxy.js';
 import { setupSshProxy } from './ws/sshProxy.js';
+import { getSetting } from './services/settings.js';
 import authRoutes from './routes/auth.js';
 import connectionRoutes from './routes/connections.js';
 import healthRoutes from './routes/health.js';
@@ -35,6 +36,14 @@ async function main() {
 
   // Express app
   const app = express();
+
+  // Trust proxy — lets req.ip reflect X-Forwarded-For from reverse proxies
+  const trustedProxies = getSetting('security.trusted_proxies').trim();
+  if (trustedProxies === 'true' || trustedProxies === '*') {
+    app.set('trust proxy', true);
+  } else if (trustedProxies) {
+    app.set('trust proxy', trustedProxies.split(',').map((s) => s.trim()).filter(Boolean));
+  }
   app.use(helmet({
     contentSecurityPolicy: {
       directives: {

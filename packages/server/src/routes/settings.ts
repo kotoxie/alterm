@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { authRequired } from '../middleware/auth.js';
 import { logAudit } from '../services/audit.js';
-import { getAllSettings, setSettings } from '../services/settings.js';
+import { getAllSettings, getSetting, setSettings } from '../services/settings.js';
 
 const router = Router();
 router.use(authRequired);
@@ -25,12 +25,16 @@ router.put('/', (req: Request, res: Response) => {
     return;
   }
 
+  // Capture before values for audit diff
+  const before: Record<string, string> = {};
+  for (const key of Object.keys(updates)) before[key] = getSetting(key);
+
   setSettings(updates);
 
   logAudit({
     userId: req.user!.userId,
     eventType: 'settings.updated',
-    details: { keys: Object.keys(updates) },
+    details: { before, after: updates },
     ipAddress: req.ip,
   });
 

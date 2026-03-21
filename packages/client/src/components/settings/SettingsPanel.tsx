@@ -115,15 +115,15 @@ export function SettingsPanel({ isOpen, onClose, initialSection }: SettingsPanel
   const visibleNav = NAV_ITEMS.filter((n) => !n.adminOnly || isAdmin);
 
   return (
-    <div className="fixed inset-0 z-50 flex">
+    <div className="fixed inset-x-0 top-12 bottom-0 z-40 flex">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/40"
         onClick={onClose}
       />
 
-      {/* Panel — slides in from right */}
-      <div className="absolute right-0 top-0 bottom-0 w-full max-w-[960px] flex bg-surface shadow-2xl border-l border-border">
+      {/* Panel — slides in from right, full height below header */}
+      <div className="absolute right-0 top-0 bottom-0 w-full max-w-[1280px] flex bg-surface shadow-2xl border-l border-border">
         {/* Left nav */}
         <div className="w-52 bg-surface-alt border-r border-border flex flex-col shrink-0">
           <div className="h-12 flex items-center px-4 border-b border-border">

@@ -91,8 +91,10 @@ router.post('/login', async (req: Request, res: Response) => {
   }
 
   // Check if account is locked
-  if (user.locked_until && new Date(user.locked_until) > new Date()) {
-    res.status(429).json({ error: `Account locked until ${user.locked_until}` });
+  // SQLite datetime() returns "YYYY-MM-DD HH:MM:SS" (space, not T) — add T+Z for correct UTC parsing
+  if (user.locked_until && new Date(user.locked_until.replace(' ', 'T') + 'Z') > new Date()) {
+    const until = new Date(user.locked_until.replace(' ', 'T') + 'Z').toLocaleString();
+    res.status(429).json({ error: `Account locked until ${until}` });
     return;
   }
 
