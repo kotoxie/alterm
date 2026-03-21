@@ -1,0 +1,53 @@
+import net from 'net';
+import type { Server } from 'https';
+import { WebSocketServer } from 'ws';
+import { queryOne } from '../db/helpers.js';
+import { verifyToken } from '../services/jwt.js';
+
+export function setupVncProxy(server: Server): void {
+  const wss = new WebSocketServer({ noServer: true });
+
+  server.on('upgrade', (req, socket, head) => {
+    const url = req.url ?? '';
+    if (!url.startsWith('/ws/vnc/')) return;
+
+    // URL format: /ws/vnc/{connectionId}?token={jwt}
+    const [pathname, qs] = url.split('?');
+    const connectionId = pathname.slice('/ws/vnc/'.length);
+    const token = new URLSearchParams(qs).get('token');
+
+    if (!token) { socket.destroy(); return; }
+
+    let userId: string;
+    try {
+      const payload = verifyToken(token);
+      userId = payload.userId;
+    } catch {
+      socket.destroy();
+      return;
+    }
+
+    const conn = queryOne<{ host: string; port: number; user_id: string; shared: number }>(
+      `SELECT host, port, user_id, shared FROM connections WHERE id = ? AND (user_id = ? OR shared = 1) AND protocol = 'vnc'`,
+      [connectionId, userId],
+    );
+    if (!conn) { socket.destroy(); return; }
+
+    wss.handleUpgrade(req, socket as Parameters<typeof wss.handleUpgrade>[1], head, (ws) => {
+      const tcp = net.connect(conn.port || 5900, conn.host);
+
+      tcp.on('connect', () => {
+        ws.on('message', (data) => { tcp.write(data as Buffer); });
+        tcp.on('data', (data) => { if (ws.readyState === 1) ws.send(data); });
+        ws.on('close', () => tcp.destroy());
+        tcp.on('close', () => ws.close());
+        tcp.on('error', () => ws.close());
+        ws.on('error', () => tcp.destroy());
+      });
+
+      tcp.on('error', (err) => {
+        ws.close(1011, err.message);
+      });
+    });
+  });
+}

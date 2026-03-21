@@ -181,7 +181,7 @@ router.post('/import', (req: Request, res: Response) => {
 
   for (const c of (connections ?? [])) {
     if (!c.name || !c.protocol || !c.host || !c.port) continue;
-    if (!['ssh', 'rdp', 'smb'].includes(c.protocol)) continue;
+    if (!['ssh', 'rdp', 'smb', 'vnc', 'sftp', 'ftp'].includes(c.protocol)) continue;
     const newId = uuid();
     const newGroupId = c.groupId ? (groupIdMap.get(c.groupId) ?? null) : null;
     execute(
@@ -212,7 +212,7 @@ router.post('/', (req: Request, res: Response) => {
     return;
   }
 
-  if (!['ssh', 'rdp', 'smb'].includes(protocol)) {
+  if (!['ssh', 'rdp', 'smb', 'vnc', 'sftp', 'ftp'].includes(protocol)) {
     res.status(400).json({ error: 'Invalid protocol' });
     return;
   }
@@ -443,6 +443,28 @@ router.post('/groups', (req: Request, res: Response) => {
   );
 
   res.status(201).json({ id, name, parentId: parentId || null });
+});
+
+router.put('/groups/:id', (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const id = req.params.id as string;
+  const { name, parentId } = req.body as { name?: string; parentId?: string | null };
+
+  const group = queryOne<{ user_id: string }>(
+    'SELECT user_id FROM connection_groups WHERE id = ?', [id],
+  );
+  if (!group) { res.status(404).json({ error: 'Group not found' }); return; }
+  if (group.user_id !== userId && req.user!.role !== 'admin') { res.status(403).json({ error: 'Not authorized' }); return; }
+
+  const updates: string[] = [];
+  const params: unknown[] = [];
+  if (name !== undefined) { updates.push('name = ?'); params.push(name.trim()); }
+  if (parentId !== undefined) { updates.push('parent_id = ?'); params.push(parentId || null); }
+  if (updates.length === 0) { res.status(400).json({ error: 'Nothing to update' }); return; }
+
+  params.push(id);
+  execute(`UPDATE connection_groups SET ${updates.join(', ')} WHERE id = ?`, params);
+  res.json({ success: true });
 });
 
 router.delete('/groups/:id', (req: Request, res: Response) => {
