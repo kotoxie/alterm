@@ -33,7 +33,7 @@ export function Header({ onToggleSidebar, onOpenSettings }: HeaderProps) {
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { settings } = useSettings();
-  const { current: appVersion, updateAvailable, latest, releaseUrl } = useVersionCheck();
+  const { current: appVersion, updateAvailable, latest, releaseUrl, refresh: refreshVersion } = useVersionCheck();
 
   const appName = settings['app.name'] ?? 'Alterm';
   const username = user?.username ?? '';
@@ -54,7 +54,13 @@ export function Header({ onToggleSidebar, onOpenSettings }: HeaderProps) {
           </svg>
         </button>
         <span className="text-lg font-bold text-text-primary tracking-tight">{appName}</span>
-        <span className="text-xs text-text-secondary opacity-60 font-mono">v{appVersion}</span>
+        <button
+          onClick={refreshVersion}
+          className="text-xs text-text-secondary opacity-60 font-mono hover:opacity-100 transition-opacity"
+          title="Check for updates"
+        >
+          v{appVersion}
+        </button>
         {updateAvailable && releaseUrl && (
           <a
             href={releaseUrl}
