@@ -1,0 +1,353 @@
+import { useEffect, useState, type FormEvent } from 'react';
+import { useAuth } from '../../hooks/useAuth';
+import { useSettings, invalidateSettings } from '../../hooks/useSettings';
+
+interface IpRule {
+  id: string;
+  type: 'allow' | 'deny';
+  cidr: string;
+  description: string;
+}
+
+export function SecuritySettings() {
+  const { token } = useAuth();
+  const { settings, refresh } = useSettings();
+
+  // Session & lockout state
+  const [sessionTimeout, setSessionTimeout] = useState('0');
+  const [maxFailed, setMaxFailed] = useState('5');
+  const [lockoutMinutes, setLockoutMinutes] = useState('30');
+  const [lockoutMsg, setLockoutMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [savingLockout, setSavingLockout] = useState(false);
+
+  // IP rules state
+  const [ipRulesEnabled, setIpRulesEnabled] = useState(false);
+  const [ipRulesMode, setIpRulesMode] = useState<'allowlist' | 'denylist'>('allowlist');
+  const [ipRules, setIpRules] = useState<IpRule[]>([]);
+  const [newRuleCidr, setNewRuleCidr] = useState('');
+  const [newRuleType, setNewRuleType] = useState<'allow' | 'deny'>('allow');
+  const [newRuleDesc, setNewRuleDesc] = useState('');
+  const [ipMsg, setIpMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [savingIp, setSavingIp] = useState(false);
+
+  // Trusted proxies
+  const [trustedProxies, setTrustedProxies] = useState('');
+  const [proxyMsg, setProxyMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [savingProxy, setSavingProxy] = useState(false);
+
+  useEffect(() => {
+    setSessionTimeout(settings['security.session_timeout_minutes'] ?? '0');
+    setMaxFailed(settings['security.max_failed_logins'] ?? '5');
+    setLockoutMinutes(settings['security.lockout_minutes'] ?? '30');
+    setIpRulesEnabled(settings['security.ip_rules_enabled'] === 'true');
+    setIpRulesMode((settings['security.ip_rules_mode'] as 'allowlist' | 'denylist') ?? 'allowlist');
+    setTrustedProxies(settings['security.trusted_proxies'] ?? '');
+
+    try {
+      const raw = settings['security.ip_rules'];
+      if (raw) setIpRules(JSON.parse(raw) as IpRule[]);
+    } catch {
+      setIpRules([]);
+    }
+  }, [settings]);
+
+  async function saveSetting(updates: Record<string, string>, onSuccess: () => void, onError: (msg: string) => void) {
+    if (!token) return;
+    const res = await fetch('/api/v1/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(updates),
+    });
+    if (res.ok) {
+      await refresh();
+      invalidateSettings();
+      onSuccess();
+    } else {
+      const d = await res.json();
+      onError(d.error || 'Failed to save.');
+    }
+  }
+
+  async function handleLockoutSave(e: FormEvent) {
+    e.preventDefault();
+    setSavingLockout(true);
+    setLockoutMsg(null);
+    try {
+      await saveSetting(
+        {
+          'security.session_timeout_minutes': sessionTimeout,
+          'security.max_failed_logins': maxFailed,
+          'security.lockout_minutes': lockoutMinutes,
+        },
+        () => setLockoutMsg({ type: 'success', text: 'Saved.' }),
+        (msg) => setLockoutMsg({ type: 'error', text: msg }),
+      );
+    } catch {
+      setLockoutMsg({ type: 'error', text: 'Network error.' });
+    } finally {
+      setSavingLockout(false);
+    }
+  }
+
+  function addIpRule() {
+    if (!newRuleCidr.trim()) return;
+    const rule: IpRule = {
+      id: crypto.randomUUID(),
+      type: newRuleType,
+      cidr: newRuleCidr.trim(),
+      description: newRuleDesc.trim(),
+    };
+    setIpRules((prev) => [...prev, rule]);
+    setNewRuleCidr('');
+    setNewRuleDesc('');
+  }
+
+  function removeIpRule(id: string) {
+    setIpRules((prev) => prev.filter((r) => r.id !== id));
+  }
+
+  async function handleIpSave(e: FormEvent) {
+    e.preventDefault();
+    setSavingIp(true);
+    setIpMsg(null);
+    try {
+      await saveSetting(
+        {
+          'security.ip_rules_enabled': String(ipRulesEnabled),
+          'security.ip_rules_mode': ipRulesMode,
+          'security.ip_rules': JSON.stringify(ipRules),
+        },
+        () => setIpMsg({ type: 'success', text: 'IP rules saved.' }),
+        (msg) => setIpMsg({ type: 'error', text: msg }),
+      );
+    } catch {
+      setIpMsg({ type: 'error', text: 'Network error.' });
+    } finally {
+      setSavingIp(false);
+    }
+  }
+
+  async function handleProxySave(e: FormEvent) {
+    e.preventDefault();
+    setSavingProxy(true);
+    setProxyMsg(null);
+    try {
+      await saveSetting(
+        { 'security.trusted_proxies': trustedProxies },
+        () => setProxyMsg({ type: 'success', text: 'Saved.' }),
+        (msg) => setProxyMsg({ type: 'error', text: msg }),
+      );
+    } catch {
+      setProxyMsg({ type: 'error', text: 'Network error.' });
+    } finally {
+      setSavingProxy(false);
+    }
+  }
+
+  return (
+    <div className="max-w-lg space-y-8">
+      {/* Session & Lockout */}
+      <section>
+        <h2 className="text-base font-semibold text-text-primary mb-1">Session &amp; Lockout</h2>
+        <p className="text-sm text-text-secondary mb-4">Configure session timeout and brute-force protection.</p>
+        <form onSubmit={handleLockoutSave} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-1">
+              Session timeout (minutes) <span className="font-normal">— 0 = disabled</span>
+            </label>
+            <input
+              type="number"
+              min="0"
+              value={sessionTimeout}
+              onChange={(e) => setSessionTimeout(e.target.value)}
+              className="w-40 px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-1">
+              Max failed logins before lockout
+            </label>
+            <input
+              type="number"
+              min="1"
+              value={maxFailed}
+              onChange={(e) => setMaxFailed(e.target.value)}
+              className="w-40 px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-1">
+              Lockout duration (minutes)
+            </label>
+            <input
+              type="number"
+              min="1"
+              value={lockoutMinutes}
+              onChange={(e) => setLockoutMinutes(e.target.value)}
+              className="w-40 px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
+            />
+          </div>
+          {lockoutMsg && (
+            <p className={`text-sm ${lockoutMsg.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+              {lockoutMsg.text}
+            </p>
+          )}
+          <button
+            type="submit"
+            disabled={savingLockout}
+            className="px-4 py-2 bg-accent text-white rounded hover:bg-accent-hover disabled:opacity-50 text-sm font-medium"
+          >
+            {savingLockout ? 'Saving...' : 'Save'}
+          </button>
+        </form>
+      </section>
+
+      <hr className="border-border" />
+
+      {/* IP Rules */}
+      <section>
+        <h2 className="text-base font-semibold text-text-primary mb-1">IP Rules</h2>
+        <p className="text-sm text-text-secondary mb-4">Restrict access by IP address or CIDR range.</p>
+        <form onSubmit={handleIpSave} className="space-y-4">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setIpRulesEnabled((v) => !v)}
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                ipRulesEnabled ? 'bg-accent' : 'bg-surface-hover border border-border'
+              }`}
+            >
+              <span
+                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                  ipRulesEnabled ? 'translate-x-4' : 'translate-x-0.5'
+                }`}
+              />
+            </button>
+            <span className="text-sm text-text-secondary">Enable IP rules</span>
+
+            {ipRulesEnabled && (
+              <select
+                value={ipRulesMode}
+                onChange={(e) => setIpRulesMode(e.target.value as 'allowlist' | 'denylist')}
+                className="ml-4 px-2 py-1 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
+              >
+                <option value="allowlist">Allowlist (permit listed IPs only)</option>
+                <option value="denylist">Denylist (block listed IPs)</option>
+              </select>
+            )}
+          </div>
+
+          {/* Existing rules */}
+          {ipRules.length > 0 && (
+            <div className="border border-border rounded overflow-hidden">
+              {ipRules.map((rule) => (
+                <div key={rule.id} className="flex items-center gap-3 px-3 py-2 border-b border-border last:border-b-0 bg-surface text-sm">
+                  <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${rule.type === 'allow' ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'}`}>
+                    {rule.type}
+                  </span>
+                  <span className="font-mono text-text-primary flex-1">{rule.cidr}</span>
+                  {rule.description && <span className="text-text-secondary truncate max-w-[150px]">{rule.description}</span>}
+                  <button
+                    type="button"
+                    onClick={() => removeIpRule(rule.id)}
+                    className="text-text-secondary hover:text-red-400 shrink-0"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Add rule */}
+          <div className="flex gap-2 items-end flex-wrap">
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">Type</label>
+              <select
+                value={newRuleType}
+                onChange={(e) => setNewRuleType(e.target.value as 'allow' | 'deny')}
+                className="px-2 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
+              >
+                <option value="allow">Allow</option>
+                <option value="deny">Deny</option>
+              </select>
+            </div>
+            <div className="flex-1 min-w-[140px]">
+              <label className="block text-xs text-text-secondary mb-1">CIDR</label>
+              <input
+                type="text"
+                value={newRuleCidr}
+                onChange={(e) => setNewRuleCidr(e.target.value)}
+                placeholder="192.168.1.0/24"
+                className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm font-mono"
+              />
+            </div>
+            <div className="flex-1 min-w-[120px]">
+              <label className="block text-xs text-text-secondary mb-1">Description (optional)</label>
+              <input
+                type="text"
+                value={newRuleDesc}
+                onChange={(e) => setNewRuleDesc(e.target.value)}
+                placeholder="Office network"
+                className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={addIpRule}
+              className="px-3 py-2 bg-surface-hover border border-border rounded text-sm text-text-primary hover:bg-surface"
+            >
+              + Add
+            </button>
+          </div>
+
+          {ipMsg && (
+            <p className={`text-sm ${ipMsg.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+              {ipMsg.text}
+            </p>
+          )}
+          <button
+            type="submit"
+            disabled={savingIp}
+            className="px-4 py-2 bg-accent text-white rounded hover:bg-accent-hover disabled:opacity-50 text-sm font-medium"
+          >
+            {savingIp ? 'Saving...' : 'Save IP Rules'}
+          </button>
+        </form>
+      </section>
+
+      <hr className="border-border" />
+
+      {/* Trusted Proxies */}
+      <section>
+        <h2 className="text-base font-semibold text-text-primary mb-1">Trusted Proxies</h2>
+        <p className="text-sm text-text-secondary mb-4">Comma-separated list of trusted proxy IP addresses.</p>
+        <form onSubmit={handleProxySave} className="space-y-4">
+          <div>
+            <input
+              type="text"
+              value={trustedProxies}
+              onChange={(e) => setTrustedProxies(e.target.value)}
+              placeholder="10.0.0.1, 10.0.0.2"
+              className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm font-mono"
+            />
+          </div>
+          {proxyMsg && (
+            <p className={`text-sm ${proxyMsg.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+              {proxyMsg.text}
+            </p>
+          )}
+          <button
+            type="submit"
+            disabled={savingProxy}
+            className="px-4 py-2 bg-accent text-white rounded hover:bg-accent-hover disabled:opacity-50 text-sm font-medium"
+          >
+            {savingProxy ? 'Saving...' : 'Save'}
+          </button>
+        </form>
+      </section>
+    </div>
+  );
+}

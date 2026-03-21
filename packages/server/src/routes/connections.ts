@@ -128,11 +128,33 @@ router.put('/:id', (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const id = req.params.id as string;
 
-  const existing = queryOne('SELECT id FROM connections WHERE id = ? AND user_id = ?', [id, userId]);
+  interface ExistingConnectionRow {
+    id: string;
+    name: string;
+    protocol: string;
+    host: string;
+    port: number;
+    username: string | null;
+    group_id: string | null;
+  }
+
+  const existing = queryOne<ExistingConnectionRow>(
+    'SELECT id, name, protocol, host, port, username, group_id FROM connections WHERE id = ? AND user_id = ?',
+    [id, userId],
+  );
   if (!existing) {
     res.status(404).json({ error: 'Connection not found' });
     return;
   }
+
+  const before = {
+    name: existing.name,
+    protocol: existing.protocol,
+    host: existing.host,
+    port: existing.port,
+    username: existing.username,
+    groupId: existing.group_id,
+  };
 
   const { name, protocol, host, port, username, password, groupId, privateKey } = req.body;
 
@@ -158,11 +180,20 @@ router.put('/:id', (req: Request, res: Response) => {
 
   execute(`UPDATE connections SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`, params);
 
+  const after = {
+    name: name !== undefined ? name : before.name,
+    protocol: protocol !== undefined ? protocol : before.protocol,
+    host: host !== undefined ? host : before.host,
+    port: port !== undefined ? port : before.port,
+    username: username !== undefined ? (username || null) : before.username,
+    groupId: groupId !== undefined ? (groupId || null) : before.groupId,
+  };
+
   logAudit({
     userId,
     eventType: 'connection.updated',
     target: id,
-    details: { name },
+    details: { before, after },
     ipAddress: req.ip,
   });
 
