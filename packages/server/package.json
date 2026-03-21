@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@marsaud/smb2": "^0.18.0",
+    "basic-ftp": "^5.2.0",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",

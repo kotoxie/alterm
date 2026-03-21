@@ -14,7 +14,7 @@ interface ConnectionGroup {
 interface Connection {
   id: string;
   name: string;
-  protocol: 'ssh' | 'rdp' | 'smb';
+  protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp';
   host: string;
   port: number;
   groupId: string | null;
@@ -27,7 +27,7 @@ interface FlatGroup {
 }
 
 interface SidebarProps {
-  onConnect: (conn: { id: string; name: string; protocol: 'ssh' | 'rdp' | 'smb' }) => void;
+  onConnect: (conn: { id: string; name: string; protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' }) => void;
   width?: number;
 }
 
@@ -35,6 +35,12 @@ interface ContextMenu {
   x: number;
   y: number;
   conn: Connection;
+}
+
+interface FolderContextMenu {
+  x: number;
+  y: number;
+  group: ConnectionGroup;
 }
 
 function flattenGroups(groups: ConnectionGroup[], prefix = ''): FlatGroup[] {
@@ -46,9 +52,18 @@ function flattenGroups(groups: ConnectionGroup[], prefix = ''): FlatGroup[] {
   return result;
 }
 
+const PROTOCOL_ICONS: Record<string, string> = {
+  ssh: '>_',
+  rdp: '🖥',
+  smb: '📁',
+  vnc: '🖱',
+  sftp: '📂',
+  ftp: '🗂',
+};
+
 const ProtocolBadge = ({ protocol }: { protocol: string }) => (
   <span className="text-[10px] font-mono opacity-50 w-5 text-center shrink-0 select-none">
-    {protocol === 'ssh' ? '>_' : protocol === 'rdp' ? '⬛' : '📁'}
+    {PROTOCOL_ICONS[protocol] ?? protocol}
   </span>
 );
 
@@ -74,6 +89,29 @@ const FolderIcon = ({ size = 13 }: { size?: number }) => (
   </svg>
 );
 
+const PlugIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M7 17l9.2-9.2M14 6l3.5-3.5a2.121 2.121 0 0 1 3 3L17 9" />
+    <path d="M11 19l-1 1a3 3 0 0 1-4.24-4.24L12 10" />
+    <path d="M14.5 9.5L9.5 14.5" />
+  </svg>
+);
+
+const SubfolderIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+    <line x1="12" y1="13" x2="12" y2="17" />
+    <line x1="10" y1="15" x2="14" y2="15" />
+  </svg>
+);
+
+const PenIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M12 20h9" />
+    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+  </svg>
+);
+
 export function Sidebar({ onConnect, width }: SidebarProps) {
   const { token } = useAuth();
   const [groups, setGroups] = useState<ConnectionGroup[]>([]);
@@ -87,23 +125,43 @@ export function Sidebar({ onConnect, width }: SidebarProps) {
   const [draggingConnId, setDraggingConnId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
+  const [folderContextMenu, setFolderContextMenu] = useState<FolderContextMenu | null>(null);
+  const [bgContextMenu, setBgContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [duplicatePrefill, setDuplicatePrefill] = useState<ConnectionPrefill | null>(null);
   const [healthMap, setHealthMap] = useState<Record<string, 'checking' | 'up' | 'down'>>({});
+  const [renamingGroupId, setRenamingGroupId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [newConnGroupId, setNewConnGroupId] = useState<string | null>(null);
   const newFolderInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const folderMenuRef = useRef<HTMLDivElement>(null);
+  const bgMenuRef = useRef<HTMLDivElement>(null);
 
+  // Close connection context menu on outside click / Escape
   useEffect(() => {
-    if (!contextMenu) return;
+    if (!contextMenu && !folderContextMenu && !bgContextMenu) return;
     function onDown(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setContextMenu(null);
+      const refs = [menuRef, folderMenuRef, bgMenuRef];
+      if (refs.every(r => !r.current?.contains(e.target as Node))) {
+        setContextMenu(null);
+        setFolderContextMenu(null);
+        setBgContextMenu(null);
+      }
     }
     function onEsc(e: KeyboardEvent) {
-      if (e.key === 'Escape') setContextMenu(null);
+      if (e.key === 'Escape') {
+        setContextMenu(null);
+        setFolderContextMenu(null);
+        setBgContextMenu(null);
+      }
     }
     window.addEventListener('mousedown', onDown);
     window.addEventListener('keydown', onEsc);
-    return () => { window.removeEventListener('mousedown', onDown); window.removeEventListener('keydown', onEsc); };
-  }, [contextMenu]);
+    return () => {
+      window.removeEventListener('mousedown', onDown);
+      window.removeEventListener('keydown', onEsc);
+    };
+  }, [contextMenu, folderContextMenu, bgContextMenu]);
 
   const flatGroups = flattenGroups(groups);
 
@@ -196,6 +254,36 @@ export function Sidebar({ onConnect, width }: SidebarProps) {
       headers: { Authorization: `Bearer ${token}` },
     });
     fetchConnections();
+  }
+
+  async function renameGroup(id: string, newName: string) {
+    if (!token || !newName.trim()) return;
+    await fetch(`/api/v1/connections/groups/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ name: newName.trim() }),
+    });
+    setRenamingGroupId(null);
+    fetchConnections();
+  }
+
+  async function createSubfolder(parentId: string) {
+    const name = window.prompt('Subfolder name:');
+    if (!name?.trim() || !token) return;
+    await fetch('/api/v1/connections/groups', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ name: name.trim(), parentId }),
+    });
+    // Ensure parent stays expanded after subfolder creation
+    setExpandedGroups((prev) => new Set([...prev, parentId]));
+    fetchConnections();
+  }
+
+  function openNewConnectionInFolder(groupId: string | null) {
+    setNewConnGroupId(groupId);
+    setEditingConnection(null);
+    setShowModal(true);
   }
 
   async function handleDuplicate(conn: Connection) {
@@ -381,6 +469,11 @@ export function Sidebar({ onConnect, width }: SidebarProps) {
               : 'hover:bg-surface-hover',
           )}
           onClick={() => toggleGroup(group.id)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setFolderContextMenu({ x: e.clientX, y: e.clientY, group });
+          }}
           onDragOver={(e) => handleGroupDragOver(e, group.id)}
           onDragLeave={(e) => { e.stopPropagation(); setDragOverId(null); }}
           onDrop={(e) => handleGroupDrop(e, group.id)}
@@ -392,7 +485,22 @@ export function Sidebar({ onConnect, width }: SidebarProps) {
             <path d="M9 18l6-6-6-6" />
           </svg>
           <FolderIcon />
-          <span className="text-text-secondary font-medium truncate flex-1">{group.name}</span>
+          {renamingGroupId === group.id ? (
+            <input
+              autoFocus
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') renameGroup(group.id, renameValue);
+                if (e.key === 'Escape') setRenamingGroupId(null);
+              }}
+              onBlur={() => renameGroup(group.id, renameValue)}
+              className="flex-1 px-1 py-0 text-sm bg-surface border border-accent rounded text-text-primary focus:outline-none"
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <span className="text-text-secondary font-medium truncate flex-1">{group.name}</span>
+          )}
           <span className="text-xs text-text-secondary mr-1">{totalCount}</span>
           <button
             onClick={(e) => { e.stopPropagation(); deleteGroup(group.id); }}
@@ -425,7 +533,7 @@ export function Sidebar({ onConnect, width }: SidebarProps) {
         {/* Header */}
         <div className="p-2 border-b border-border space-y-1.5">
           <button
-            onClick={() => { setEditingConnection(null); setShowModal(true); }}
+            onClick={() => { setEditingConnection(null); setNewConnGroupId(null); setShowModal(true); }}
             className="w-full py-1.5 px-3 text-sm bg-accent text-white rounded hover:bg-accent-hover font-medium"
           >
             + New Connection
@@ -502,6 +610,13 @@ export function Sidebar({ onConnect, width }: SidebarProps) {
           onDragOver={(e) => { e.preventDefault(); setDragOverId('ungrouped'); }}
           onDragLeave={() => setDragOverId(null)}
           onDrop={handleUngroupedDrop}
+          onContextMenu={(e) => {
+            // Only trigger on the background, not on child connection/folder elements
+            if (e.target === e.currentTarget) {
+              e.preventDefault();
+              setBgContextMenu({ x: e.clientX, y: e.clientY });
+            }
+          }}
         >
           {groups.map(renderGroup)}
           {ungrouped.map(renderConnection)}
@@ -558,12 +673,35 @@ export function Sidebar({ onConnect, width }: SidebarProps) {
         <ConnectionModal
           connection={editingConnection}
           groups={flatGroups}
-          prefill={duplicatePrefill ?? undefined}
-          onClose={() => { setShowModal(false); setEditingConnection(null); setDuplicatePrefill(null); }}
-          onSaved={() => { setShowModal(false); setEditingConnection(null); setDuplicatePrefill(null); fetchConnections(); }}
+          prefill={duplicatePrefill ?? (newConnGroupId !== null && !editingConnection ? {
+            name: '',
+            protocol: 'rdp',
+            host: '',
+            port: 3389,
+            username: '',
+            groupId: newConnGroupId,
+            shared: false,
+            smbShare: '',
+            smbDomain: '',
+            tunnels: [],
+          } : undefined)}
+          onClose={() => {
+            setShowModal(false);
+            setEditingConnection(null);
+            setDuplicatePrefill(null);
+            setNewConnGroupId(null);
+          }}
+          onSaved={() => {
+            setShowModal(false);
+            setEditingConnection(null);
+            setDuplicatePrefill(null);
+            setNewConnGroupId(null);
+            fetchConnections();
+          }}
         />
       )}
 
+      {/* Connection right-click context menu */}
       {contextMenu && (
         <div
           ref={menuRef}
@@ -616,6 +754,75 @@ export function Sidebar({ onConnect, width }: SidebarProps) {
               </button>
             </>
           )}
+        </div>
+      )}
+
+      {/* Background right-click context menu */}
+      {bgContextMenu && (
+        <div
+          ref={bgMenuRef}
+          className="fixed z-50 bg-surface-alt border border-border rounded shadow-lg py-1 text-sm min-w-[160px]"
+          style={{ left: bgContextMenu.x, top: bgContextMenu.y }}
+        >
+          <button
+            className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
+            onClick={() => { openNewConnectionInFolder(null); setBgContextMenu(null); }}
+          >
+            <PlugIcon />
+            New Connection
+          </button>
+          <button
+            className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
+            onClick={() => { setShowNewFolder(true); setBgContextMenu(null); }}
+          >
+            <FolderIcon />
+            New Folder
+          </button>
+        </div>
+      )}
+
+      {/* Folder right-click context menu */}
+      {folderContextMenu && (
+        <div
+          ref={folderMenuRef}
+          className="fixed z-50 bg-surface-alt border border-border rounded shadow-lg py-1 text-sm min-w-[180px]"
+          style={{ left: folderContextMenu.x, top: folderContextMenu.y }}
+        >
+          <button
+            className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
+            onClick={() => { openNewConnectionInFolder(folderContextMenu.group.id); setFolderContextMenu(null); }}
+          >
+            <PlugIcon />
+            New Connection here
+          </button>
+          <button
+            className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
+            onClick={() => { createSubfolder(folderContextMenu.group.id); setFolderContextMenu(null); }}
+          >
+            <SubfolderIcon />
+            New Subfolder
+          </button>
+          <div className="border-t border-border my-1" />
+          <button
+            className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
+            onClick={() => {
+              setRenamingGroupId(folderContextMenu.group.id);
+              setRenameValue(folderContextMenu.group.name);
+              // Ensure the folder is visible (expand it so the rename input renders)
+              setExpandedGroups((prev) => new Set([...prev, folderContextMenu.group.id]));
+              setFolderContextMenu(null);
+            }}
+          >
+            <PenIcon />
+            Rename
+          </button>
+          <button
+            className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-red-400 flex items-center gap-2"
+            onClick={() => { deleteGroup(folderContextMenu.group.id); setFolderContextMenu(null); }}
+          >
+            <TrashIcon size={13} />
+            Delete Folder
+          </button>
         </div>
       )}
     </>

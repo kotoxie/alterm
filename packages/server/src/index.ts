@@ -11,6 +11,7 @@ import { initEncryption } from './services/encryption.js';
 import { ensureTlsCerts } from './services/tls.js';
 import { setupRdpProxy } from './ws/rdpProxy.js';
 import { setupSshProxy } from './ws/sshProxy.js';
+import { setupVncProxy } from './ws/vncProxy.js';
 import { getSetting } from './services/settings.js';
 import authRoutes from './routes/auth.js';
 import connectionRoutes from './routes/connections.js';
@@ -22,6 +23,8 @@ import auditRoutes from './routes/audit.js';
 import versionRoutes from './routes/version.js';
 import sessionsRoutes from './routes/sessions.js';
 import smbRoutes from './routes/smb.js';
+import sftpRoutes from './routes/sftp.js';
+import ftpRoutes from './routes/ftp.js';
 
 async function main() {
   // Ensure data directories
@@ -59,6 +62,8 @@ async function main() {
     },
   }));
   app.use('/api/v1/smb/:connectionId/upload', express.raw({ limit: '100mb', type: '*/*' }));
+  app.use('/api/v1/sftp/:connectionId/upload', express.raw({ limit: '100mb', type: '*/*' }));
+  app.use('/api/v1/ftp/:connectionId/upload', express.raw({ limit: '100mb', type: '*/*' }));
   app.use(express.json());
   app.use(cookieParser());
 
@@ -72,6 +77,8 @@ async function main() {
   app.use('/api/v1/version', versionRoutes);
   app.use('/api/v1/sessions', sessionsRoutes);
   app.use('/api/v1/smb', smbRoutes);
+  app.use('/api/v1/sftp', sftpRoutes);
+  app.use('/api/v1/ftp', ftpRoutes);
   app.use('/health', healthRoutes);
 
   // Serve frontend static files
@@ -93,6 +100,7 @@ async function main() {
   // WebSocket proxies
   setupRdpProxy(server);
   setupSshProxy(server);
+  setupVncProxy(server);
 
   // Graceful shutdown
   function shutdown() {
