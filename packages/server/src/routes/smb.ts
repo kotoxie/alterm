@@ -8,22 +8,45 @@ const router = Router();
 router.use(authRequired);
 
 interface ConnRow {
-  id: string; host: string; port: number; username: string | null;
-  encrypted_password: string | null; user_id: string; shared: number;
+  id: string;
+  host: string;
+  port: number;
+  username: string | null;
+  encrypted_password: string | null;
+  extra_config_json: string | null;
+  user_id: string;
+  shared: number;
 }
 
 async function getConn(connectionId: string, userId: string): Promise<ConnRow | null> {
   const conn = queryOne<ConnRow>(
-    'SELECT id, host, port, username, encrypted_password, user_id, shared FROM connections WHERE id = ? AND (user_id = ? OR shared = 1) AND protocol = ?',
-    [connectionId, userId, 'smb'],
+    `SELECT id, host, port, username, encrypted_password, extra_config_json, user_id, shared
+     FROM connections
+     WHERE id = ? AND (user_id = ? OR shared = 1) AND protocol = 'smb'`,
+    [connectionId, userId],
   );
   return conn ?? null;
 }
 
-function makeSmbClient(conn: ConnRow) {
-  const password = conn.encrypted_password ? (() => { try { return decrypt(conn.encrypted_password!); } catch { return ''; } })() : '';
+function makeSmbClient(conn: ConnRow): SMB2 {
+  const password = conn.encrypted_password
+    ? (() => { try { return decrypt(conn.encrypted_password!); } catch { return ''; } })()
+    : '';
+
+  // Parse share name from extra_config_json
+  let shareName = '';
+  try {
+    if (conn.extra_config_json) {
+      const cfg = JSON.parse(conn.extra_config_json) as { share?: string };
+      shareName = cfg.share?.trim() ?? '';
+    }
+  } catch { /* ignore */ }
+
+  // SMB2 requires \\host\share format
+  const share = `\\\\${conn.host}\\${shareName}`;
+
   return new SMB2({
-    share: `\\\\${conn.host}\\`,
+    share,
     domain: '',
     username: conn.username || 'guest',
     password,
@@ -50,7 +73,9 @@ router.post('/:connectionId/list', async (req: Request, res: Response) => {
       })),
     });
   } catch (e: unknown) {
-    res.status(500).json({ error: e instanceof Error ? e.message : 'SMB error' });
+    const msg = e instanceof Error ? e.message : 'SMB error';
+    console.error('[smb] list error:', msg);
+    res.status(500).json({ error: msg });
   } finally {
     smb.disconnect();
   }
@@ -76,9 +101,13 @@ router.get('/:connectionId/download', async (req: Request, res: Response) => {
     await new Promise<void>((resolve, reject) => {
       stream.on('end', resolve);
       stream.on('error', reject);
+      res.on('finish', resolve);
+      res.on('error', reject);
     });
   } catch (e: unknown) {
-    res.status(500).json({ error: e instanceof Error ? e.message : 'SMB error' });
+    const msg = e instanceof Error ? e.message : 'SMB error';
+    console.error('[smb] download error:', msg);
+    if (!res.headersSent) res.status(500).json({ error: msg });
   } finally {
     smb.disconnect();
   }
@@ -105,7 +134,9 @@ router.post('/:connectionId/upload', async (req: Request, res: Response) => {
     });
     res.json({ success: true });
   } catch (e: unknown) {
-    res.status(500).json({ error: e instanceof Error ? e.message : 'SMB error' });
+    const msg = e instanceof Error ? e.message : 'SMB error';
+    console.error('[smb] upload error:', msg);
+    res.status(500).json({ error: msg });
   } finally {
     smb.disconnect();
   }
@@ -126,7 +157,9 @@ router.post('/:connectionId/mkdir', async (req: Request, res: Response) => {
     await smb.mkdir(dirPath);
     res.json({ success: true });
   } catch (e: unknown) {
-    res.status(500).json({ error: e instanceof Error ? e.message : 'SMB error' });
+    const msg = e instanceof Error ? e.message : 'SMB error';
+    console.error('[smb] mkdir error:', msg);
+    res.status(500).json({ error: msg });
   } finally {
     smb.disconnect();
   }
@@ -147,7 +180,9 @@ router.delete('/:connectionId/file', async (req: Request, res: Response) => {
     await smb.unlink(filePath);
     res.json({ success: true });
   } catch (e: unknown) {
-    res.status(500).json({ error: e instanceof Error ? e.message : 'SMB error' });
+    const msg = e instanceof Error ? e.message : 'SMB error';
+    console.error('[smb] delete error:', msg);
+    res.status(500).json({ error: msg });
   } finally {
     smb.disconnect();
   }
