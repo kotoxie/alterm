@@ -7,6 +7,7 @@ export interface VersionInfo {
   latest: string | null;
   updateAvailable: boolean;
   releaseUrl: string | null;
+  checking: boolean;
   refresh: () => void;
 }
 
@@ -15,11 +16,12 @@ export function useVersionCheck(): VersionInfo {
   const [latest, setLatest] = useState<string | null>(null);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [releaseUrl, setReleaseUrl] = useState<string | null>(null);
-  const [, setTick] = useState(0);
+  const [checking, setChecking] = useState(false);
 
-  const check = useCallback(async () => {
+  const check = useCallback(async (force = false) => {
     try {
-      const res = await fetch('/api/v1/version');
+      const url = force ? '/api/v1/version?force=true' : '/api/v1/version';
+      const res = await fetch(url);
       if (!res.ok) return;
       const data = await res.json() as {
         current: string;
@@ -35,16 +37,18 @@ export function useVersionCheck(): VersionInfo {
     }
   }, []);
 
-  const refresh = useCallback(() => {
-    setTick((t) => t + 1);
-    check();
-  }, [check]);
+  const refresh = useCallback(async () => {
+    if (checking) return;
+    setChecking(true);
+    await check(true);
+    setChecking(false);
+  }, [check, checking]);
 
   useEffect(() => {
     check();
-    const timer = setInterval(check, CHECK_INTERVAL_MS);
+    const timer = setInterval(() => check(), CHECK_INTERVAL_MS);
     return () => clearInterval(timer);
   }, [check]);
 
-  return { current, latest, updateAvailable, releaseUrl, refresh };
+  return { current, latest, updateAvailable, releaseUrl, checking, refresh };
 }

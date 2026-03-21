@@ -35,19 +35,26 @@ function makeSmbClient(conn: ConnRow): SMB2 {
 
   // Parse share name from extra_config_json
   let shareName = '';
+  let domain = '';
   try {
     if (conn.extra_config_json) {
-      const cfg = JSON.parse(conn.extra_config_json) as { share?: string };
-      shareName = cfg.share?.trim() ?? '';
+      const cfg = JSON.parse(conn.extra_config_json) as { share?: string; domain?: string };
+      // Strip any leading backslashes/forward slashes the user may have typed
+      shareName = (cfg.share?.trim() ?? '').replace(/^[/\\]+/, '');
+      domain = cfg.domain?.trim() ?? '';
     }
   } catch { /* ignore */ }
+
+  if (!shareName) {
+    throw new Error('SMB share name is not configured. Edit the connection and enter a share name.');
+  }
 
   // SMB2 requires \\host\share format
   const share = `\\\\${conn.host}\\${shareName}`;
 
   return new SMB2({
     share,
-    domain: '',
+    domain,
     username: conn.username || 'guest',
     password,
     port: conn.port || 445,
