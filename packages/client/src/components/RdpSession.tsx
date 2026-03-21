@@ -54,7 +54,6 @@ const CODE_TO_SCANCODE: Record<string, number> = Object.fromEntries(
   Object.entries(SCANCODE_TO_CODE).map(([sc, code]) => [code, Number(sc)])
 );
 
-const STATUS_BAR_H = 24;
 const RESIZE_DEBOUNCE_MS = 150;
 
 // Keys locked via Keyboard Lock API when in fullscreen.
@@ -83,6 +82,7 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
   const [disconnectMessage, setDisconnectMessage] = useState('');
   const [reconnectCount, setReconnectCount] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
 
   // ── Fullscreen + Keyboard Lock ─────────────────────────────────────────────
   const toggleFullscreen = useCallback(() => {
@@ -154,7 +154,7 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
         canvas.style.display = 'block';
         canvas.tabIndex = 0;
         canvas.width = container.clientWidth || 1280;
-        canvas.height = Math.max((container.clientHeight || 720) - STATUS_BAR_H, 1);
+        canvas.height = container.clientHeight || 720;
         container.innerHTML = '';
         container.appendChild(canvas);
 
@@ -234,7 +234,7 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
           resizeTimer = setTimeout(() => {
             if (!sessionRef.current || !containerRef.current) return;
             const w = containerRef.current.clientWidth;
-            const h = Math.max(containerRef.current.clientHeight - STATUS_BAR_H, 1);
+            const h = Math.max(containerRef.current.clientHeight, 1);
             if (w <= 0 || h <= 0) return;
             sessionRef.current.resize(w, h);
           }, RESIZE_DEBOUNCE_MS);
@@ -440,33 +440,84 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
         </div>
       )}
 
-      {/* Status bar */}
-      <div className="absolute bottom-0 left-0 right-0 h-6 bg-black/60 flex items-center px-3 text-xs text-gray-400 z-10">
-        <span className="flex items-center gap-2 flex-1">
+      {/* Right-side flyout panel */}
+      {/* Backdrop — closes panel when clicking the session canvas */}
+      {panelOpen && (
+        <div
+          className="absolute inset-0 z-10"
+          onClick={() => setPanelOpen(false)}
+        />
+      )}
+
+      {/* Tab trigger — always visible on the right edge */}
+      <button
+        onClick={() => setPanelOpen((o) => !o)}
+        title="Session controls"
+        className="absolute right-0 top-1/2 -translate-y-1/2 z-30 flex flex-col items-center justify-center gap-1.5 w-5 py-3 bg-black/60 hover:bg-black/80 text-gray-400 hover:text-white transition-colors rounded-l-md"
+        style={{ writingMode: 'vertical-rl' }}
+      >
+        <span
+          className={`w-2 h-2 rounded-full shrink-0 ${
+            disconnected ? 'bg-red-500' : status === 'Connected' ? 'bg-green-500' : 'bg-yellow-500'
+          }`}
+          style={{ writingMode: 'horizontal-tb' }}
+        />
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ writingMode: 'horizontal-tb' }} className={`transition-transform ${panelOpen ? 'rotate-180' : ''}`}>
+          <polyline points="15 18 9 12 15 6" />
+        </svg>
+      </button>
+
+      {/* Flyout panel */}
+      <div
+        className={`absolute right-5 top-1/2 -translate-y-1/2 z-20 w-52 bg-surface/95 backdrop-blur-sm border border-border rounded-xl shadow-2xl flex flex-col gap-1 p-3 transition-all duration-200 ${
+          panelOpen ? 'opacity-100 translate-x-0 pointer-events-auto' : 'opacity-0 translate-x-4 pointer-events-none'
+        }`}
+      >
+        {/* Status */}
+        <div className="flex items-center gap-2 px-1 py-1.5 border-b border-border mb-1">
           <span
-            className={`w-2 h-2 rounded-full ${
+            className={`w-2.5 h-2.5 rounded-full shrink-0 ${
               disconnected ? 'bg-red-500' : status === 'Connected' ? 'bg-green-500' : 'bg-yellow-500'
             }`}
           />
-          {disconnected ? 'Disconnected' : status}
-        </span>
-        {/* Fullscreen toggle — enables Keyboard Lock so browser shortcuts (Ctrl+Tab etc.)
-            are forwarded to the RDP session. OS shortcuts (Alt+Tab, Win+*) remain with OS. */}
+          <span className="text-sm text-text-primary font-medium truncate">
+            {disconnected ? 'Disconnected' : status}
+          </span>
+        </div>
+
+        {/* Connection name */}
+        <div className="px-1 py-0.5">
+          <p className="text-xs text-text-secondary truncate">{tab.name}</p>
+        </div>
+
+        {/* Fullscreen */}
         <button
-          onClick={toggleFullscreen}
-          title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen — enables full keyboard capture (Ctrl+Tab, F-keys, etc.)'}
-          className="ml-auto opacity-60 hover:opacity-100 transition-opacity"
+          onClick={() => { toggleFullscreen(); setPanelOpen(false); }}
+          className="flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-surface-hover text-text-primary text-sm transition-colors text-left w-full"
         >
           {isFullscreen ? (
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
-            </svg>
+            <>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
+              </svg>
+              Exit Fullscreen
+            </>
           ) : (
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
-            </svg>
+            <>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+              </svg>
+              Fullscreen
+            </>
           )}
         </button>
+
+        {/* Keyboard note */}
+        {!isFullscreen && (
+          <p className="text-xs text-text-secondary px-2 pb-1 leading-relaxed">
+            Enter fullscreen to capture Ctrl+Tab, F-keys and other browser shortcuts.
+          </p>
+        )}
       </div>
     </div>
   );
