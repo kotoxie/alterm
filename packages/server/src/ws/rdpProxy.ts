@@ -149,25 +149,21 @@ export function setupRdpProxy(server: https.Server): void {
 
       // 10-second hard timeout for the entire cert peek
       const hardTimeout = setTimeout(() => {
-        console.log('[rdp-raw] cert peek timed out — continuing without certs');
         sock.destroy();
         finish([]);
       }, 10000);
 
       const sock = net.connect(port, host);
       sock.once('connect', () => {
-        console.log('[rdp-raw] cert peek: TCP connected, sending X.224 CR');
         sock.write(x224cr);
       });
-      sock.once('error', (e) => {
-        console.log('[rdp-raw] cert peek: socket error:', e.message);
+      sock.once('error', () => {
         clearTimeout(hardTimeout);
         finish([]);
       });
 
       readX224Pdu(sock)
         .then((x224cc) => {
-          console.log(`[rdp-raw] cert peek: X.224 CC ${x224cc.length}B, starting TLS`);
           const tlsSock = tls.connect({
             socket: sock,
             rejectUnauthorized: false,
@@ -175,7 +171,6 @@ export function setupRdpProxy(server: https.Server): void {
             checkServerIdentity: () => undefined,
           });
           const tlsTimeout = setTimeout(() => {
-            console.log('[rdp-raw] cert peek: TLS timeout');
             tlsSock.destroy();
             clearTimeout(hardTimeout);
             finish([]);
@@ -195,19 +190,16 @@ export function setupRdpProxy(server: https.Server): void {
               c = c.issuerCertificate;
             }
             tlsSock.destroy();
-            console.log(`[rdp-raw] cert peek: ${certs.length} cert(s) captured`);
             finish(certs);
           });
-          tlsSock.once('error', (e) => {
-            console.log('[rdp-raw] cert peek: TLS error:', e.message);
+          tlsSock.once('error', () => {
             clearTimeout(tlsTimeout);
             clearTimeout(hardTimeout);
             sock.destroy();
             finish([]);
           });
         })
-        .catch((e) => {
-          console.log('[rdp-raw] cert peek: X.224 error:', e.message);
+        .catch(() => {
           clearTimeout(hardTimeout);
           sock.destroy();
           finish([]);
@@ -258,11 +250,10 @@ export function setupRdpProxy(server: https.Server): void {
       let x224cr: Buffer;
       try { x224cr = extractX224CR(rdcp); }
       catch (e) {
-        console.error('[rdp-raw] parse error:', e);
+        console.error('[rdp] parse error:', e);
         if (ws.readyState === WebSocket.OPEN) { ws.send(encodeRDCleanPathError()); ws.close(4004, 'Bad PDU'); }
         return;
       }
-      console.log(`[rdp-raw] → ${conn.host}:${conn.port}, X.224 CR ${x224cr.length}B`);
 
       // Open TCP tunnel, do X.224 handshake, then upgrade to TLS.
       // IronRDP sends raw CredSSP/RDP bytes through the WebSocket; the proxy
@@ -273,7 +264,6 @@ export function setupRdpProxy(server: https.Server): void {
 
       readX224Pdu(tunnel)
         .then((x224cc) => {
-          console.log(`[rdp-raw] X.224 CC ${x224cc.length}B — upgrading to TLS`);
           if (ws.readyState !== WebSocket.OPEN) { cleanup(); return; }
 
           // Upgrade the raw TCP socket to TLS (Node.js/OpenSSL acts as TLS client)
@@ -297,49 +287,41 @@ export function setupRdpProxy(server: https.Server): void {
               certs.push(Buffer.from(c.raw as Buffer));
               c = c.issuerCertificate;
             }
-            console.log(`[rdp-raw] TLS established, ${certs.length} cert(s) — sending RDCleanPath response`);
             if (ws.readyState !== WebSocket.OPEN) { cleanup(); return; }
 
-            // Send RDCleanPath response NOW that TLS is up, so IronRDP's first
-            // CredSSP message can be immediately forwarded through the TLS tunnel
             ws.send(encodeRDCleanPathResponse(x224cc, conn.host, certs));
-            console.log('[rdp-raw] switching to TLS passthrough');
 
             const t = tlsTunnel!;
 
             // TLS → WebSocket
             t.on('data', (chunk: Buffer) => {
-              console.log(`[rdp-raw] tcp→ws ${chunk.length}B ws=${ws.readyState}`);
               if (ws.readyState === WebSocket.OPEN) ws.send(chunk);
             });
-            t.once('end', () => console.log('[rdp-raw] tls END'));
             t.once('close', () => {
-              console.log('[rdp-raw] tls CLOSE');
               if (ws.readyState === WebSocket.OPEN) ws.close(1000, 'TCP closed');
             });
 
             // WebSocket → TLS
             ws.on('message', (msg: Buffer | string) => {
               const buf = Buffer.isBuffer(msg) ? msg : Buffer.from(msg as string);
-              console.log(`[rdp-raw] ws→tcp ${buf.length}B writable=${t.writable} destroyed=${t.destroyed}`);
               if (!t.destroyed && t.writable) t.write(buf);
             });
           });
 
           tlsTunnel.once('error', (e: Error) => {
-            console.error('[rdp-raw] TLS error:', e.message);
+            console.error('[rdp] TLS error:', e.message);
             if (ws.readyState === WebSocket.OPEN) { ws.send(encodeRDCleanPathError()); ws.close(4003, 'TLS error'); }
             cleanup();
           });
         })
         .catch((e) => {
-          console.error('[rdp-raw] X.224 error:', e);
+          console.error('[rdp] X.224 error:', e);
           if (ws.readyState === WebSocket.OPEN) { ws.send(encodeRDCleanPathError()); ws.close(4003, 'X.224 error'); }
           cleanup();
         });
 
       tunnel.on('error', (err: Error) => {
-        console.error('[rdp-raw] TCP error:', err.message);
+        console.error('[rdp] TCP error:', err.message);
         if (ws.readyState === WebSocket.OPEN) ws.close(4003, 'TCP error');
         cleanup();
       });
