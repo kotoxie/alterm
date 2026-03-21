@@ -4,12 +4,15 @@ import { useAuth } from '../hooks/useAuth';
 
 let rdpInitialized = false;
 let Backend: Record<string, unknown> | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let displayControl: ((enable: boolean) => any) | null = null;
 
 async function initRdp() {
   if (rdpInitialized) return;
   const rdpModule = await import('@devolutions/iron-remote-desktop-rdp');
   await rdpModule.init('info');
   Backend = rdpModule.Backend as Record<string, unknown>;
+  displayControl = rdpModule.displayControl;
   rdpInitialized = true;
 }
 
@@ -153,6 +156,9 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
           .forceClipboardUpdateCallback(() => {
             pushClipboardToGuest(localClipboardText);
           })
+          // Enable RDPEDISP virtual channel so session.resize() actually changes
+          // the guest desktop resolution (not just the local canvas).
+          .extension(displayControl!(true))
           .connect();
 
         if (cancelled) {
@@ -172,9 +178,8 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
             const w = containerRef.current.clientWidth;
             const h = Math.max(containerRef.current.clientHeight - STATUS_BAR_H, 1);
             if (w <= 0 || h <= 0) return;
-            // Update canvas pixel dimensions then tell RDP host to resize
-            canvas.width = w;
-            canvas.height = h;
+            // session.resize() updates canvas dimensions internally (IronRDP owns it).
+            // Do NOT set canvas.width/height here — that clears the framebuffer.
             sessionRef.current.resize(w, h);
           }, RESIZE_DEBOUNCE_MS);
         });
