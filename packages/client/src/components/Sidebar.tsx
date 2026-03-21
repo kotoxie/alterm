@@ -22,6 +22,7 @@ interface Connection {
 
 interface SidebarProps {
   onConnect: (conn: { id: string; name: string; protocol: 'ssh' | 'rdp' | 'smb' }) => void;
+  width?: number;
 }
 
 const protocolIcons: Record<string, string> = {
@@ -30,7 +31,7 @@ const protocolIcons: Record<string, string> = {
   smb: '📁',
 };
 
-export function Sidebar({ onConnect }: SidebarProps) {
+export function Sidebar({ onConnect, width }: SidebarProps) {
   const { token } = useAuth();
   const [groups, setGroups] = useState<ConnectionGroup[]>([]);
   const [ungrouped, setUngrouped] = useState<Connection[]>([]);
@@ -135,7 +136,7 @@ export function Sidebar({ onConnect }: SidebarProps) {
 
   return (
     <>
-      <aside className="w-60 bg-surface-alt border-r border-border flex flex-col shrink-0 overflow-y-auto">
+      <aside className="bg-surface-alt border-r border-border flex flex-col shrink-0 overflow-y-auto" style={width !== undefined ? { width } : { width: 240 }}>
         <div className="p-3 border-b border-border">
           <button
             onClick={() => {

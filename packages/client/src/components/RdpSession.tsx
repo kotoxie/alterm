@@ -13,7 +13,7 @@ async function initRdp() {
   rdpInitialized = true;
 }
 
-// PS/2 Set-1 scancode → KeyboardEvent.code mapping (from IronRDP web component)
+// PS/2 Set-1 scancode → KeyboardEvent.code mapping
 const SCANCODE_TO_CODE: Record<number, string> = {
   0x0001:'Escape',0x0002:'Digit1',0x0003:'Digit2',0x0004:'Digit3',0x0005:'Digit4',
   0x0006:'Digit5',0x0007:'Digit6',0x0008:'Digit7',0x0009:'Digit8',0x000A:'Digit9',
@@ -38,7 +38,6 @@ const SCANCODE_TO_CODE: Record<number, string> = {
   0x0069:'F18',0x006A:'F19',0x006B:'F20',0x006C:'F21',0x006D:'F22',
   0x006E:'F23',0x0070:'KanaMode',0x0071:'Lang2',0x0072:'Lang1',0x0073:'IntlRo',
   0x0076:'F24',0x0079:'Convert',0x007B:'NonConvert',0x007D:'IntlYen',0x007E:'NumpadComma',
-  // Extended keys (E0-prefixed)
   0xE010:'MediaTrackPrevious',0xE019:'MediaTrackNext',0xE01C:'NumpadEnter',
   0xE01D:'ControlRight',0xE022:'MediaPlayPause',0xE024:'MediaStop',
   0xE032:'BrowserHome',0xE035:'NumpadDivide',0xE037:'PrintScreen',
@@ -48,10 +47,13 @@ const SCANCODE_TO_CODE: Record<number, string> = {
   0xE05B:'MetaLeft',0xE05C:'MetaRight',0xE05D:'ContextMenu',
   0xE06C:'LaunchMail',0xE020:'AudioVolumeMute',0xE02E:'AudioVolumeDown',0xE030:'AudioVolumeUp',
 };
-// Reverse: code → scancode
 const CODE_TO_SCANCODE: Record<string, number> = Object.fromEntries(
   Object.entries(SCANCODE_TO_CODE).map(([sc, code]) => [code, Number(sc)])
 );
+
+const STATUS_BAR_H = 24;
+// Debounce resize calls — avoid hammering session.resize during continuous drag/resize
+const RESIZE_DEBOUNCE_MS = 150;
 
 interface RdpSessionProps {
   tab: Tab;
@@ -60,13 +62,16 @@ interface RdpSessionProps {
 
 export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const sessionRef = useRef<{ shutdown: () => void; run: () => Promise<unknown> } | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sessionRef = useRef<any>(null);
   const { token } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string>('Initializing...');
 
   useEffect(() => {
     let cancelled = false;
+    let resizeObserver: ResizeObserver | null = null;
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null;
 
     const run = async () => {
       if (!token || !containerRef.current) return;
@@ -91,7 +96,7 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
         canvas.style.height = '100%';
         canvas.style.display = 'block';
         canvas.width = container.clientWidth || 1280;
-        canvas.height = Math.max((container.clientHeight || 720) - 24, 1);
+        canvas.height = Math.max((container.clientHeight || 720) - STATUS_BAR_H, 1);
         container.innerHTML = '';
         container.appendChild(canvas);
 
@@ -100,7 +105,18 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
 
         setStatus('Connecting...');
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { SessionBuilder, DesktopSize } = Backend as any;
+        const { SessionBuilder, DesktopSize, ClipboardData } = Backend as any;
+
+        // Local clipboard text cache — used synchronously in forceClipboardUpdateCallback
+        // (IronRDP may not await async callbacks)
+        let localClipboardText = '';
+
+        const pushClipboardToGuest = (text: string) => {
+          if (!sessionRef.current) return;
+          const data = new ClipboardData();
+          data.addText('text/plain', text);
+          sessionRef.current.onClipboardPaste(data).catch(() => {});
+        };
 
         const session = await new SessionBuilder()
           .username(sessionInfo.username)
@@ -122,6 +138,21 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
               }
             },
           )
+          // Guest clipboard → host: guest copied something, write to browser clipboard
+          .remoteClipboardChangedCallback((clipData: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+            const items = (clipData.items() as any[]) ?? []; // eslint-disable-line @typescript-eslint/no-explicit-any
+            const textItem = items.find((i: any) => i.mimeType() === 'text/plain'); // eslint-disable-line @typescript-eslint/no-explicit-any
+            if (textItem) {
+              const text = String(textItem.value());
+              localClipboardText = text;
+              navigator.clipboard.writeText(text).catch(() => {});
+            }
+          })
+          // IronRDP requests current local clipboard — use cached value synchronously
+          // (IronRDP does not await async callbacks, so we must be synchronous here)
+          .forceClipboardUpdateCallback(() => {
+            pushClipboardToGuest(localClipboardText);
+          })
           .connect();
 
         if (cancelled) {
@@ -133,7 +164,23 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
         setStatus('Connected');
         onStatusChange(tab.id, 'connected');
 
-        // ── Input event wiring ──────────────────────────────────────────────
+        // ── Auto-resize (debounced) ──────────────────────────────────────────
+        resizeObserver = new ResizeObserver(() => {
+          if (resizeTimer) clearTimeout(resizeTimer);
+          resizeTimer = setTimeout(() => {
+            if (!sessionRef.current || !containerRef.current) return;
+            const w = containerRef.current.clientWidth;
+            const h = Math.max(containerRef.current.clientHeight - STATUS_BAR_H, 1);
+            if (w <= 0 || h <= 0) return;
+            // Update canvas pixel dimensions then tell RDP host to resize
+            canvas.width = w;
+            canvas.height = h;
+            sessionRef.current.resize(w, h);
+          }, RESIZE_DEBOUNCE_MS);
+        });
+        resizeObserver.observe(container);
+
+        // ── Input event wiring ───────────────────────────────────────────────
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { InputTransaction, DeviceEvent } = Backend as any;
 
@@ -143,14 +190,11 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
           session.applyInputs(tx);
         };
 
-        // Mouse move
         const onMouseMove = (e: MouseEvent) => {
           const scaleX = canvas.width / canvas.clientWidth;
           const scaleY = canvas.height / canvas.clientHeight;
           applyEvents(DeviceEvent.mouseMove(Math.round(e.offsetX * scaleX), Math.round(e.offsetY * scaleY)));
         };
-
-        // Mouse buttons — DOM button 0/1/2 maps directly to IronRDP 0/1/2
         const onMouseDown = (e: MouseEvent) => {
           e.preventDefault();
           applyEvents(DeviceEvent.mouseButtonPressed(e.button));
@@ -159,8 +203,6 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
           e.preventDefault();
           applyEvents(DeviceEvent.mouseButtonReleased(e.button));
         };
-
-        // Scroll wheel
         const onWheel = (e: WheelEvent) => {
           e.preventDefault();
           const isVertical = Math.abs(e.deltaY) >= Math.abs(e.deltaX);
@@ -168,10 +210,12 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
           applyEvents(DeviceEvent.wheelRotations(isVertical, -delta, 0 /* Pixel */));
         };
 
-        // Keyboard — use unicode for printable chars, scancode for the rest
-        const MODIFIER_CODES = new Set(['ShiftLeft','ShiftRight','ControlLeft','ControlRight','AltLeft','AltRight','MetaLeft','MetaRight','CapsLock','NumLock','ScrollLock']);
         const onKey = (e: KeyboardEvent) => {
-          e.preventDefault();
+          // Do NOT preventDefault for Ctrl+V: we need the browser paste event to fire
+          // so we can capture clipboard text and push it to the guest.
+          const isBrowserPaste = (e.code === 'KeyV') && e.ctrlKey && !e.altKey && !e.metaKey;
+          if (!isBrowserPaste) e.preventDefault();
+
           const pressed = e.type === 'keydown';
           const scancode = CODE_TO_SCANCODE[e.code];
           if (scancode !== undefined) {
@@ -181,27 +225,37 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
           } else if (!pressed && e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
             applyEvents(DeviceEvent.unicodeReleased(e.key));
           }
-          // Track modifiers so releaseAllInputs works correctly on blur
-          if (!MODIFIER_CODES.has(e.code)) return;
         };
 
         const onBlur = () => session.releaseAllInputs();
         const onContextMenu = (e: Event) => e.preventDefault();
+
+        // Clipboard: host → guest via browser paste event.
+        // When user presses Ctrl+V (or right-click paste), the paste event fires with
+        // the actual clipboard text. We update our cache AND immediately push it to the
+        // guest so it's available before the guest processes the Ctrl+V key.
+        const onPaste = (e: ClipboardEvent) => {
+          const text = e.clipboardData?.getData('text/plain') ?? '';
+          if (text) {
+            localClipboardText = text;
+            pushClipboardToGuest(text);
+          }
+        };
 
         canvas.addEventListener('mousemove', onMouseMove);
         canvas.addEventListener('mousedown', onMouseDown);
         canvas.addEventListener('mouseup', onMouseUp);
         canvas.addEventListener('wheel', onWheel, { passive: false });
         canvas.addEventListener('contextmenu', onContextMenu);
-        // Keyboard on window so we don't need canvas focus for keys
         window.addEventListener('keydown', onKey, false);
         window.addEventListener('keyup', onKey, false);
         window.addEventListener('blur', onBlur, false);
-
-        // ───────────────────────────────────────────────────────────────────
+        window.addEventListener('paste', onPaste, false);
 
         await session.run();
 
+        resizeObserver?.disconnect();
+        if (resizeTimer) clearTimeout(resizeTimer);
         canvas.removeEventListener('mousemove', onMouseMove);
         canvas.removeEventListener('mousedown', onMouseDown);
         canvas.removeEventListener('mouseup', onMouseUp);
@@ -210,6 +264,7 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
         window.removeEventListener('keydown', onKey);
         window.removeEventListener('keyup', onKey);
         window.removeEventListener('blur', onBlur);
+        window.removeEventListener('paste', onPaste);
 
         if (!cancelled) {
           setStatus('Disconnected');
@@ -221,16 +276,10 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const e = err as any;
           if (e && typeof e.kind === 'function') {
-            // IronRDP WASM IronError object
             const kindNum: number = e.kind();
             const kindNames: Record<number, string> = {
-              0: 'General',
-              1: 'WrongPassword',
-              2: 'LogonFailure',
-              3: 'AccessDenied',
-              4: 'RDCleanPath',
-              5: 'ProxyConnect',
-              6: 'NegotiationFailure',
+              0: 'General', 1: 'WrongPassword', 2: 'LogonFailure',
+              3: 'AccessDenied', 4: 'RDCleanPath', 5: 'ProxyConnect', 6: 'NegotiationFailure',
             };
             const kindName = kindNames[kindNum] ?? `Unknown(${kindNum})`;
             const backtrace = typeof e.backtrace === 'function' ? e.backtrace() : '';
@@ -249,12 +298,10 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
 
     return () => {
       cancelled = true;
+      resizeObserver?.disconnect();
+      if (resizeTimer) clearTimeout(resizeTimer);
       if (sessionRef.current) {
-        try {
-          sessionRef.current.shutdown();
-        } catch {
-          // ignore
-        }
+        try { sessionRef.current.shutdown(); } catch { /* ignore */ }
         sessionRef.current = null;
       }
     };
