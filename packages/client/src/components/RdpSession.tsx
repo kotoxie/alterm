@@ -121,6 +121,18 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
           sessionRef.current.onClipboardPaste(data).catch(() => {});
         };
 
+        // Read host clipboard and push to guest. Requires clipboard-read permission:
+        // - Chrome shows a one-time permission prompt on the first call from a user gesture.
+        // - After the user grants it, all subsequent calls are silent.
+        const syncHostClipboardToGuest = () => {
+          navigator.clipboard.readText().then((text) => {
+            if (text && text !== localClipboardText) {
+              localClipboardText = text;
+              pushClipboardToGuest(text);
+            }
+          }).catch(() => { /* permission denied or not yet granted */ });
+        };
+
         const session = await new SessionBuilder()
           .username(sessionInfo.username)
           .password(sessionInfo.password)
@@ -151,10 +163,12 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
               navigator.clipboard.writeText(text).catch(() => {});
             }
           })
-          // IronRDP requests current local clipboard — use cached value synchronously
-          // (IronRDP does not await async callbacks, so we must be synchronous here)
+          // IronRDP requests current local clipboard (e.g. when guest wants to paste).
+          // Push cached value synchronously first, then also trigger an async refresh so
+          // subsequent pastes pick up the latest host clipboard (covers right-click paste).
           .forceClipboardUpdateCallback(() => {
             pushClipboardToGuest(localClipboardText);
+            syncHostClipboardToGuest();
           })
           // Enable RDPEDISP virtual channel so session.resize() actually changes
           // the guest desktop resolution (not just the local canvas).
@@ -200,16 +214,21 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
           const scaleY = canvas.height / canvas.clientHeight;
           applyEvents(DeviceEvent.mouseMove(Math.round(e.offsetX * scaleX), Math.round(e.offsetY * scaleY)));
         };
+        let clipboardPermissionRequested = false;
         const onMouseDown = (e: MouseEvent) => {
           e.preventDefault();
           applyEvents(DeviceEvent.mouseButtonPressed(e.button));
-          // Right-click: proactively refresh the clipboard cache from the browser clipboard.
-          // forceClipboardUpdateCallback fires ~1s later (after user clicks Paste in the
-          // guest context menu), so the async read has time to complete before it's needed.
           if (e.button === 2) {
-            navigator.clipboard.readText().then((text) => {
-              if (text) localClipboardText = text;
-            }).catch(() => {});
+            // Right-click: refresh clipboard cache NOW. The user still needs to navigate
+            // the guest context menu before forceClipboardUpdateCallback fires (~500ms+),
+            // so this async read completes in time.
+            syncHostClipboardToGuest();
+          } else if (!clipboardPermissionRequested) {
+            // First left-click in the canvas: request clipboard-read permission once.
+            // Doing it here (not on right-click) avoids the Chrome permission dialog
+            // appearing simultaneously with the guest right-click context menu.
+            clipboardPermissionRequested = true;
+            syncHostClipboardToGuest();
           }
         };
         const onMouseUp = (e: MouseEvent) => {
@@ -243,6 +262,9 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
         };
 
         const onBlur = () => session.releaseAllInputs();
+        // When the browser window regains focus (user Alt+Tabs back after copying something),
+        // refresh the clipboard cache so subsequent right-click paste has the latest content.
+        const onWindowFocus = () => syncHostClipboardToGuest();
         const onContextMenu = (e: Event) => e.preventDefault();
 
         // Clipboard: guest → host via browser 'copy' event.
@@ -275,6 +297,7 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
         window.addEventListener('keydown', onKey, false);
         window.addEventListener('keyup', onKey, false);
         window.addEventListener('blur', onBlur, false);
+        window.addEventListener('focus', onWindowFocus, false);
         document.addEventListener('copy', onCopy, true);
         window.addEventListener('paste', onPaste, false);
 
@@ -290,6 +313,7 @@ export function RdpSession({ tab, onStatusChange }: RdpSessionProps) {
         window.removeEventListener('keydown', onKey);
         window.removeEventListener('keyup', onKey);
         window.removeEventListener('blur', onBlur);
+        window.removeEventListener('focus', onWindowFocus);
         document.removeEventListener('copy', onCopy, true);
         window.removeEventListener('paste', onPaste);
 
