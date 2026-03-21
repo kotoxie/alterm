@@ -24,6 +24,7 @@ interface ConnectionRow {
   recording_enabled: number;
   shared: number;
   tunnels_json: string | null;
+  extra_config_json: string | null;
 }
 
 interface GroupRow {
@@ -377,6 +378,9 @@ router.get('/:id', (req: Request, res: Response) => {
   let tunnels: unknown[] = [];
   try { if (conn.tunnels_json) tunnels = JSON.parse(conn.tunnels_json); } catch { /* ignore */ }
 
+  let extraConfig: unknown = null;
+  try { if (conn.extra_config_json) extraConfig = JSON.parse(conn.extra_config_json); } catch { /* ignore */ }
+
   res.json({
     id: conn.id,
     name: conn.name,
@@ -390,6 +394,7 @@ router.get('/:id', (req: Request, res: Response) => {
     hasPrivateKey: !!conn.private_key,
     shared: conn.shared,
     tunnels,
+    extraConfig,
   });
 });
 
