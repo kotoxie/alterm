@@ -228,63 +228,12 @@ function RecordingPlayer({
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-[#0a0a0a]">
-      {/* Top bar */}
+      {/* Top bar — title + close only */}
       <div className="flex items-center gap-3 px-4 py-2 bg-[#141414] border-b border-[#2e2e2e] shrink-0">
-        <span className="text-sm font-semibold text-[#efefef] truncate max-w-xs">
+        <span className="text-sm font-semibold text-[#efefef] truncate">
           {title || 'Session Recording'}
         </span>
-
         <div className="flex-1" />
-
-        {/* Speed */}
-        <span className="text-xs text-[#888]">Speed:</span>
-        {[0.25, 0.5, 1, 2, 4, 8].map((s) => (
-          <button
-            key={s}
-            onClick={() => handleSpeedChange(s)}
-            className={`px-2 py-0.5 text-xs rounded transition-colors ${
-              speed === s
-                ? 'bg-blue-500 text-white'
-                : 'border border-[#2e2e2e] text-[#888] hover:border-[#444] hover:text-[#efefef]'
-            }`}
-          >
-            {s}×
-          </button>
-        ))}
-
-        {/* Pause/Resume */}
-        <button
-          onClick={handlePauseResume}
-          disabled={loading || !!error}
-          className="px-3 py-1 text-xs border border-[#2e2e2e] rounded text-[#efefef] hover:bg-[#1c1c1c] disabled:opacity-40 flex items-center gap-1.5"
-        >
-          {playing ? (
-            <>
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
-                <rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" />
-              </svg>
-              Pause
-            </>
-          ) : (
-            <>
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
-                <polygon points="5 3 19 12 5 21 5 3" />
-              </svg>
-              {currentTime > 0 ? 'Resume' : 'Play'}
-            </>
-          )}
-        </button>
-
-        {/* Replay */}
-        <button
-          onClick={handleReplay}
-          disabled={loading || !!error}
-          className="px-3 py-1 text-xs border border-[#2e2e2e] rounded text-[#888] hover:text-[#efefef] hover:bg-[#1c1c1c] disabled:opacity-40"
-          title="Replay from beginning"
-        >
-          ↺ Replay
-        </button>
-
         {/* Close */}
         <button
           onClick={onClose}
@@ -316,8 +265,8 @@ function RecordingPlayer({
         />
       </div>
 
-      {/* Timeline bar */}
-      <div className="shrink-0 px-4 py-3 bg-[#141414] border-t border-[#2e2e2e] space-y-1.5">
+      {/* Bottom controls */}
+      <div className="shrink-0 px-4 py-3 bg-[#141414] border-t border-[#2e2e2e] space-y-2">
         {/* Time display */}
         <div className="flex items-center justify-between text-xs font-mono">
           <span className="text-[#888]">{formatTime(currentTime)}</span>
@@ -338,7 +287,6 @@ function RecordingPlayer({
 
         {/* Scrubber */}
         <div className="relative">
-          {/* Progress fill */}
           <div
             className="absolute top-1/2 left-0 h-1 rounded-full bg-blue-500/60 pointer-events-none -translate-y-1/2"
             style={{ width: `${progress}%` }}
@@ -361,6 +309,60 @@ function RecordingPlayer({
               [&::-moz-range-thumb]:bg-blue-500 [&::-moz-range-thumb]:border-none [&::-moz-range-thumb]:cursor-pointer"
             style={{ background: 'transparent' }}
           />
+        </div>
+
+        {/* Centered playback controls */}
+        <div className="flex items-center justify-center gap-2 pt-0.5">
+          {/* Pause/Resume */}
+          <button
+            onClick={handlePauseResume}
+            disabled={loading || !!error}
+            className="px-3 py-1.5 text-xs border border-[#2e2e2e] rounded text-[#efefef] hover:bg-[#1c1c1c] disabled:opacity-40 flex items-center gap-1.5"
+          >
+            {playing ? (
+              <>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" />
+                </svg>
+                Pause
+              </>
+            ) : (
+              <>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                  <polygon points="5 3 19 12 5 21 5 3" />
+                </svg>
+                {currentTime > 0 ? 'Resume' : 'Play'}
+              </>
+            )}
+          </button>
+
+          {/* Replay */}
+          <button
+            onClick={handleReplay}
+            disabled={loading || !!error}
+            className="px-3 py-1.5 text-xs border border-[#2e2e2e] rounded text-[#888] hover:text-[#efefef] hover:bg-[#1c1c1c] disabled:opacity-40"
+            title="Replay from beginning"
+          >
+            ↺ Replay
+          </button>
+
+          <div className="w-px h-4 bg-[#2e2e2e] mx-1" />
+
+          {/* Speed buttons */}
+          <span className="text-xs text-[#555]">Speed:</span>
+          {[0.25, 0.5, 1, 2, 4, 8].map((s) => (
+            <button
+              key={s}
+              onClick={() => handleSpeedChange(s)}
+              className={`px-2 py-0.5 text-xs rounded transition-colors ${
+                speed === s
+                  ? 'bg-blue-500 text-white'
+                  : 'border border-[#2e2e2e] text-[#888] hover:border-[#444] hover:text-[#efefef]'
+              }`}
+            >
+              {s}×
+            </button>
+          ))}
         </div>
       </div>
     </div>

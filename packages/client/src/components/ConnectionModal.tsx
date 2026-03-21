@@ -49,6 +49,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved }: Connec
   const [saving, setSaving] = useState(false);
   const [tunnels, setTunnels] = useState<TunnelDef[]>([]);
   const [smbShare, setSmbShare] = useState('');
+  const [smbDomain, setSmbDomain] = useState('');
   const newFolderInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -63,6 +64,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved }: Connec
           remotePort: String(t.remotePort),
         })));
         if (d.extraConfig?.share) setSmbShare(d.extraConfig.share as string);
+        if (d.extraConfig?.domain) setSmbDomain(d.extraConfig.domain as string);
       })
       .catch(() => {});
   }, [connection?.id, token]);
@@ -116,7 +118,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved }: Connec
         }));
       }
       if (protocol === 'smb') {
-        body.extraConfig = { share: smbShare.trim() };
+        body.extraConfig = { share: smbShare.trim(), ...(smbDomain.trim() ? { domain: smbDomain.trim() } : {}) };
       }
       const url = connection ? `/api/v1/connections/${connection.id}` : '/api/v1/connections';
       const method = connection ? 'PUT' : 'POST';
@@ -352,17 +354,32 @@ export function ConnectionModal({ connection, groups, onClose, onSaved }: Connec
           </div>
 
           {protocol === 'smb' && (
-            <div>
-              <label className="block text-sm font-medium text-text-secondary mb-1">
-                Share name <span className="font-normal text-xs">(e.g. <code className="font-mono">Documents</code> for \\host\Documents)</span>
-              </label>
-              <input
-                type="text"
-                value={smbShare}
-                onChange={(e) => setSmbShare(e.target.value)}
-                placeholder="share"
-                className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent font-mono"
-              />
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-text-secondary mb-1">
+                  Share name <span className="font-normal text-xs">(e.g. <code className="font-mono">Documents</code> for \\host\Documents)</span>
+                </label>
+                <input
+                  type="text"
+                  value={smbShare}
+                  onChange={(e) => setSmbShare(e.target.value)}
+                  placeholder="share"
+                  required
+                  className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-text-secondary mb-1">
+                  Domain <span className="font-normal text-xs">(optional — for AD or workgroup auth)</span>
+                </label>
+                <input
+                  type="text"
+                  value={smbDomain}
+                  onChange={(e) => setSmbDomain(e.target.value)}
+                  placeholder="WORKGROUP"
+                  className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent font-mono"
+                />
+              </div>
             </div>
           )}
 

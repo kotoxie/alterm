@@ -287,7 +287,7 @@ router.put('/:id', (req: Request, res: Response) => {
     groupId: existing.group_id,
   };
 
-  const { name, protocol, host, port, username, password, groupId, privateKey, shared, tunnels } = req.body;
+  const { name, protocol, host, port, username, password, groupId, privateKey, shared, tunnels, extraConfig } = req.body;
 
   const updates: string[] = [];
   const params: unknown[] = [];
@@ -302,6 +302,7 @@ router.put('/:id', (req: Request, res: Response) => {
   if (groupId !== undefined) { updates.push('group_id = ?'); params.push(groupId || null); }
   if (shared !== undefined) { updates.push('shared = ?'); params.push(shared ? 1 : 0); }
   if (tunnels !== undefined) { updates.push('tunnels_json = ?'); params.push(tunnels ? JSON.stringify(tunnels) : null); }
+  if (extraConfig !== undefined) { updates.push('extra_config_json = ?'); params.push(extraConfig ? JSON.stringify(extraConfig) : null); }
 
   if (updates.length === 0) {
     res.status(400).json({ error: 'No fields to update' });
