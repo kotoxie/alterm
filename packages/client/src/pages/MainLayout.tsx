@@ -241,29 +241,25 @@ export function MainLayout() {
 
   const handleTabSelect = useCallback(
     (tabId: string) => {
-      // Find the pane already showing this tab
+      // If the tab is already visible in a pane, just focus that pane.
       const entry = Object.entries(paneTabMap).find(([, tId]) => tId === tabId);
       if (entry) {
-        // Tab is already visible in a pane — just focus it
         setActivePaneId(entry[0]);
         return;
       }
 
-      // Tab is not in any pane.
-      const isMultiPane = Object.keys(paneTabMap).length > 1;
-
-      if (isMultiPane) {
-        // In split mode: only place into an empty pane — never displace a locked session.
-        const emptyEntry = Object.entries(paneTabMap).find(([, tId]) => tId === null);
-        if (emptyEntry) {
-          setActivePaneId(emptyEntry[0]);
-          setPaneTabMap((prev) => ({ ...prev, [emptyEntry[0]]: tabId }));
-        }
-        // All panes occupied → do nothing; user must right-click → Split to create a new slot.
-      } else {
-        // Single-pane mode: replace normally.
-        setPaneTabMap((prev) => ({ ...prev, [activePaneId]: tabId }));
+      // Tab is not in any pane. Fill an empty pane if one exists.
+      const emptyEntry = Object.entries(paneTabMap).find(([, tId]) => tId === null);
+      if (emptyEntry) {
+        setActivePaneId(emptyEntry[0]);
+        setPaneTabMap((prev) => ({ ...prev, [emptyEntry[0]]: tabId }));
+        return;
       }
+
+      // All panes occupied: swap the tab into the active pane.
+      // The displaced session stays alive — it becomes an unassigned (background) tab
+      // in the tab bar, still connected, and can be brought back by clicking it.
+      setPaneTabMap((prev) => ({ ...prev, [activePaneId]: tabId }));
     },
     [paneTabMap, activePaneId],
   );
