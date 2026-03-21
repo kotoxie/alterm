@@ -13,6 +13,12 @@ interface SshSessionProps {
   onClose: (tabId: string) => void;
 }
 
+interface TunnelInfo {
+  localPort: number;
+  remoteHost: string;
+  remotePort: number;
+}
+
 export function SshSession({ tab, isActive, onStatusChange, onClose }: SshSessionProps) {
   const termRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
@@ -23,6 +29,7 @@ export function SshSession({ tab, isActive, onStatusChange, onClose }: SshSessio
   const [disconnected, setDisconnected] = useState(false);
   const [disconnectMessage, setDisconnectMessage] = useState('');
   const [reconnectCount, setReconnectCount] = useState(0);
+  const [activeTunnels, setActiveTunnels] = useState<TunnelInfo[]>([]);
 
   // Capture SSH settings as primitives so useEffect doesn't re-run on object identity change
   const sshFontSize = parseInt(settings['ssh.font_size'] ?? '14', 10);
@@ -33,6 +40,7 @@ export function SshSession({ tab, isActive, onStatusChange, onClose }: SshSessio
   const handleReconnect = useCallback(() => {
     setDisconnected(false);
     setDisconnectMessage('');
+    setActiveTunnels([]);
     setReconnectCount((n) => n + 1);
   }, []);
 
@@ -111,6 +119,8 @@ export function SshSession({ tab, isActive, onStatusChange, onClose }: SshSessio
             }
           } else if (msg.type === 'error') {
             if (!cancelled) { setDisconnectMessage(msg.message); setDisconnected(true); onStatusChange(tab.id, 'disconnected'); }
+          } else if (msg.type === 'tunnels') {
+            setActiveTunnels(msg.tunnels || []);
           }
           return;
         } catch { /* not JSON — write as terminal data */ }
@@ -153,6 +163,17 @@ export function SshSession({ tab, isActive, onStatusChange, onClose }: SshSessio
   return (
     <div className="absolute inset-0 bg-[#0d0d0d]">
       <div ref={termRef} className="absolute inset-0" />
+
+      {activeTunnels.length > 0 && (
+        <div className="absolute bottom-0 left-0 right-0 z-10 bg-black/80 border-t border-border/30 px-3 py-1.5 flex items-center gap-3 flex-wrap">
+          <span className="text-xs text-text-secondary shrink-0">Tunnels:</span>
+          {activeTunnels.map((t, i) => (
+            <span key={i} className="text-xs font-mono bg-surface-hover/50 px-2 py-0.5 rounded text-accent">
+              :{t.localPort} → {t.remoteHost}:{t.remotePort}
+            </span>
+          ))}
+        </div>
+      )}
 
       {disconnected && (
         <div className="absolute inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-20">

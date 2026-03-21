@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { useRef, useState, useEffect, type FormEvent } from 'react';
 import { useAuth } from '../hooks/useAuth';
 
 interface Connection {
@@ -23,6 +23,8 @@ interface ConnectionModalProps {
   onSaved: () => void;
 }
 
+interface TunnelDef { id: string; localPort: string; remoteHost: string; remotePort: string; }
+
 const defaultPorts: Record<string, number> = {
   ssh: 22,
   rdp: 3389,
@@ -45,7 +47,23 @@ export function ConnectionModal({ connection, groups, onClose, onSaved }: Connec
   const [localGroups, setLocalGroups] = useState<FlatGroup[]>(groups);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [tunnels, setTunnels] = useState<TunnelDef[]>([]);
   const newFolderInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!connection?.id || !token) return;
+    fetch(`/api/v1/connections/${connection.id}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.tunnels) setTunnels(d.tunnels.map((t: Omit<TunnelDef, 'id'> & { localPort: number; remotePort: number }) => ({
+          id: crypto.randomUUID(),
+          localPort: String(t.localPort),
+          remoteHost: t.remoteHost,
+          remotePort: String(t.remotePort),
+        })));
+      })
+      .catch(() => {});
+  }, [connection?.id, token]);
 
   function handleProtocolChange(p: 'ssh' | 'rdp' | 'smb') {
     setProtocol(p);
@@ -76,7 +94,8 @@ export function ConnectionModal({ connection, groups, onClose, onSaved }: Connec
     setError('');
     setSaving(true);
     try {
-      const body = {
+      const tunnelsClean = tunnels.filter((t) => t.localPort && t.remoteHost && t.remotePort);
+      const body: Record<string, unknown> = {
         name,
         protocol,
         host,
@@ -87,6 +106,13 @@ export function ConnectionModal({ connection, groups, onClose, onSaved }: Connec
         shared,
         ...(protocol === 'ssh' && privateKey ? { privateKey } : {}),
       };
+      if (protocol === 'ssh') {
+        body.tunnels = tunnelsClean.map(({ localPort, remoteHost, remotePort }) => ({
+          localPort: parseInt(localPort, 10),
+          remoteHost,
+          remotePort: parseInt(remotePort, 10),
+        }));
+      }
       const url = connection ? `/api/v1/connections/${connection.id}` : '/api/v1/connections';
       const method = connection ? 'PUT' : 'POST';
       const res = await fetch(url, {
@@ -209,6 +235,60 @@ export function ConnectionModal({ connection, groups, onClose, onSaved }: Connec
                 placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
                 className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent font-mono text-xs resize-none"
               />
+            </div>
+          )}
+
+          {protocol === 'ssh' && (
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-2">
+                Port Forwards
+                <span className="font-normal ml-1 text-xs">(local→remote, active while connected)</span>
+              </label>
+              <div className="space-y-1.5">
+                {tunnels.map((t) => (
+                  <div key={t.id} className="flex gap-1 items-center">
+                    <input
+                      type="number"
+                      placeholder="Local port"
+                      value={t.localPort}
+                      onChange={(e) => setTunnels((prev) => prev.map((x) => x.id === t.id ? { ...x, localPort: e.target.value } : x))}
+                      className="w-20 px-2 py-1.5 bg-surface border border-border rounded text-text-primary text-xs focus:outline-none focus:ring-1 focus:ring-accent"
+                    />
+                    <span className="text-text-secondary text-xs">→</span>
+                    <input
+                      type="text"
+                      placeholder="Remote host"
+                      value={t.remoteHost}
+                      onChange={(e) => setTunnels((prev) => prev.map((x) => x.id === t.id ? { ...x, remoteHost: e.target.value } : x))}
+                      className="flex-1 px-2 py-1.5 bg-surface border border-border rounded text-text-primary text-xs focus:outline-none focus:ring-1 focus:ring-accent"
+                    />
+                    <span className="text-text-secondary text-xs">:</span>
+                    <input
+                      type="number"
+                      placeholder="Port"
+                      value={t.remotePort}
+                      onChange={(e) => setTunnels((prev) => prev.map((x) => x.id === t.id ? { ...x, remotePort: e.target.value } : x))}
+                      className="w-16 px-2 py-1.5 bg-surface border border-border rounded text-text-primary text-xs focus:outline-none focus:ring-1 focus:ring-accent"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setTunnels((prev) => prev.filter((x) => x.id !== t.id))}
+                      className="p-1 text-text-secondary hover:text-red-400"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setTunnels((prev) => [...prev, { id: crypto.randomUUID(), localPort: '', remoteHost: '', remotePort: '' }])}
+                  className="text-xs text-accent hover:text-accent-hover"
+                >
+                  + Add tunnel
+                </button>
+              </div>
             </div>
           )}
 

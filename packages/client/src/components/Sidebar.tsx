@@ -88,6 +88,7 @@ export function Sidebar({ onConnect, onDuplicate, width }: SidebarProps) {
   const [draggingConnId, setDraggingConnId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
+  const [healthMap, setHealthMap] = useState<Record<string, 'checking' | 'up' | 'down'>>({});
   const newFolderInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -106,6 +107,40 @@ export function Sidebar({ onConnect, onDuplicate, width }: SidebarProps) {
 
   const flatGroups = flattenGroups(groups);
 
+  const checkHealth = useCallback(async () => {
+    if (!token) return;
+    const allConns: { id: string; host: string; port: number }[] = [];
+    function collectFromGroup(g: ConnectionGroup) {
+      g.connections.forEach((c) => allConns.push({ id: c.id, host: c.host, port: c.port }));
+      g.children.forEach(collectFromGroup);
+    }
+    groups.forEach(collectFromGroup);
+    ungrouped.forEach((c) => allConns.push({ id: c.id, host: c.host, port: c.port }));
+    sharedConnections.forEach((c) => allConns.push({ id: c.id, host: c.host, port: c.port }));
+    if (allConns.length === 0) return;
+
+    setHealthMap((prev) => {
+      const next = { ...prev };
+      allConns.forEach((c) => { next[c.id] = 'checking'; });
+      return next;
+    });
+
+    try {
+      const res = await fetch('/api/v1/connections/health-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ checks: allConns }),
+      });
+      if (!res.ok) return;
+      const data = await res.json() as { results: { id: string; reachable: boolean }[] };
+      setHealthMap((prev) => {
+        const next = { ...prev };
+        data.results.forEach((r) => { next[r.id] = r.reachable ? 'up' : 'down'; });
+        return next;
+      });
+    } catch { /* ignore */ }
+  }, [token, groups, ungrouped, sharedConnections]);
+
   const fetchConnections = useCallback(async () => {
     if (!token) return;
     try {
@@ -121,6 +156,17 @@ export function Sidebar({ onConnect, onDuplicate, width }: SidebarProps) {
   }, [token]);
 
   useEffect(() => { fetchConnections(); }, [fetchConnections]);
+
+  useEffect(() => {
+    if (groups.length > 0 || ungrouped.length > 0 || sharedConnections.length > 0) {
+      checkHealth();
+    }
+  }, [groups, ungrouped, sharedConnections, checkHealth]);
+
+  useEffect(() => {
+    const t = setInterval(checkHealth, 60_000);
+    return () => clearInterval(t);
+  }, [checkHealth]);
 
   useEffect(() => {
     if (showNewFolder) newFolderInputRef.current?.focus();
@@ -175,6 +221,38 @@ export function Sidebar({ onConnect, onDuplicate, width }: SidebarProps) {
     fetchConnections();
   }
 
+  async function handleExport() {
+    if (!token) return;
+    const res = await fetch('/api/v1/connections/export', { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) return;
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `alterm-connections-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !token) return;
+    try {
+      const text = await file.text();
+      const json = JSON.parse(text);
+      const res = await fetch('/api/v1/connections/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(json),
+      });
+      if (res.ok) {
+        await fetchConnections();
+      }
+    } catch { /* ignore */ }
+    // Reset so same file can be imported again
+    e.target.value = '';
+  }
+
   function handleDragStart(e: React.DragEvent, connId: string) {
     setDraggingConnId(connId);
     e.dataTransfer.effectAllowed = 'move';
@@ -216,6 +294,7 @@ export function Sidebar({ onConnect, onDuplicate, width }: SidebarProps) {
   }
 
   function renderConnection(conn: Connection) {
+    const status = healthMap[conn.id];
     return (
       <div
         key={conn.id}
@@ -226,6 +305,15 @@ export function Sidebar({ onConnect, onDuplicate, width }: SidebarProps) {
         onContextMenu={(e) => handleConnContextMenu(e, conn)}
         className="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-surface-hover rounded mx-1 group/conn"
       >
+        <span
+          className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+            status === 'up' ? 'bg-green-500' :
+            status === 'down' ? 'bg-red-500' :
+            status === 'checking' ? 'bg-yellow-400 animate-pulse' :
+            'bg-border'
+          }`}
+          title={status === 'up' ? 'Reachable' : status === 'down' ? 'Unreachable' : 'Checking...'}
+        />
         <ProtocolBadge protocol={conn.protocol} />
         <span className="truncate flex-1 text-text-primary">{conn.name}</span>
         <div className="hidden group-hover/conn:flex items-center gap-0.5 shrink-0">
@@ -348,6 +436,31 @@ export function Sidebar({ onConnect, onDuplicate, width }: SidebarProps) {
               + New Folder
             </button>
           )}
+
+          {/* Import/Export row */}
+          <div className="flex gap-1">
+            <button
+              onClick={handleExport}
+              className="flex-1 py-1 px-2 text-xs border border-border rounded text-text-secondary hover:bg-surface-hover flex items-center justify-center gap-1"
+              title="Export connections to JSON"
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              Export
+            </button>
+            <label className="flex-1 py-1 px-2 text-xs border border-border rounded text-text-secondary hover:bg-surface-hover flex items-center justify-center gap-1 cursor-pointer">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+              Import
+              <input type="file" accept=".json" className="hidden" onChange={handleImport} />
+            </label>
+          </div>
         </div>
 
         {/* Connection list */}
@@ -380,6 +493,15 @@ export function Sidebar({ onConnect, onDuplicate, width }: SidebarProps) {
                   onContextMenu={(e) => handleConnContextMenu(e, conn)}
                   className="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-surface-hover rounded mx-1"
                 >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                      healthMap[conn.id] === 'up' ? 'bg-green-500' :
+                      healthMap[conn.id] === 'down' ? 'bg-red-500' :
+                      healthMap[conn.id] === 'checking' ? 'bg-yellow-400 animate-pulse' :
+                      'bg-border'
+                    }`}
+                    title={healthMap[conn.id] === 'up' ? 'Reachable' : healthMap[conn.id] === 'down' ? 'Unreachable' : 'Checking...'}
+                  />
                   <ProtocolBadge protocol={conn.protocol} />
                   <span className="truncate flex-1 text-text-primary">{conn.name}</span>
                 </div>
