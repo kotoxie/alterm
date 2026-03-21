@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import type { Tab } from '../pages/MainLayout';
 import { useAuth } from '../hooks/useAuth';
+import { useSettings } from '../hooks/useSettings';
 
 interface SshSessionProps {
   tab: Tab;
@@ -18,9 +19,16 @@ export function SshSession({ tab, isActive, onStatusChange, onClose }: SshSessio
   const fitAddonRef = useRef<FitAddon | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const { token } = useAuth();
+  const { settings } = useSettings();
   const [disconnected, setDisconnected] = useState(false);
   const [disconnectMessage, setDisconnectMessage] = useState('');
   const [reconnectCount, setReconnectCount] = useState(0);
+
+  // Capture SSH settings as primitives so useEffect doesn't re-run on object identity change
+  const sshFontSize = parseInt(settings['ssh.font_size'] ?? '14', 10);
+  const sshFontFamily = settings['ssh.font_family'] ?? '"Cascadia Code", "Fira Code", Menlo, Monaco, "Courier New", monospace';
+  const sshScrollback = parseInt(settings['ssh.scrollback'] ?? '5000', 10);
+  const sshCursorStyle = (settings['ssh.cursor_style'] ?? 'block') as 'block' | 'bar' | 'underline';
 
   const handleReconnect = useCallback(() => {
     setDisconnected(false);
@@ -50,8 +58,9 @@ export function SshSession({ tab, isActive, onStatusChange, onClose }: SshSessio
 
     const term = new Terminal({
       cursorBlink: true,
-      fontSize: 14,
-      fontFamily: '"Cascadia Code", "Fira Code", Menlo, Monaco, "Courier New", monospace',
+      fontSize: sshFontSize,
+      fontFamily: sshFontFamily,
+      cursorStyle: sshCursorStyle,
       theme: {
         background: '#0d0d0d',
         foreground: '#d4d4d4',
@@ -64,7 +73,7 @@ export function SshSession({ tab, isActive, onStatusChange, onClose }: SshSessio
         brightCyan: '#29b8db', brightWhite: '#e5e5e5',
       },
       allowTransparency: false,
-      scrollback: 5000,
+      scrollback: sshScrollback,
     });
 
     const fitAddon = new FitAddon();
@@ -139,7 +148,7 @@ export function SshSession({ tab, isActive, onStatusChange, onClose }: SshSessio
       fitAddonRef.current = null;
       wsRef.current = null;
     };
-  }, [tab.id, tab.connectionId, token, onStatusChange, reconnectCount]);
+  }, [tab.id, tab.connectionId, token, onStatusChange, reconnectCount, sshFontSize, sshFontFamily, sshScrollback, sshCursorStyle]);
 
   return (
     <div className="absolute inset-0 bg-[#0d0d0d]">

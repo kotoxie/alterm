@@ -3,6 +3,7 @@ import { Header } from '../components/Header';
 import { Sidebar } from '../components/Sidebar';
 import { TabBar } from '../components/TabBar';
 import { SessionArea } from '../components/SessionArea';
+import { SettingsPanel } from '../components/settings/SettingsPanel';
 
 export interface Tab {
   id: string;
@@ -25,6 +26,14 @@ export function MainLayout() {
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
   const dragStartWidth = useRef(0);
+
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<string | undefined>(undefined);
+
+  const onOpenSettings = useCallback((section?: string) => {
+    setSettingsSection(section);
+    setSettingsOpen(true);
+  }, []);
 
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
@@ -88,7 +97,7 @@ export function MainLayout() {
 
   return (
     <div className="flex flex-col h-screen bg-surface select-none">
-      <Header onToggleSidebar={() => setSidebarOpen((o) => !o)} />
+      <Header onToggleSidebar={() => setSidebarOpen((o) => !o)} onOpenSettings={onOpenSettings} />
       <div className="flex flex-1 overflow-hidden">
         {sidebarOpen && (
           <>
@@ -110,6 +119,12 @@ export function MainLayout() {
           )}
         </div>
       </div>
+
+      <SettingsPanel
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        initialSection={settingsSection}
+      />
     </div>
   );
 }

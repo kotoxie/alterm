@@ -14,6 +14,10 @@ import { setupSshProxy } from './ws/sshProxy.js';
 import authRoutes from './routes/auth.js';
 import connectionRoutes from './routes/connections.js';
 import healthRoutes from './routes/health.js';
+import settingsRoutes from './routes/settings.js';
+import profileRoutes from './routes/profile.js';
+import usersRoutes from './routes/users.js';
+import auditRoutes from './routes/audit.js';
 
 async function main() {
   // Ensure data directories
@@ -48,6 +52,10 @@ async function main() {
   // API routes
   app.use('/api/v1/auth', authRoutes);
   app.use('/api/v1/connections', connectionRoutes);
+  app.use('/api/v1/settings', settingsRoutes);
+  app.use('/api/v1/profile', profileRoutes);
+  app.use('/api/v1/users', usersRoutes);
+  app.use('/api/v1/audit', auditRoutes);
   app.use('/health', healthRoutes);
 
   // Serve frontend static files

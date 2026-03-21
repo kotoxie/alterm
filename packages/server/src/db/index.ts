@@ -137,6 +137,51 @@ function runMigrations() {
         CREATE INDEX idx_audit_log_user ON audit_log(user_id);
       `,
     },
+    {
+      version: 2,
+      sql: `
+        ALTER TABLE users ADD COLUMN email TEXT;
+        ALTER TABLE users ADD COLUMN avatar_text TEXT;
+        ALTER TABLE users ADD COLUMN failed_login_count INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE users ADD COLUMN locked_until TEXT;
+        ALTER TABLE users ADD COLUMN last_login_at TEXT;
+
+        CREATE TABLE IF NOT EXISTS settings (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL,
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS ip_rules (
+          id TEXT PRIMARY KEY,
+          type TEXT NOT NULL CHECK(type IN ('allow', 'deny')),
+          cidr TEXT NOT NULL,
+          description TEXT,
+          created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        INSERT OR IGNORE INTO settings (key, value) VALUES
+          ('app.name', 'Alterm'),
+          ('app.logo', ''),
+          ('security.session_timeout_minutes', '0'),
+          ('security.max_failed_logins', '5'),
+          ('security.lockout_minutes', '30'),
+          ('security.ip_rules_enabled', 'false'),
+          ('security.ip_rules_mode', 'allowlist'),
+          ('audit.retention_days', '90'),
+          ('session.recording_enabled', 'false'),
+          ('session.recording_retention_days', '90'),
+          ('session.max_concurrent', '0'),
+          ('ssh.font_size', '14'),
+          ('ssh.font_family', 'Cascadia Code, Fira Code, Menlo, Monaco, Courier New, monospace'),
+          ('ssh.scrollback', '5000'),
+          ('ssh.cursor_style', 'block'),
+          ('rdp.default_port', '3389'),
+          ('rdp.default_width', '1920'),
+          ('rdp.default_height', '1080');
+      `,
+    },
   ];
 
   for (const migration of migrations) {
