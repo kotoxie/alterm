@@ -52,37 +52,12 @@ jobs:
           cache-to: type=gha,mode=max
           provenance: false
 
-      - name: Generate release notes
-        id: notes
-        run: |
-          # Extract commit messages since the previous tag
-          PREV_TAG=$(git tag --sort=-version:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+' | sed -n '2p')
-          if [ -n "$PREV_TAG" ]; then
-            COMMITS=$(git log ${PREV_TAG}..HEAD --pretty=format:"- %s" --no-merges)
-          else
-            COMMITS=$(git log --pretty=format:"- %s" --no-merges | head -20)
-          fi
-          # Detect breaking changes (BREAKING CHANGE in commit body)
-          BREAKING=$(git log ${PREV_TAG:+${PREV_TAG}..}HEAD --pretty=format:"%b" --no-merges | grep -i "BREAKING CHANGE" || true)
-          echo "commits<<EOF" >> $GITHUB_OUTPUT
-          echo "$COMMITS" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-          echo "breaking<<EOF" >> $GITHUB_OUTPUT
-          echo "$BREAKING" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
           body: |
-            ${{ steps.notes.outputs.breaking != '' && '## ⚠️ Breaking Changes' || '' }}
-            ${{ steps.notes.outputs.breaking != '' && steps.notes.outputs.breaking || '' }}
-
-            ## What's Changed
-
-            ${{ steps.notes.outputs.commits }}
-
             ## Container image
 
             ```bash
