@@ -76,6 +76,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
+  // Kick the user out when any fetch returns 401 (e.g. session revoked remotely)
+  useEffect(() => {
+    if (!token) return;
+    const handler = () => {
+      // Only act if we still have a stored token (avoid double-logout)
+      if (localStorage.getItem('alterm-token')) logout();
+    };
+    window.addEventListener('alterm:unauthorized', handler);
+    return () => window.removeEventListener('alterm:unauthorized', handler);
+  }, [token, logout]);
+
+  // Heartbeat: ping /auth/me every 30 s so idle sessions are kicked out promptly
+  useEffect(() => {
+    if (!token) return;
+    const check = async () => {
+      try {
+        await fetch('/api/v1/auth/me', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        // 401 is handled by the global fetch interceptor above
+      } catch { /* network error — ignore, don't log out */ }
+    };
+    const id = setInterval(check, 30_000);
+    return () => clearInterval(id);
+  }, [token]);
+
   const setup = useCallback(async (username: string, password: string, displayName: string) => {
     const { token: t, user: u } = await apiFetch('/auth/setup', {
       method: 'POST',
