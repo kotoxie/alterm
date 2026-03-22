@@ -8,9 +8,16 @@ export function hashToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
+function normalizeIp(raw: string | undefined): string {
+  if (!raw) return 'Unknown';
+  // Strip IPv4-mapped IPv6 prefix (e.g. "::ffff:192.168.1.1" → "192.168.1.1")
+  return raw.replace(/^::ffff:/i, '');
+}
+
 export function createLoginSession(req: Request, userId: string, token: string): void {
   const { browser, os } = parseUA(req.headers['user-agent']);
-  const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.ip ?? 'Unknown';
+  const rawIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.ip;
+  const ip = normalizeIp(rawIp);
   execute(
     `INSERT INTO login_sessions (id, user_id, token_hash, browser, os, ip_address) VALUES (?, ?, ?, ?, ?, ?)`,
     [uuid(), userId, hashToken(token), browser, os, ip],
