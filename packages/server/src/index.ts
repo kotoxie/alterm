@@ -18,6 +18,7 @@ import connectionRoutes from './routes/connections.js';
 import healthRoutes from './routes/health.js';
 import settingsRoutes from './routes/settings.js';
 import profileRoutes from './routes/profile.js';
+import loginSessionsRoutes from './routes/loginSessions.js';
 import usersRoutes from './routes/users.js';
 import auditRoutes from './routes/audit.js';
 import versionRoutes from './routes/version.js';
@@ -72,6 +73,7 @@ async function main() {
   app.use('/api/v1/auth', authRoutes);
   app.use('/api/v1/connections', connectionRoutes);
   app.use('/api/v1/settings', settingsRoutes);
+  app.use('/api/v1/profile/login-sessions', loginSessionsRoutes);
   app.use('/api/v1/profile', profileRoutes);
   app.use('/api/v1/users', usersRoutes);
   app.use('/api/v1/audit', auditRoutes);

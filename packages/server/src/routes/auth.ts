@@ -5,6 +5,7 @@ import { queryOne, execute } from '../db/helpers.js';
 import { signToken, verifyToken } from '../services/jwt.js';
 import { logAudit } from '../services/audit.js';
 import { getSetting } from '../services/settings.js';
+import { createLoginSession } from '../services/loginSession.js';
 
 const router = Router();
 
@@ -76,6 +77,7 @@ router.post('/setup', async (req: Request, res: Response) => {
   );
 
   const token = signToken({ userId: id, username, role: 'admin' });
+  createLoginSession(req, id, token);
 
   logAudit({
     userId: id,
@@ -164,6 +166,7 @@ router.post('/login', async (req: Request, res: Response) => {
 
   const maxSessionMinutes = parseInt(getSetting('security.max_session_minutes') ?? '0', 10);
   const token = signToken({ userId: user.id, username: user.username, role: user.role }, maxSessionMinutes || undefined);
+  createLoginSession(req, user.id, token);
 
   logAudit({
     userId: user.id,
