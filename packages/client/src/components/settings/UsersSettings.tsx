@@ -1,5 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useAuth } from '../../hooks/useAuth';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate } from '../../utils/formatDate';
 
 const AVATAR_COLORS = [
   'bg-blue-500', 'bg-purple-500', 'bg-green-500', 'bg-yellow-500',
@@ -22,9 +24,12 @@ function initials(displayName: string) {
   return displayName.slice(0, 2).toUpperCase();
 }
 
-function formatDate(iso: string | null) {
-  if (!iso) return '—';
-  try { return new Date(iso).toLocaleString(); } catch { return iso; }
+function MfaShieldIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="inline-block">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </svg>
+  );
 }
 
 interface UserRow {
@@ -37,10 +42,12 @@ interface UserRow {
   lockedUntil: string | null;
   lastLoginAt: string | null;
   createdAt: string;
+  mfaEnabled: boolean;
 }
 
 export function UsersSettings() {
   const { token, user: currentUser } = useAuth();
+  const timezone = useTimezone();
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -265,6 +272,7 @@ export function UsersSettings() {
               <th className="pb-2 pr-4 text-text-secondary font-medium">Email</th>
               <th className="pb-2 pr-4 text-text-secondary font-medium">Role</th>
               <th className="pb-2 pr-4 text-text-secondary font-medium">Status</th>
+              <th className="pb-2 pr-4 text-text-secondary font-medium">MFA</th>
               <th className="pb-2 pr-4 text-text-secondary font-medium">Last Login</th>
               <th className="pb-2 text-text-secondary font-medium">Actions</th>
             </tr>
@@ -306,7 +314,16 @@ export function UsersSettings() {
                       <span className="px-2 py-0.5 rounded text-xs bg-green-500/15 text-green-400 font-medium">Active</span>
                     )}
                   </td>
-                  <td className="py-3 pr-4 text-text-secondary text-xs">{formatDate(u.lastLoginAt)}</td>
+                  <td className="py-3 pr-4">
+                    {u.mfaEnabled ? (
+                      <span className="flex items-center gap-1 text-green-400 text-xs font-medium">
+                        <MfaShieldIcon /> Enabled
+                      </span>
+                    ) : (
+                      <span className="text-text-secondary text-xs">—</span>
+                    )}
+                  </td>
+                  <td className="py-3 pr-4 text-text-secondary text-xs">{formatDate(u.lastLoginAt, timezone)}</td>
                   <td className="py-3">
                     <div className="flex items-center gap-2 flex-wrap">
                       {rowMsg && (

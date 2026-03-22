@@ -25,6 +25,7 @@ export interface JwtPayload {
   userId: string;
   username: string;
   role: string;
+  type?: string;
 }
 
 export function signToken(payload: JwtPayload, maxMinutes?: number): string {
@@ -46,4 +47,14 @@ export function signToken(payload: JwtPayload, maxMinutes?: number): string {
 
 export function verifyToken(token: string): JwtPayload {
   return jwt.verify(token, secret) as JwtPayload;
+}
+
+export function signMfaToken(userId: string): string {
+  return jwt.sign({ userId, type: 'mfa' }, secret, { expiresIn: 300 }); // 5 minutes
+}
+
+export function verifyMfaToken(token: string): { userId: string; type: string } {
+  const payload = jwt.verify(token, secret) as { userId: string; type: string };
+  if (payload.type !== 'mfa') throw new Error('Invalid MFA token type');
+  return payload;
 }

@@ -8,11 +8,17 @@ interface User {
   theme: string | null;
 }
 
+interface LoginResult {
+  mfaRequired?: boolean;
+  mfaToken?: string;
+}
+
 interface AuthContextValue {
   user: User | null;
   token: string | null;
   loading: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<LoginResult>;
+  completeMfaLogin: (mfaToken: string, code: string) => Promise<void>;
   logout: () => void;
   setup: (username: string, password: string, displayName: string) => Promise<void>;
   needsSetup: boolean | null;
@@ -59,11 +65,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
   }, [token]);
 
-  const login = useCallback(async (username: string, password: string) => {
-    const { token: t, user: u } = await apiFetch('/auth/login', {
+  const login = useCallback(async (username: string, password: string): Promise<LoginResult> => {
+    const data = await apiFetch('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ username, password }),
-    });
+    }) as { token?: string; user?: User; mfaRequired?: boolean; mfaToken?: string };
+
+    if (data.mfaRequired) {
+      return { mfaRequired: true, mfaToken: data.mfaToken };
+    }
+
+    const t = data.token!;
+    const u = data.user!;
+    localStorage.setItem('alterm-token', t);
+    setToken(t);
+    setUser(u);
+    setNeedsSetup(false);
+    return {};
+  }, []);
+
+  const completeMfaLogin = useCallback(async (mfaToken: string, code: string) => {
+    const { token: t, user: u } = await apiFetch('/auth/login/mfa', {
+      method: 'POST',
+      body: JSON.stringify({ mfaToken, code }),
+    }) as { token: string; user: User };
     localStorage.setItem('alterm-token', t);
     setToken(t);
     setUser(u);
@@ -114,7 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, logout, setup, needsSetup }}>
+    <AuthContext.Provider value={{ user, token, loading, login, completeMfaLogin, logout, setup, needsSetup }}>
       {children}
     </AuthContext.Provider>
   );
