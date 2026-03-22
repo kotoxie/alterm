@@ -198,8 +198,12 @@ export function GlobalSettings() {
     setRecordingRetention(settings['session.recording_retention_days'] ?? '90');
     setMaxConcurrent(settings['session.max_concurrent'] ?? '0');
     setAuditRetention(settings['audit.retention_days'] ?? '90');
-    setSshFontSize(settings['ssh.font_size'] ?? '14');
-    setSshFontFamily(settings['ssh.font_family'] ?? '"Fira Code", monospace');
+    const loadedSize = settings['ssh.font_size'] ?? '14';
+    setSshFontSize(FONT_SIZES.includes(parseInt(loadedSize, 10)) ? loadedSize : '14');
+    const loadedFamily = settings['ssh.font_family'] ?? '';
+    setSshFontFamily(
+      FONT_FAMILIES.find((f) => f.value === loadedFamily)?.value ?? FONT_FAMILIES[0].value,
+    );
     setSshScrollback(settings['ssh.scrollback'] ?? '5000');
     setSshCursorStyle((settings['ssh.cursor_style'] as 'block' | 'bar' | 'underline') ?? 'block');
     setSshCursorBlink(settings['ssh.cursor_blink'] !== 'false');
