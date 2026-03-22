@@ -11,15 +11,27 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'ssh', label: 'SSH' },
 ];
 
+// key = what is stored in DB / state (no special chars)
+// css = actual CSS font-family value used in styles
 const FONT_FAMILIES = [
-  { label: 'Monospace', value: 'monospace' },
-  { label: 'Fira Code', value: '"Fira Code", monospace' },
-  { label: 'Source Code Pro', value: '"Source Code Pro", monospace' },
-  { label: 'Inconsolata', value: '"Inconsolata", monospace' },
-  { label: 'Ubuntu Mono', value: '"Ubuntu Mono", monospace' },
-  { label: 'Roboto Mono', value: '"Roboto Mono", monospace' },
-  { label: 'Hack', value: '"Hack", monospace' },
-];
+  { key: 'monospace',       label: 'Monospace',       css: 'monospace' },
+  { key: 'fira-code',       label: 'Fira Code',       css: '"Fira Code", monospace' },
+  { key: 'source-code-pro', label: 'Source Code Pro', css: '"Source Code Pro", monospace' },
+  { key: 'inconsolata',     label: 'Inconsolata',     css: '"Inconsolata", monospace' },
+  { key: 'ubuntu-mono',     label: 'Ubuntu Mono',     css: '"Ubuntu Mono", monospace' },
+  { key: 'roboto-mono',     label: 'Roboto Mono',     css: '"Roboto Mono", monospace' },
+  { key: 'hack',            label: 'Hack',            css: '"Hack", monospace' },
+] as const;
+
+type FontFamilyKey = (typeof FONT_FAMILIES)[number]['key'];
+
+function fontKeyToCss(key: FontFamilyKey | string): string {
+  return FONT_FAMILIES.find((f) => f.key === key)?.css ?? 'monospace';
+}
+
+function fontCssToKey(css: string): FontFamilyKey {
+  return (FONT_FAMILIES.find((f) => f.css === css || f.key === css)?.key ?? 'monospace') as FontFamilyKey;
+}
 
 const FONT_SIZES = Array.from({ length: 23 }, (_, i) => i + 10); // 10..32
 
@@ -184,7 +196,7 @@ export function GlobalSettings() {
 
   // SSH
   const [sshFontSize, setSshFontSize] = useState('14');
-  const [sshFontFamily, setSshFontFamily] = useState('"Fira Code", monospace');
+  const [sshFontFamilyKey, setSshFontFamilyKey] = useState<FontFamilyKey>('fira-code');
   const [sshScrollback, setSshScrollback] = useState('5000');
   const [sshCursorStyle, setSshCursorStyle] = useState<'block' | 'bar' | 'underline'>('block');
   const [sshCursorBlink, setSshCursorBlink] = useState(true);
@@ -200,10 +212,7 @@ export function GlobalSettings() {
     setAuditRetention(settings['audit.retention_days'] ?? '90');
     const loadedSize = settings['ssh.font_size'] ?? '14';
     setSshFontSize(FONT_SIZES.includes(parseInt(loadedSize, 10)) ? loadedSize : '14');
-    const loadedFamily = settings['ssh.font_family'] ?? '';
-    setSshFontFamily(
-      FONT_FAMILIES.find((f) => f.value === loadedFamily)?.value ?? FONT_FAMILIES[0].value,
-    );
+    setSshFontFamilyKey(fontCssToKey(settings['ssh.font_family'] ?? 'fira-code'));
     setSshScrollback(settings['ssh.scrollback'] ?? '5000');
     setSshCursorStyle((settings['ssh.cursor_style'] as 'block' | 'bar' | 'underline') ?? 'block');
     setSshCursorBlink(settings['ssh.cursor_blink'] !== 'false');
@@ -266,7 +275,7 @@ export function GlobalSettings() {
     try {
       const result = await saveSettings({
         'ssh.font_size': sshFontSize,
-        'ssh.font_family': sshFontFamily,
+        'ssh.font_family': fontKeyToCss(sshFontFamilyKey),
         'ssh.scrollback': sshScrollback,
         'ssh.cursor_style': sshCursorStyle,
         'ssh.cursor_blink': String(sshCursorBlink),
@@ -399,12 +408,15 @@ export function GlobalSettings() {
               <div className="space-y-3">
                 <div>
                   <label className="block text-sm font-medium text-text-secondary mb-1">Font Family</label>
-                  <Select
-                    value={sshFontFamily}
-                    onChange={setSshFontFamily}
-                    options={FONT_FAMILIES.map((f) => ({ value: f.value, label: f.label }))}
-                    className="w-full"
-                  />
+                  <select
+                    value={sshFontFamilyKey}
+                    onChange={(e) => setSshFontFamilyKey(e.target.value as FontFamilyKey)}
+                    className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
+                  >
+                    {FONT_FAMILIES.map((f) => (
+                      <option key={f.key} value={f.key}>{f.label}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-text-secondary mb-1">Font Size</label>
@@ -492,7 +504,7 @@ export function GlobalSettings() {
               Preview
             </h3>
             <SshPreview
-              fontFamily={sshFontFamily}
+              fontFamily={fontKeyToCss(sshFontFamilyKey)}
               fontSize={sshFontSize}
               cursorStyle={sshCursorStyle}
               cursorBlink={sshCursorBlink}
