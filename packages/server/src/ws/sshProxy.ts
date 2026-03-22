@@ -6,6 +6,8 @@ import net from 'net';
 import fs from 'fs';
 import path from 'path';
 import { verifyToken } from '../services/jwt.js';
+import { hashToken, isSessionRevoked } from '../services/loginSession.js';
+import { registerWs, unregisterWs } from './wsRegistry.js';
 import { queryOne, execute } from '../db/helpers.js';
 import { decrypt } from '../services/encryption.js';
 import { logAudit } from '../services/audit.js';
@@ -113,6 +115,11 @@ export function setupSshProxy(server: https.Server): void {
     let userId: string;
     try { userId = verifyToken(token).userId; }
     catch { ws.close(4001, 'Invalid token'); return; }
+
+    const tokenHash = hashToken(token);
+    if (isSessionRevoked(tokenHash)) { ws.close(4001, 'Session revoked'); return; }
+    registerWs(tokenHash, ws);
+    ws.once('close', () => unregisterWs(tokenHash, ws));
 
     // ── Reattach path ────────────────────────────────────────────────────────
     const cached = getSession(clientSessionId);

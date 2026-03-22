@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { authRequired } from '../middleware/auth.js';
-import { queryAll, execute } from '../db/helpers.js';
+import { queryAll, queryOne, execute } from '../db/helpers.js';
+import { closeSessionConnections } from '../ws/wsRegistry.js';
 
 const router = Router();
 router.use(authRequired);
@@ -46,10 +47,20 @@ router.delete('/:id', (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const { id } = req.params;
 
+  // Fetch token_hash before revoking so we can close open WS connections
+  const row = queryOne<{ token_hash: string }>(
+    `SELECT token_hash FROM login_sessions WHERE id = ? AND user_id = ? AND revoked = 0`,
+    [id, userId],
+  );
+
   execute(
     `UPDATE login_sessions SET revoked = 1 WHERE id = ? AND user_id = ?`,
     [id, userId],
   );
+
+  // Immediately close any open WebSocket connections for this session
+  if (row) closeSessionConnections(row.token_hash);
+
   res.json({ ok: true });
 });
 
@@ -58,10 +69,20 @@ router.delete('/', (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const currentHash = req.user!.tokenHash ?? '';
 
+  // Fetch all token_hashes to be revoked before updating
+  const rows = queryAll<{ token_hash: string }>(
+    `SELECT token_hash FROM login_sessions WHERE user_id = ? AND token_hash != ? AND revoked = 0`,
+    [userId, currentHash],
+  );
+
   execute(
     `UPDATE login_sessions SET revoked = 1 WHERE user_id = ? AND token_hash != ? AND revoked = 0`,
     [userId, currentHash],
   );
+
+  // Immediately close all open WebSocket connections for each revoked session
+  for (const row of rows) closeSessionConnections(row.token_hash);
+
   res.json({ ok: true });
 });
 

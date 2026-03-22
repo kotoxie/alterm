@@ -4,6 +4,8 @@ import type { IncomingMessage } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import type https from 'https';
 import { verifyToken } from '../services/jwt.js';
+import { hashToken, isSessionRevoked } from '../services/loginSession.js';
+import { registerWs, unregisterWs } from './wsRegistry.js';
 import { queryOne, execute } from '../db/helpers.js';
 import { decrypt } from '../services/encryption.js';
 import { logAudit } from '../services/audit.js';
@@ -224,6 +226,11 @@ export function setupRdpProxy(server: https.Server): void {
       ws.close(4001, 'Invalid token'); return;
     }
 
+    const tokenHash = hashToken(token);
+    if (isSessionRevoked(tokenHash)) { ws.close(4001, 'Session revoked'); return; }
+    registerWs(tokenHash, ws);
+    ws.once('close', () => unregisterWs(tokenHash, ws));
+
     const conn = queryOne<ConnectionRow>(
       'SELECT * FROM connections WHERE id = ? AND user_id = ?',
       [connectionId, userId],
@@ -360,6 +367,11 @@ export function setupRdpProxy(server: https.Server): void {
       ws.close(4001, 'Invalid token');
       return;
     }
+
+    const tokenHash2 = hashToken(token);
+    if (isSessionRevoked(tokenHash2)) { ws.close(4001, 'Session revoked'); return; }
+    registerWs(tokenHash2, ws);
+    ws.once('close', () => unregisterWs(tokenHash2, ws));
 
     const conn = queryOne<ConnectionRow>(
       'SELECT * FROM connections WHERE id = ? AND user_id = ?',

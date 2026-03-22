@@ -17,6 +17,21 @@ window.fetch = async function patchedFetch(...args: Parameters<typeof fetch>) {
   return res;
 };
 
+// Global WebSocket close intercept — fires 'alterm:unauthorized' when any
+// WebSocket closes with code 4001 (session revoked by server).
+const _OrigWS = window.WebSocket;
+class PatchedWebSocket extends _OrigWS {
+  constructor(...args: ConstructorParameters<typeof WebSocket>) {
+    super(...(args as [string]));
+    this.addEventListener('close', (e: CloseEvent) => {
+      if (e.code === 4001) {
+        window.dispatchEvent(new CustomEvent('alterm:unauthorized'));
+      }
+    });
+  }
+}
+window.WebSocket = PatchedWebSocket as typeof WebSocket;
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BrowserRouter>
