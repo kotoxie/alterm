@@ -136,10 +136,16 @@ function SshPreview({
     );
 
   return (
-    <div
-      className="rounded overflow-hidden flex-1 min-h-0"
-      style={{ background: t.bg, fontFamily, fontSize: `${fontSize}px`, lineHeight: 1.5, padding: '14px 16px' }}
-    >
+    <div className="rounded overflow-hidden flex-1 min-h-0 flex flex-col">
+      {/* Font label bar */}
+      <div
+        style={{ background: t.bg, borderBottom: `1px solid ${t.brightBlack}`, padding: '4px 16px', fontFamily: 'system-ui, sans-serif', fontSize: '11px', color: t.brightBlack }}
+      >
+        {fontFamily} · {fontSize}px
+      </div>
+      <div
+        style={{ background: t.bg, fontFamily, fontSize: `${fontSize}px`, lineHeight: 1.5, padding: '14px 16px', flex: 1 }}
+      >
       {/* Line 1: prompt + command */}
       <div>
         <span style={{ color: t.green }}>user@server</span>
@@ -172,6 +178,7 @@ function SshPreview({
         <span style={{ color: t.fg }}>$ </span>
         {cursorEl}
       </div>
+    </div>
     </div>
   );
 }
