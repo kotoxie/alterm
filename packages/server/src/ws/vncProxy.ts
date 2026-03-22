@@ -3,6 +3,8 @@ import type { Server } from 'https';
 import { WebSocketServer } from 'ws';
 import { queryOne } from '../db/helpers.js';
 import { verifyToken } from '../services/jwt.js';
+import { hashToken, isSessionRevoked } from '../services/loginSession.js';
+import { registerWs, unregisterWs } from './wsRegistry.js';
 
 export function setupVncProxy(server: Server): void {
   const wss = new WebSocketServer({ noServer: true });
@@ -27,6 +29,9 @@ export function setupVncProxy(server: Server): void {
       return;
     }
 
+    const vncTokenHash = hashToken(token);
+    if (isSessionRevoked(vncTokenHash)) { socket.destroy(); return; }
+
     const conn = queryOne<{ host: string; port: number; user_id: string; shared: number }>(
       `SELECT host, port, user_id, shared FROM connections WHERE id = ? AND (user_id = ? OR shared = 1) AND protocol = 'vnc'`,
       [connectionId, userId],
@@ -34,6 +39,8 @@ export function setupVncProxy(server: Server): void {
     if (!conn) { socket.destroy(); return; }
 
     wss.handleUpgrade(req, socket as Parameters<typeof wss.handleUpgrade>[1], head, (ws) => {
+      registerWs(vncTokenHash, ws);
+      ws.once('close', () => unregisterWs(vncTokenHash, ws));
       const tcp = net.connect(conn.port || 5900, conn.host);
 
       tcp.on('connect', () => {
