@@ -233,6 +233,7 @@ function runMigrations() {
         INSERT OR IGNORE INTO settings (key, value) VALUES
           ('ssh.cursor_blink', 'true'),
           ('ssh.theme', 'vscode-dark');
+        UPDATE settings SET value = '"Fira Code", monospace' WHERE key = 'ssh.font_family';
       `,
     },
   ];
