@@ -203,6 +203,14 @@ router.post('/mfa/verify', (req: Request, res: Response) => {
   if (!isValid) { res.status(400).json({ error: 'Invalid verification code' }); return; }
 
   execute('UPDATE users SET mfa_enabled = 1 WHERE id = ?', [userId]);
+
+  logAudit({
+    userId,
+    eventType: 'user.mfa_enabled',
+    target: req.user!.username,
+    ipAddress: req.ip,
+  });
+
   res.json({ ok: true });
 });
 
@@ -222,6 +230,14 @@ router.post('/mfa/disable', async (req: Request, res: Response) => {
   if (!valid) { res.status(400).json({ error: 'Incorrect password' }); return; }
 
   execute('UPDATE users SET mfa_enabled = 0, mfa_secret = NULL WHERE id = ?', [userId]);
+
+  logAudit({
+    userId,
+    eventType: 'user.mfa_disabled',
+    target: req.user!.username,
+    ipAddress: req.ip,
+  });
+
   res.json({ ok: true });
 });
 
