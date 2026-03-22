@@ -26,6 +26,7 @@ interface UserRow {
   locked_until: string | null;
   last_login_at: string | null;
   created_at: string;
+  mfa_enabled: number;
 }
 
 // GET / — list all users
@@ -34,7 +35,7 @@ router.get('/', (req: Request, res: Response) => {
 
   const users = queryAll<UserRow>(
     `SELECT id, username, display_name, email, role, failed_login_count,
-            locked_until, last_login_at, created_at
+            locked_until, last_login_at, created_at, mfa_enabled
      FROM users ORDER BY created_at ASC`,
   );
 
@@ -49,6 +50,7 @@ router.get('/', (req: Request, res: Response) => {
       lockedUntil: u.locked_until,
       lastLoginAt: u.last_login_at,
       createdAt: u.created_at,
+      mfaEnabled: u.mfa_enabled === 1,
     })),
   });
 });

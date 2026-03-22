@@ -1,5 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useAuth } from '../../hooks/useAuth';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate } from '../../utils/formatDate';
 
 const AVATAR_COLORS = [
   'bg-blue-500',
@@ -37,6 +39,11 @@ function relativeTime(dateStr: string): string {
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
   return `${Math.floor(diff / 86_400_000)}d ago`;
+}
+
+interface MfaSetupData {
+  secret: string;
+  qrDataUrl: string;
 }
 
 function getBrowserIcon(browser: string) {
@@ -80,6 +87,7 @@ interface LoginSession {
 
 export function ProfileSettings() {
   const { token, user } = useAuth();
+  const timezone = useTimezone();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
@@ -94,6 +102,15 @@ export function ProfileSettings() {
   const [savingPw, setSavingPw] = useState(false);
 
   const [sessions, setSessions] = useState<LoginSession[]>([]);
+
+  // MFA state
+  const [mfaEnabled, setMfaEnabled] = useState(false);
+  const [mfaSetupData, setMfaSetupData] = useState<MfaSetupData | null>(null);
+  const [mfaVerifyCode, setMfaVerifyCode] = useState('');
+  const [mfaDisableCode, setMfaDisableCode] = useState('');
+  const [showMfaDisable, setShowMfaDisable] = useState(false);
+  const [mfaMsg, setMfaMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [mfaLoading, setMfaLoading] = useState(false);
 
   async function loadSessions() {
     if (!token) return;
@@ -122,6 +139,11 @@ export function ProfileSettings() {
       })
       .catch(() => {});
     loadSessions();
+    // Load MFA status
+    fetch('/api/v1/profile/mfa/status', { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((d: { enabled: boolean }) => setMfaEnabled(d.enabled))
+      .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
@@ -198,6 +220,84 @@ export function ProfileSettings() {
       await loadSessions();
     } catch {
       // ignore
+    }
+  }
+
+  async function handleMfaSetup() {
+    if (!token) return;
+    setMfaLoading(true);
+    setMfaMsg(null);
+    try {
+      const res = await fetch('/api/v1/profile/mfa/setup', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const d = await res.json() as MfaSetupData;
+        setMfaSetupData(d);
+        setMfaVerifyCode('');
+      } else {
+        const d = await res.json() as { error?: string };
+        setMfaMsg({ type: 'error', text: d.error || 'Failed to start MFA setup.' });
+      }
+    } catch {
+      setMfaMsg({ type: 'error', text: 'Network error.' });
+    } finally {
+      setMfaLoading(false);
+    }
+  }
+
+  async function handleMfaVerify(e: FormEvent) {
+    e.preventDefault();
+    if (!token) return;
+    setMfaLoading(true);
+    setMfaMsg(null);
+    try {
+      const res = await fetch('/api/v1/profile/mfa/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ token: mfaVerifyCode }),
+      });
+      if (res.ok) {
+        setMfaEnabled(true);
+        setMfaSetupData(null);
+        setMfaVerifyCode('');
+        setMfaMsg({ type: 'success', text: 'Two-factor authentication enabled.' });
+      } else {
+        const d = await res.json() as { error?: string };
+        setMfaMsg({ type: 'error', text: d.error || 'Invalid code.' });
+      }
+    } catch {
+      setMfaMsg({ type: 'error', text: 'Network error.' });
+    } finally {
+      setMfaLoading(false);
+    }
+  }
+
+  async function handleMfaDisable(e: FormEvent) {
+    e.preventDefault();
+    if (!token) return;
+    setMfaLoading(true);
+    setMfaMsg(null);
+    try {
+      const res = await fetch('/api/v1/profile/mfa/disable', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ token: mfaDisableCode }),
+      });
+      if (res.ok) {
+        setMfaEnabled(false);
+        setShowMfaDisable(false);
+        setMfaDisableCode('');
+        setMfaMsg({ type: 'success', text: 'Two-factor authentication disabled.' });
+      } else {
+        const d = await res.json() as { error?: string };
+        setMfaMsg({ type: 'error', text: d.error || 'Invalid code.' });
+      }
+    } catch {
+      setMfaMsg({ type: 'error', text: 'Network error.' });
+    } finally {
+      setMfaLoading(false);
     }
   }
 
@@ -382,7 +482,7 @@ export function ProfileSettings() {
                 <div className="flex items-center gap-3 mt-0.5">
                   <span className="text-xs text-text-secondary font-mono">{session.ipAddress}</span>
                   <span className="text-xs text-text-secondary">·</span>
-                  <span className="text-xs text-text-secondary">Last active {relativeTime(session.lastUsedAt)}</span>
+                  <span className="text-xs text-text-secondary">Last active {relativeTime(session.lastUsedAt)} · {formatDate(session.lastUsedAt, timezone)}</span>
                 </div>
               </div>
 
@@ -402,6 +502,126 @@ export function ProfileSettings() {
             <p className="text-sm text-text-secondary italic">No active sessions found.</p>
           )}
         </div>
+      </section>
+
+      <hr className="border-border" />
+
+      {/* Two-Factor Authentication */}
+      <section>
+        <h2 className="text-base font-semibold text-text-primary mb-4">Two-Factor Authentication</h2>
+
+        {mfaMsg && (
+          <p className={`text-sm mb-3 ${mfaMsg.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+            {mfaMsg.text}
+          </p>
+        )}
+
+        {mfaEnabled ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded-full text-xs bg-green-500/15 text-green-400 font-medium">
+                Two-Factor Authentication is enabled
+              </span>
+            </div>
+            {!showMfaDisable ? (
+              <button
+                onClick={() => { setShowMfaDisable(true); setMfaMsg(null); }}
+                className="px-4 py-2 border border-red-500/40 text-red-400 rounded hover:bg-red-500/10 text-sm font-medium"
+              >
+                Disable Two-Factor Authentication
+              </button>
+            ) : (
+              <form onSubmit={handleMfaDisable} className="space-y-3">
+                <p className="text-sm text-text-secondary">Enter your authenticator code to confirm:</p>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={mfaDisableCode}
+                  onChange={(e) => setMfaDisableCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="000000"
+                  autoFocus
+                  className="w-40 px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm text-center tracking-widest"
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="submit"
+                    disabled={mfaLoading || mfaDisableCode.length < 6}
+                    className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 disabled:opacity-50 text-sm font-medium"
+                  >
+                    {mfaLoading ? 'Disabling...' : 'Confirm Disable'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setShowMfaDisable(false); setMfaDisableCode(''); }}
+                    className="px-4 py-2 border border-border rounded text-text-secondary hover:bg-surface-hover text-sm"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <p className="text-sm text-text-secondary">
+              Add an extra layer of security using a time-based one-time password (TOTP) app like Google Authenticator or Authy.
+            </p>
+            {!mfaSetupData ? (
+              <button
+                onClick={handleMfaSetup}
+                disabled={mfaLoading}
+                className="px-4 py-2 bg-accent text-white rounded hover:bg-accent-hover disabled:opacity-50 text-sm font-medium"
+              >
+                {mfaLoading ? 'Loading...' : 'Enable Two-Factor Authentication'}
+              </button>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <p className="text-sm font-medium text-text-primary mb-2">1. Scan this QR code with your authenticator app:</p>
+                  <img src={mfaSetupData.qrDataUrl} alt="MFA QR Code" className="rounded border border-border" style={{ width: 200, height: 200 }} />
+                </div>
+                <div>
+                  <p className="text-sm text-text-secondary mb-1">Or enter this key manually:</p>
+                  <code className="text-xs bg-surface border border-border rounded px-2 py-1 font-mono text-text-primary break-all">
+                    {mfaSetupData.secret}
+                  </code>
+                </div>
+                <form onSubmit={handleMfaVerify} className="space-y-3">
+                  <div>
+                    <p className="text-sm font-medium text-text-primary mb-2">2. Enter the 6-digit code to verify:</p>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={mfaVerifyCode}
+                      onChange={(e) => setMfaVerifyCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      placeholder="000000"
+                      autoFocus
+                      className="w-40 px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm text-center tracking-widest"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      disabled={mfaLoading || mfaVerifyCode.length < 6}
+                      className="px-4 py-2 bg-accent text-white rounded hover:bg-accent-hover disabled:opacity-50 text-sm font-medium"
+                    >
+                      {mfaLoading ? 'Verifying...' : 'Verify & Enable'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setMfaSetupData(null); setMfaVerifyCode(''); setMfaMsg(null); }}
+                      className="px-4 py-2 border border-border rounded text-text-secondary hover:bg-surface-hover text-sm"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+          </div>
+        )}
       </section>
     </div>
   );

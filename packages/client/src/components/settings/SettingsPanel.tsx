@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { ProfileSettings } from './ProfileSettings';
+import { SshPrefsSettings } from './SshPrefsSettings';
 import { SecuritySettings } from './SecuritySettings';
 import { UsersSettings } from './UsersSettings';
 import { AuditTrail } from './AuditTrail';
@@ -13,7 +14,7 @@ interface SettingsPanelProps {
   initialSection?: string;
 }
 
-type Section = 'profile' | 'security' | 'users' | 'audit' | 'global' | 'sessions';
+type Section = 'profile' | 'ssh-prefs' | 'security' | 'users' | 'audit' | 'global' | 'sessions';
 
 interface NavItem {
   id: Section;
@@ -27,6 +28,15 @@ function UserIcon() {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
       <circle cx="12" cy="7" r="4" />
+    </svg>
+  );
+}
+
+function TerminalIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <polyline points="4 17 10 11 4 5" />
+      <line x1="12" y1="19" x2="20" y2="19" />
     </svg>
   );
 }
@@ -88,28 +98,56 @@ function HistoryIcon() {
   );
 }
 
-const NAV_ITEMS: NavItem[] = [
+function IPIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="10" />
+      <line x1="2" y1="12" x2="22" y2="12" />
+      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+    </svg>
+  );
+}
+
+const MY_SETTINGS_NAV: NavItem[] = [
   { id: 'profile', label: 'Profile', icon: <UserIcon /> },
-  { id: 'security', label: 'Login & Security', icon: <ShieldIcon />, adminOnly: true },
-  { id: 'users', label: 'Users', icon: <UsersIcon />, adminOnly: true },
-  { id: 'audit', label: 'Audit Trail', icon: <ListIcon />, adminOnly: true },
-  { id: 'global', label: 'Global Settings', icon: <SlidersIcon />, adminOnly: true },
-  { id: 'sessions', label: 'Sessions', icon: <HistoryIcon />, adminOnly: true },
+  { id: 'ssh-prefs', label: 'SSH Terminal', icon: <TerminalIcon /> },
 ];
+
+const ADMIN_NAV: NavItem[] = [
+  { id: 'global', label: 'General', icon: <SlidersIcon />, adminOnly: true },
+  { id: 'security', label: 'Security', icon: <ShieldIcon />, adminOnly: true },
+  { id: 'sessions', label: 'Sessions', icon: <HistoryIcon />, adminOnly: true },
+  { id: 'audit', label: 'Audit', icon: <ListIcon />, adminOnly: true },
+  { id: 'users', label: 'Users', icon: <UsersIcon />, adminOnly: true },
+];
+
+// Combine for validation
+const ALL_NAV: NavItem[] = [...MY_SETTINGS_NAV, ...ADMIN_NAV];
+
+// Legacy IP rules section reference via the global section
+const NAV_LABEL_MAP: Record<Section, string> = {
+  'profile': 'Profile',
+  'ssh-prefs': 'SSH Terminal',
+  'security': 'Security',
+  'users': 'Users',
+  'audit': 'Audit Trail',
+  'global': 'General',
+  'sessions': 'Sessions',
+};
 
 export function SettingsPanel({ isOpen, onClose, initialSection }: SettingsPanelProps) {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const [expanded, setExpanded] = useState(false);
   const [activeSection, setActiveSection] = useState<Section>(() => {
-    if (initialSection && NAV_ITEMS.some((n) => n.id === initialSection)) {
+    if (initialSection && ALL_NAV.some((n) => n.id === initialSection)) {
       return initialSection as Section;
     }
     return 'profile';
   });
 
   useEffect(() => {
-    if (initialSection && NAV_ITEMS.some((n) => n.id === initialSection)) {
+    if (initialSection && ALL_NAV.some((n) => n.id === initialSection)) {
       setActiveSection(initialSection as Section);
     }
   }, [initialSection]);
@@ -124,7 +162,22 @@ export function SettingsPanel({ isOpen, onClose, initialSection }: SettingsPanel
 
   if (!isOpen) return null;
 
-  const visibleNav = NAV_ITEMS.filter((n) => !n.adminOnly || isAdmin);
+  function NavButton({ item }: { item: NavItem }) {
+    return (
+      <button
+        key={item.id}
+        onClick={() => setActiveSection(item.id)}
+        className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors text-left ${
+          activeSection === item.id
+            ? 'bg-accent/10 text-accent font-medium'
+            : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+        }`}
+      >
+        <span className="shrink-0">{item.icon}</span>
+        <span>{item.label}</span>
+      </button>
+    );
+  }
 
   return (
     <div className="fixed inset-x-0 top-12 bottom-0 z-40 flex">
@@ -142,20 +195,25 @@ export function SettingsPanel({ isOpen, onClose, initialSection }: SettingsPanel
             <span className="text-sm font-semibold text-text-primary">Settings</span>
           </div>
           <nav className="flex-1 py-2 overflow-y-auto">
-            {visibleNav.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => setActiveSection(item.id)}
-                className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors text-left ${
-                  activeSection === item.id
-                    ? 'bg-accent/10 text-accent font-medium'
-                    : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
-                }`}
-              >
-                <span className="shrink-0">{item.icon}</span>
-                <span>{item.label}</span>
-              </button>
+            {/* My Settings section */}
+            <div className="px-4 pt-2 pb-1">
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-text-secondary/60">My Settings</span>
+            </div>
+            {MY_SETTINGS_NAV.map((item) => (
+              <NavButton key={item.id} item={item} />
             ))}
+
+            {/* Administration section — admin only */}
+            {isAdmin && (
+              <>
+                <div className="px-4 pt-4 pb-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-text-secondary/60">Administration</span>
+                </div>
+                {ADMIN_NAV.map((item) => (
+                  <NavButton key={item.id} item={item} />
+                ))}
+              </>
+            )}
           </nav>
         </div>
 
@@ -164,7 +222,7 @@ export function SettingsPanel({ isOpen, onClose, initialSection }: SettingsPanel
           {/* Header with close button */}
           <div className="h-12 flex items-center justify-between px-6 border-b border-border shrink-0">
             <span className="text-sm font-semibold text-text-primary">
-              {visibleNav.find((n) => n.id === activeSection)?.label}
+              {NAV_LABEL_MAP[activeSection]}
             </span>
             <div className="flex items-center gap-1">
               <button
@@ -198,6 +256,7 @@ export function SettingsPanel({ isOpen, onClose, initialSection }: SettingsPanel
           {/* Content */}
           <div className="flex-1 overflow-y-auto p-6">
             {activeSection === 'profile' && <ProfileSettings />}
+            {activeSection === 'ssh-prefs' && <SshPrefsSettings />}
             {activeSection === 'security' && isAdmin && <SecuritySettings />}
             {activeSection === 'users' && isAdmin && <UsersSettings />}
             {activeSection === 'audit' && isAdmin && <AuditTrail />}

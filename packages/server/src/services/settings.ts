@@ -3,6 +3,7 @@ import { queryAll, execute } from '../db/helpers.js';
 const DEFAULTS: Record<string, string> = {
   'app.name': 'Alterm',
   'app.logo': '',
+  'app.timezone': 'UTC',
   'security.session_timeout_minutes': '0',
   'security.max_failed_logins': '5',
   'security.lockout_minutes': '30',

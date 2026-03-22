@@ -1,39 +1,56 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useSettings, invalidateSettings } from '../../hooks/useSettings';
-import { SSH_THEMES, THEME_NAMES, DEFAULT_THEME, type SshThemeName } from '../../lib/sshThemes';
 
-type Tab = 'general' | 'sessions' | 'ssh';
+type Tab = 'general' | 'sessions';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'general', label: 'General' },
   { id: 'sessions', label: 'Sessions' },
-  { id: 'ssh', label: 'SSH' },
 ];
 
-// key = what is stored in DB / state (no special chars)
-// css = actual CSS font-family value used in styles
-const FONT_FAMILIES = [
-  { key: 'monospace',       label: 'Monospace',       css: 'monospace' },
-  { key: 'fira-code',       label: 'Fira Code',       css: '"Fira Code", monospace' },
-  { key: 'source-code-pro', label: 'Source Code Pro', css: '"Source Code Pro", monospace' },
-  { key: 'inconsolata',     label: 'Inconsolata',     css: '"Inconsolata", monospace' },
-  { key: 'ubuntu-mono',     label: 'Ubuntu Mono',     css: '"Ubuntu Mono", monospace' },
-  { key: 'roboto-mono',     label: 'Roboto Mono',     css: '"Roboto Mono", monospace' },
-  { key: 'hack',            label: 'Hack',            css: '"Hack", monospace' },
-] as const;
-
-type FontFamilyKey = (typeof FONT_FAMILIES)[number]['key'];
-
-function fontKeyToCss(key: FontFamilyKey | string): string {
-  return FONT_FAMILIES.find((f) => f.key === key)?.css ?? 'monospace';
-}
-
-function fontCssToKey(css: string): FontFamilyKey {
-  return (FONT_FAMILIES.find((f) => f.css === css || f.key === css)?.key ?? 'monospace') as FontFamilyKey;
-}
-
-const FONT_SIZES = Array.from({ length: 23 }, (_, i) => i + 10); // 10..32
+const TIMEZONES = [
+  'UTC',
+  'America/New_York',
+  'America/Chicago',
+  'America/Denver',
+  'America/Los_Angeles',
+  'America/Toronto',
+  'America/Vancouver',
+  'America/Sao_Paulo',
+  'America/Argentina/Buenos_Aires',
+  'Europe/London',
+  'Europe/Paris',
+  'Europe/Berlin',
+  'Europe/Madrid',
+  'Europe/Rome',
+  'Europe/Amsterdam',
+  'Europe/Stockholm',
+  'Europe/Warsaw',
+  'Europe/Helsinki',
+  'Europe/Athens',
+  'Europe/Istanbul',
+  'Europe/Moscow',
+  'Asia/Dubai',
+  'Asia/Karachi',
+  'Asia/Kolkata',
+  'Asia/Dhaka',
+  'Asia/Bangkok',
+  'Asia/Jakarta',
+  'Asia/Singapore',
+  'Asia/Shanghai',
+  'Asia/Tokyo',
+  'Asia/Seoul',
+  'Asia/Manila',
+  'Australia/Sydney',
+  'Australia/Melbourne',
+  'Australia/Perth',
+  'Pacific/Auckland',
+  'Pacific/Honolulu',
+  'Africa/Cairo',
+  'Africa/Lagos',
+  'Africa/Johannesburg',
+];
 
 function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -53,136 +70,6 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
   );
 }
 
-function Select<T extends string>({
-  value,
-  onChange,
-  options,
-  className = '',
-}: {
-  value: T;
-  onChange: (v: T) => void;
-  options: { value: T; label: string }[];
-  className?: string;
-}) {
-  return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value as T)}
-      className={`px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm ${className}`}
-    >
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </select>
-  );
-}
-
-function SshPreview({
-  fontFamily,
-  fontSize,
-  cursorStyle,
-  cursorBlink,
-  theme,
-}: {
-  fontFamily: string;
-  fontSize: string;
-  cursorStyle: 'block' | 'bar' | 'underline';
-  cursorBlink: boolean;
-  theme: SshThemeName;
-}) {
-  const t = SSH_THEMES[theme];
-  const [blink, setBlink] = useState(true);
-
-  useEffect(() => {
-    if (!cursorBlink) { setBlink(true); return; }
-    const interval = setInterval(() => setBlink((v) => !v), 530);
-    return () => clearInterval(interval);
-  }, [cursorBlink]);
-
-  const cursorEl =
-    cursorStyle === 'block' ? (
-      <span
-        style={{
-          display: 'inline-block',
-          width: '0.6em',
-          height: '1.2em',
-          background: blink ? t.cursor : 'transparent',
-          verticalAlign: 'text-bottom',
-        }}
-      />
-    ) : cursorStyle === 'underline' ? (
-      <span
-        style={{
-          display: 'inline-block',
-          width: '0.6em',
-          height: '2px',
-          background: blink ? t.cursor : 'transparent',
-          verticalAlign: 'baseline',
-          marginBottom: '-1px',
-        }}
-      />
-    ) : (
-      <span
-        style={{
-          display: 'inline-block',
-          width: '2px',
-          height: '1.2em',
-          background: blink ? t.cursor : 'transparent',
-          verticalAlign: 'text-bottom',
-        }}
-      />
-    );
-
-  return (
-    <div className="rounded overflow-hidden flex-1 min-h-0 flex flex-col">
-      {/* Font label bar */}
-      <div
-        style={{ background: t.bg, borderBottom: `1px solid ${t.brightBlack}`, padding: '4px 16px', fontFamily: 'system-ui, sans-serif', fontSize: '11px', color: t.brightBlack }}
-      >
-        {fontFamily} · {fontSize}px
-      </div>
-      <div
-        style={{ background: t.bg, fontFamily, fontSize: `${fontSize}px`, lineHeight: 1.5, padding: '14px 16px', flex: 1 }}
-      >
-      {/* Line 1: prompt + command */}
-      <div>
-        <span style={{ color: t.green }}>user@server</span>
-        <span style={{ color: t.fg }}>:</span>
-        <span style={{ color: t.blue }}>~</span>
-        <span style={{ color: t.fg }}>$ </span>
-        <span style={{ color: t.fg }}>ls -la /var/log</span>
-      </div>
-      {/* Line 2: output */}
-      <div>
-        <span style={{ color: t.blue }}>drwxr-xr-x</span>
-        <span style={{ color: t.fg }}> 2 root root </span>
-        <span style={{ color: t.yellow }}>4096</span>
-        <span style={{ color: t.fg }}> Mar 22 10:41 </span>
-        <span style={{ color: t.cyan }}>syslog</span>
-      </div>
-      {/* Line 3: output */}
-      <div>
-        <span style={{ color: t.blue }}>-rw-r--r--</span>
-        <span style={{ color: t.fg }}> 1 root root </span>
-        <span style={{ color: t.yellow }}>18234</span>
-        <span style={{ color: t.fg }}> Mar 22 09:15 </span>
-        <span style={{ color: t.fg }}>kern.log</span>
-      </div>
-      {/* Line 4: new prompt with cursor */}
-      <div>
-        <span style={{ color: t.green }}>user@server</span>
-        <span style={{ color: t.fg }}>:</span>
-        <span style={{ color: t.blue }}>~</span>
-        <span style={{ color: t.fg }}>$ </span>
-        {cursorEl}
-      </div>
-    </div>
-    </div>
-  );
-}
-
 export function GlobalSettings() {
   const { token } = useAuth();
   const { settings, refresh } = useSettings();
@@ -190,6 +77,7 @@ export function GlobalSettings() {
 
   // General
   const [appName, setAppName] = useState('Alterm');
+  const [timezone, setTimezone] = useState('UTC');
   const [generalMsg, setGeneralMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [savingGeneral, setSavingGeneral] = useState(false);
 
@@ -201,29 +89,13 @@ export function GlobalSettings() {
   const [sessionMsg, setSessionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [savingSession, setSavingSession] = useState(false);
 
-  // SSH
-  const [sshFontSize, setSshFontSize] = useState('14');
-  const [sshFontFamilyKey, setSshFontFamilyKey] = useState<FontFamilyKey>('fira-code');
-  const [sshScrollback, setSshScrollback] = useState('5000');
-  const [sshCursorStyle, setSshCursorStyle] = useState<'block' | 'bar' | 'underline'>('block');
-  const [sshCursorBlink, setSshCursorBlink] = useState(true);
-  const [sshTheme, setSshTheme] = useState<SshThemeName>(DEFAULT_THEME);
-  const [sshMsg, setSshMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [savingSsh, setSavingSsh] = useState(false);
-
   useEffect(() => {
     setAppName(settings['app.name'] ?? 'Alterm');
+    setTimezone(settings['app.timezone'] ?? 'UTC');
     setRecordingEnabled(settings['session.recording_enabled'] === 'true');
     setRecordingRetention(settings['session.recording_retention_days'] ?? '90');
     setMaxConcurrent(settings['session.max_concurrent'] ?? '0');
     setAuditRetention(settings['audit.retention_days'] ?? '90');
-    const loadedSize = settings['ssh.font_size'] ?? '14';
-    setSshFontSize(FONT_SIZES.includes(parseInt(loadedSize, 10)) ? loadedSize : '14');
-    setSshFontFamilyKey(fontCssToKey(settings['ssh.font_family'] ?? 'fira-code'));
-    setSshScrollback(settings['ssh.scrollback'] ?? '5000');
-    setSshCursorStyle((settings['ssh.cursor_style'] as 'block' | 'bar' | 'underline') ?? 'block');
-    setSshCursorBlink(settings['ssh.cursor_blink'] !== 'false');
-    setSshTheme((settings['ssh.theme'] as SshThemeName) ?? DEFAULT_THEME);
   }, [settings]);
 
   async function saveSettings(updates: Record<string, string>): Promise<{ ok: boolean; error?: string }> {
@@ -238,7 +110,7 @@ export function GlobalSettings() {
       invalidateSettings();
       return { ok: true };
     }
-    const d = await res.json();
+    const d = await res.json() as { error?: string };
     return { ok: false, error: d.error || 'Failed to save.' };
   }
 
@@ -247,7 +119,7 @@ export function GlobalSettings() {
     setSavingGeneral(true);
     setGeneralMsg(null);
     try {
-      const result = await saveSettings({ 'app.name': appName });
+      const result = await saveSettings({ 'app.name': appName, 'app.timezone': timezone });
       setGeneralMsg(result.ok ? { type: 'success', text: 'Saved.' } : { type: 'error', text: result.error! });
     } catch {
       setGeneralMsg({ type: 'error', text: 'Network error.' });
@@ -272,31 +144,6 @@ export function GlobalSettings() {
       setSessionMsg({ type: 'error', text: 'Network error.' });
     } finally {
       setSavingSession(false);
-    }
-  }
-
-  async function handleSshSave(e: FormEvent) {
-    e.preventDefault();
-    setSavingSsh(true);
-    setSshMsg(null);
-    try {
-      const result = await saveSettings({
-        'ssh.font_size': sshFontSize,
-        'ssh.font_family': fontKeyToCss(sshFontFamilyKey),
-        'ssh.scrollback': sshScrollback,
-        'ssh.cursor_style': sshCursorStyle,
-        'ssh.cursor_blink': String(sshCursorBlink),
-        'ssh.theme': sshTheme,
-      });
-      setSshMsg(
-        result.ok
-          ? { type: 'success', text: 'Saved. New sessions will use these settings.' }
-          : { type: 'error', text: result.error! },
-      );
-    } catch {
-      setSshMsg({ type: 'error', text: 'Network error.' });
-    } finally {
-      setSavingSsh(false);
     }
   }
 
@@ -330,6 +177,19 @@ export function GlobalSettings() {
               onChange={(e) => setAppName(e.target.value)}
               className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
             />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-1">Timezone</label>
+            <select
+              value={timezone}
+              onChange={(e) => setTimezone(e.target.value)}
+              className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
+            >
+              {TIMEZONES.map((tz) => (
+                <option key={tz} value={tz}>{tz}</option>
+              ))}
+            </select>
+            <p className="text-xs text-text-secondary mt-1">Used to display timestamps across the app.</p>
           </div>
           <div>
             <label className="block text-sm font-medium text-text-secondary mb-1">App Logo</label>
@@ -401,123 +261,6 @@ export function GlobalSettings() {
           >
             {savingSession ? 'Saving...' : 'Save'}
           </button>
-        </form>
-      )}
-
-      {/* SSH — two-column: controls | preview */}
-      {activeTab === 'ssh' && (
-        <form onSubmit={handleSshSave} className="flex gap-8 flex-1 min-h-0">
-          {/* Left: controls */}
-          <div className="flex flex-col gap-5 w-72 shrink-0 overflow-y-auto pr-2">
-            {/* Font */}
-            <section>
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-text-secondary mb-3">Font</h3>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-sm font-medium text-text-secondary mb-1">Font Family</label>
-                  <select
-                    value={sshFontFamilyKey}
-                    onChange={(e) => setSshFontFamilyKey(e.target.value as FontFamilyKey)}
-                    className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
-                  >
-                    {FONT_FAMILIES.map((f) => (
-                      <option key={f.key} value={f.key}>{f.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-text-secondary mb-1">Font Size</label>
-                  <Select
-                    value={sshFontSize}
-                    onChange={setSshFontSize}
-                    options={FONT_SIZES.map((s) => ({ value: String(s), label: `${s}px` }))}
-                    className="w-full"
-                  />
-                </div>
-              </div>
-            </section>
-
-            {/* Cursor */}
-            <section>
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-text-secondary mb-3">Cursor</h3>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-sm font-medium text-text-secondary mb-1">Cursor Style</label>
-                  <Select
-                    value={sshCursorStyle}
-                    onChange={setSshCursorStyle}
-                    options={[
-                      { value: 'block', label: 'Block' },
-                      { value: 'underline', label: 'Underline' },
-                      { value: 'bar', label: 'Bar' },
-                    ]}
-                    className="w-full"
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-text-secondary">Cursor Blinking</span>
-                  <Toggle value={sshCursorBlink} onChange={setSshCursorBlink} />
-                </div>
-              </div>
-            </section>
-
-            {/* Theme */}
-            <section>
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-text-secondary mb-3">Theme</h3>
-              <Select
-                value={sshTheme}
-                onChange={setSshTheme}
-                options={THEME_NAMES.map((t) => ({ value: t.id, label: t.name }))}
-                className="w-full"
-              />
-            </section>
-
-            {/* Scrollback */}
-            <section>
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-text-secondary mb-3">Advanced</h3>
-              <div>
-                <label className="block text-sm font-medium text-text-secondary mb-1">Scrollback Lines</label>
-                <input
-                  type="number"
-                  min="100"
-                  max="100000"
-                  value={sshScrollback}
-                  onChange={(e) => setSshScrollback(e.target.value)}
-                  className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
-                />
-              </div>
-            </section>
-
-            {/* Save */}
-            <div>
-              {sshMsg && (
-                <p className={`text-sm mb-2 ${sshMsg.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
-                  {sshMsg.text}
-                </p>
-              )}
-              <button
-                type="submit"
-                disabled={savingSsh}
-                className="px-4 py-2 bg-accent text-white rounded hover:bg-accent-hover disabled:opacity-50 text-sm font-medium w-full"
-              >
-                {savingSsh ? 'Saving...' : 'Save'}
-              </button>
-            </div>
-          </div>
-
-          {/* Right: live preview */}
-          <div className="flex-1 flex flex-col min-h-0">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-text-secondary mb-3 shrink-0">
-              Preview
-            </h3>
-            <SshPreview
-              fontFamily={fontKeyToCss(sshFontFamilyKey)}
-              fontSize={sshFontSize}
-              cursorStyle={sshCursorStyle}
-              cursorBlink={sshCursorBlink}
-              theme={sshTheme}
-            />
-          </div>
         </form>
       )}
     </div>

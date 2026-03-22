@@ -254,6 +254,20 @@ function runMigrations() {
         CREATE INDEX idx_login_sessions_token_hash ON login_sessions(token_hash);
       `,
     },
+    {
+      version: 8,
+      sql: `
+        INSERT OR IGNORE INTO settings (key, value) VALUES ('app.timezone', 'UTC');
+        ALTER TABLE users ADD COLUMN ssh_prefs_json TEXT;
+      `,
+    },
+    {
+      version: 9,
+      sql: `
+        ALTER TABLE users ADD COLUMN mfa_secret TEXT;
+        ALTER TABLE users ADD COLUMN mfa_enabled INTEGER NOT NULL DEFAULT 0;
+      `,
+    },
   ];
 
   for (const migration of migrations) {
