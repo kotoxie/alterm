@@ -227,6 +227,14 @@ function runMigrations() {
         CREATE INDEX IF NOT EXISTS idx_connections_user ON connections(user_id);
       `,
     },
+    {
+      version: 6,
+      sql: `
+        INSERT OR IGNORE INTO settings (key, value) VALUES
+          ('ssh.cursor_blink', 'true'),
+          ('ssh.theme', 'vscode-dark');
+      `,
+    },
   ];
 
   for (const migration of migrations) {
