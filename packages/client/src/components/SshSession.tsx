@@ -5,6 +5,7 @@ import '@xterm/xterm/css/xterm.css';
 import type { Tab } from '../pages/MainLayout';
 import { useAuth } from '../hooks/useAuth';
 import { useSettings } from '../hooks/useSettings';
+import { SSH_THEMES, DEFAULT_THEME, type SshThemeName } from '../lib/sshThemes';
 
 interface SshSessionProps {
   tab: Tab;
@@ -33,9 +34,11 @@ export function SshSession({ tab, isActive, onStatusChange, onClose }: SshSessio
 
   // Capture SSH settings as primitives so useEffect doesn't re-run on object identity change
   const sshFontSize = parseInt(settings['ssh.font_size'] ?? '14', 10);
-  const sshFontFamily = settings['ssh.font_family'] ?? '"Cascadia Code", "Fira Code", Menlo, Monaco, "Courier New", monospace';
+  const sshFontFamily = settings['ssh.font_family'] ?? '"Fira Code", monospace';
   const sshScrollback = parseInt(settings['ssh.scrollback'] ?? '5000', 10);
   const sshCursorStyle = (settings['ssh.cursor_style'] ?? 'block') as 'block' | 'bar' | 'underline';
+  const sshCursorBlink = settings['ssh.cursor_blink'] !== 'false';
+  const sshTheme = SSH_THEMES[(settings['ssh.theme'] as SshThemeName) ?? DEFAULT_THEME] ?? SSH_THEMES[DEFAULT_THEME];
 
   const handleReconnect = useCallback(() => {
     setDisconnected(false);
@@ -65,20 +68,31 @@ export function SshSession({ tab, isActive, onStatusChange, onClose }: SshSessio
     let cancelled = false;
 
     const term = new Terminal({
-      cursorBlink: true,
+      cursorBlink: sshCursorBlink,
       fontSize: sshFontSize,
       fontFamily: sshFontFamily,
       cursorStyle: sshCursorStyle,
       theme: {
-        background: '#0d0d0d',
-        foreground: '#d4d4d4',
-        cursor: '#a6a6a6',
-        selectionBackground: '#264f78',
-        black: '#000000', red: '#cd3131', green: '#0dbc79', yellow: '#e5e510',
-        blue: '#2472c8', magenta: '#bc3fbc', cyan: '#11a8cd', white: '#e5e5e5',
-        brightBlack: '#666666', brightRed: '#f14c4c', brightGreen: '#23d18b',
-        brightYellow: '#f5f543', brightBlue: '#3b8eea', brightMagenta: '#d670d6',
-        brightCyan: '#29b8db', brightWhite: '#e5e5e5',
+        background: sshTheme.bg,
+        foreground: sshTheme.fg,
+        cursor: sshTheme.cursor,
+        selectionBackground: sshTheme.selection,
+        black: sshTheme.black,
+        red: sshTheme.red,
+        green: sshTheme.green,
+        yellow: sshTheme.yellow,
+        blue: sshTheme.blue,
+        magenta: sshTheme.magenta,
+        cyan: sshTheme.cyan,
+        white: sshTheme.white,
+        brightBlack: sshTheme.brightBlack,
+        brightRed: sshTheme.brightRed,
+        brightGreen: sshTheme.brightGreen,
+        brightYellow: sshTheme.brightYellow,
+        brightBlue: sshTheme.brightBlue,
+        brightMagenta: sshTheme.brightMagenta,
+        brightCyan: sshTheme.brightCyan,
+        brightWhite: sshTheme.brightWhite,
       },
       allowTransparency: false,
       scrollback: sshScrollback,
