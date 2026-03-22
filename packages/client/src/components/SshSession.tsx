@@ -147,7 +147,7 @@ export function SshSession({ tab, isActive, onStatusChange, onClose }: SshSessio
     const handleClose = (reason: string) => {
       if (!cancelled) { setDisconnected(true); setDisconnectMessage(reason); onStatusChange(tab.id, 'disconnected'); }
     };
-    ws.onclose = (e) => handleClose(e.reason || 'Disconnected');
+    ws.onclose = (e) => { if (e.code === 4001) return; handleClose(e.reason || 'Disconnected'); };
     ws.onerror = () => handleClose('Connection error');
 
     const dataDispose = term.onData((data) => {

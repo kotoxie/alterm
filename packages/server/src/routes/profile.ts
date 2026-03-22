@@ -159,6 +159,13 @@ router.put('/ssh-prefs', (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+// DELETE /ssh-prefs — reset user's SSH prefs to global defaults
+router.delete('/ssh-prefs', (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  execute('UPDATE users SET ssh_prefs_json = NULL WHERE id = ?', [userId]);
+  res.json({ ok: true });
+});
+
 // GET /mfa/status — return MFA enabled state
 router.get('/mfa/status', (req: Request, res: Response) => {
   const userId = req.user!.userId;

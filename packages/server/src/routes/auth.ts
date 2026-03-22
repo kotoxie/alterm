@@ -6,6 +6,7 @@ import { signToken, verifyToken, signMfaToken, verifyMfaToken } from '../service
 import { logAudit } from '../services/audit.js';
 import { getSetting } from '../services/settings.js';
 import { createLoginSession } from '../services/loginSession.js';
+import { authRequired } from '../middleware/auth.js';
 import { authenticator } from 'otplib';
 
 const router = Router();
@@ -253,6 +254,21 @@ router.post('/login/mfa', async (req: Request, res: Response) => {
       theme: user.theme,
     },
   });
+});
+
+// Logout — revoke the current session token
+router.post('/logout', authRequired, (req: Request, res: Response) => {
+  const tokenHash = req.user!.tokenHash;
+  if (tokenHash) {
+    execute('UPDATE login_sessions SET revoked = 1 WHERE token_hash = ?', [tokenHash]);
+  }
+  logAudit({
+    userId: req.user!.userId,
+    eventType: 'auth.logout',
+    target: req.user!.username,
+    ipAddress: req.ip,
+  });
+  res.json({ ok: true });
 });
 
 // Get current user

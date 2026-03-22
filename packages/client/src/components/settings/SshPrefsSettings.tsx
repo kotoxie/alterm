@@ -326,6 +326,42 @@ export function SshPrefsSettings() {
             >
               {saving ? 'Saving...' : 'Save'}
             </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={async () => {
+                if (!token) return;
+                setSaving(true);
+                setMsg(null);
+                try {
+                  await fetch('/api/v1/profile/ssh-prefs', {
+                    method: 'DELETE',
+                    headers: { Authorization: `Bearer ${token}` },
+                  });
+                  // Reload defaults from server
+                  const res = await fetch('/api/v1/profile/ssh-prefs', {
+                    headers: { Authorization: `Bearer ${token}` },
+                  });
+                  if (res.ok) {
+                    const d = await res.json() as Record<string, string | boolean>;
+                    setFontFamilyKey(fontCssToKey(String(d.fontFamily ?? 'monospace')));
+                    setFontSize(String(d.fontSize ?? '14'));
+                    setCursorStyle((d.cursorStyle as 'block' | 'bar' | 'underline') ?? 'block');
+                    setCursorBlink(d.cursorBlink === true || d.cursorBlink === 'true');
+                    setTheme((d.theme as SshThemeName) ?? DEFAULT_THEME);
+                    setScrollback(String(d.scrollback ?? '5000'));
+                  }
+                  setMsg({ type: 'success', text: 'Reset to global defaults.' });
+                } catch {
+                  setMsg({ type: 'error', text: 'Network error.' });
+                } finally {
+                  setSaving(false);
+                }
+              }}
+              className="px-4 py-2 bg-surface-hover border border-border text-text-secondary rounded hover:text-text-primary disabled:opacity-50 text-sm w-full mt-2"
+            >
+              Reset to Defaults
+            </button>
           </div>
         </div>
 
