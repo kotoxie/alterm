@@ -2,10 +2,11 @@ import { Router, type Request, type Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { v4 as uuid } from 'uuid';
 import { queryOne, execute } from '../db/helpers.js';
-import { signToken, verifyToken } from '../services/jwt.js';
+import { signToken, verifyToken, signMfaToken, verifyMfaToken } from '../services/jwt.js';
 import { logAudit } from '../services/audit.js';
 import { getSetting } from '../services/settings.js';
 import { createLoginSession } from '../services/loginSession.js';
+import { authenticator } from 'otplib';
 
 const router = Router();
 
@@ -39,6 +40,8 @@ interface UserRow {
   theme: string | null;
   failed_login_count: number;
   locked_until: string | null;
+  mfa_enabled: number;
+  mfa_secret: string | null;
 }
 
 // Check if setup is needed
@@ -103,7 +106,7 @@ router.post('/login', async (req: Request, res: Response) => {
   const maxFailed = parseInt(getSetting('security.max_failed_logins'), 10) || 5;
   const lockoutMinutes = parseInt(getSetting('security.lockout_minutes'), 10) || 30;
 
-  const user = queryOne<UserRow>('SELECT * FROM users WHERE username = ?', [username]);
+  const user = queryOne<UserRow>('SELECT id, username, password_hash, display_name, role, theme, failed_login_count, locked_until, mfa_enabled, mfa_secret FROM users WHERE username = ?', [username]);
 
   if (!user) {
     // Apply lockout to unknown usernames too (in-memory, resets on restart)
@@ -164,6 +167,13 @@ router.post('/login', async (req: Request, res: Response) => {
     [user.id],
   );
 
+  // If MFA is enabled, issue short-lived MFA token instead of session
+  if (user.mfa_enabled === 1) {
+    const mfaToken = signMfaToken(user.id);
+    res.json({ mfaRequired: true, mfaToken });
+    return;
+  }
+
   const maxSessionMinutes = parseInt(getSetting('security.max_session_minutes') ?? '0', 10);
   const token = signToken({ userId: user.id, username: user.username, role: user.role }, maxSessionMinutes || undefined);
   createLoginSession(req, user.id, token);
@@ -172,6 +182,64 @@ router.post('/login', async (req: Request, res: Response) => {
     userId: user.id,
     eventType: 'auth.login_success',
     target: username,
+    ipAddress: req.ip,
+  });
+
+  res.json({
+    token,
+    user: {
+      id: user.id,
+      username: user.username,
+      displayName: user.display_name,
+      role: user.role,
+      theme: user.theme,
+    },
+  });
+});
+
+// POST /login/mfa — complete MFA login
+router.post('/login/mfa', async (req: Request, res: Response) => {
+  const { mfaToken, code } = req.body as { mfaToken?: string; code?: string };
+
+  if (!mfaToken || !code) {
+    res.status(400).json({ error: 'mfaToken and code are required' });
+    return;
+  }
+
+  let userId: string;
+  try {
+    const payload = verifyMfaToken(mfaToken);
+    userId = payload.userId;
+  } catch {
+    res.status(401).json({ error: 'Invalid or expired MFA token' });
+    return;
+  }
+
+  const user = queryOne<UserRow>(
+    'SELECT id, username, display_name, role, theme, mfa_secret, mfa_enabled FROM users WHERE id = ?',
+    [userId],
+  );
+
+  if (!user || !user.mfa_secret || user.mfa_enabled !== 1) {
+    res.status(400).json({ error: 'MFA not configured for this user' });
+    return;
+  }
+
+  const isValid = authenticator.verify({ token: code, secret: user.mfa_secret });
+  if (!isValid) {
+    res.status(401).json({ error: 'Invalid verification code' });
+    return;
+  }
+
+  const maxSessionMinutes = parseInt(getSetting('security.max_session_minutes') ?? '0', 10);
+  const token = signToken({ userId: user.id, username: user.username, role: user.role }, maxSessionMinutes || undefined);
+  createLoginSession(req, user.id, token);
+
+  logAudit({
+    userId: user.id,
+    eventType: 'auth.login_success',
+    target: user.username,
+    details: { mfa: true },
     ipAddress: req.ip,
   });
 
