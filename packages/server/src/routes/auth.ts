@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { v4 as uuid } from 'uuid';
 import { queryOne, execute } from '../db/helpers.js';
 import { signToken, verifyToken, signMfaToken, verifyMfaToken } from '../services/jwt.js';
@@ -8,6 +9,55 @@ import { getSetting } from '../services/settings.js';
 import { createLoginSession } from '../services/loginSession.js';
 import { authRequired } from '../middleware/auth.js';
 import { authenticator } from 'otplib';
+import { parseUA } from '../services/ua.js';
+
+const TRUSTED_DEVICE_COOKIE = 'alterm_trusted_device';
+const TRUSTED_DEVICE_DAYS = 30;
+
+function hashToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+function isTrustedDevice(req: Request, userId: string): boolean {
+  const cookieVal: string | undefined = req.cookies?.[TRUSTED_DEVICE_COOKIE];
+  if (!cookieVal) return false;
+  const hash = hashToken(cookieVal);
+  const row = queryOne<{ id: string; expires_at: string }>(
+    `SELECT id, expires_at FROM trusted_devices WHERE token_hash = ? AND user_id = ?`,
+    [hash, userId],
+  );
+  if (!row) return false;
+  // Check expiry
+  const expiry = new Date(row.expires_at.replace(' ', 'T') + 'Z');
+  if (expiry < new Date()) {
+    execute('DELETE FROM trusted_devices WHERE id = ?', [row.id]);
+    return false;
+  }
+  return true;
+}
+
+function setTrustedDevice(req: Request, res: Response, userId: string): void {
+  const token = uuid() + uuid(); // 64-char random token
+  const hash = hashToken(token);
+  const ua = parseUA(req.headers['user-agent']);
+  const ip = (req.ip ?? '').replace(/^::ffff:/i, '');
+  const expiresDate = new Date();
+  expiresDate.setDate(expiresDate.getDate() + TRUSTED_DEVICE_DAYS);
+  const expiresStr = expiresDate.toISOString().replace('T', ' ').slice(0, 19);
+
+  execute(
+    `INSERT INTO trusted_devices (id, user_id, token_hash, browser, os, ip_address, expires_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [uuid(), userId, hash, ua.browser, ua.os, ip, expiresStr],
+  );
+
+  res.cookie(TRUSTED_DEVICE_COOKIE, token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: TRUSTED_DEVICE_DAYS * 24 * 60 * 60 * 1000,
+    path: '/',
+  });
+}
 
 const router = Router();
 
@@ -168,8 +218,8 @@ router.post('/login', async (req: Request, res: Response) => {
     [user.id],
   );
 
-  // If MFA is enabled, issue short-lived MFA token instead of session
-  if (user.mfa_enabled === 1) {
+  // If MFA is enabled, check for trusted device cookie first
+  if (user.mfa_enabled === 1 && !isTrustedDevice(req, user.id)) {
     const mfaToken = signMfaToken(user.id);
     res.json({ mfaRequired: true, mfaToken });
     return;
@@ -200,7 +250,7 @@ router.post('/login', async (req: Request, res: Response) => {
 
 // POST /login/mfa — complete MFA login
 router.post('/login/mfa', async (req: Request, res: Response) => {
-  const { mfaToken, code } = req.body as { mfaToken?: string; code?: string };
+  const { mfaToken, code, trustDevice } = req.body as { mfaToken?: string; code?: string; trustDevice?: boolean };
 
   if (!mfaToken || !code) {
     res.status(400).json({ error: 'mfaToken and code are required' });
@@ -236,11 +286,16 @@ router.post('/login/mfa', async (req: Request, res: Response) => {
   const token = signToken({ userId: user.id, username: user.username, role: user.role }, maxSessionMinutes || undefined);
   createLoginSession(req, user.id, token);
 
+  // Set trusted device cookie if requested
+  if (trustDevice) {
+    setTrustedDevice(req, res, user.id);
+  }
+
   logAudit({
     userId: user.id,
     eventType: 'auth.login_success',
     target: user.username,
-    details: { mfa: true },
+    details: { mfa: true, trustedDevice: !!trustDevice },
     ipAddress: req.ip,
   });
 

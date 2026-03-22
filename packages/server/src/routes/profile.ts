@@ -181,7 +181,8 @@ router.post('/mfa/setup', async (req: Request, res: Response) => {
 
   const secret = authenticator.generateSecret();
   const appName = getSetting('app.name') || 'Alterm';
-  const otpUri = authenticator.keyuri(user.username, appName, secret);
+  // Label format: "Alterm (+username)" so users can identify the account in their authenticator app
+  const otpUri = authenticator.keyuri(`${appName} (+${user.username})`, appName, secret);
   const qrDataUrl = await QRCode.toDataURL(otpUri);
 
   execute('UPDATE users SET mfa_secret = ? WHERE id = ?', [secret, userId]);
@@ -205,20 +206,20 @@ router.post('/mfa/verify', (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
-// POST /mfa/disable — disable MFA (requires TOTP)
-router.post('/mfa/disable', (req: Request, res: Response) => {
+// POST /mfa/disable — disable MFA (requires current password — no TOTP needed in case it was lost)
+router.post('/mfa/disable', async (req: Request, res: Response) => {
   const userId = req.user!.userId;
-  const { token } = req.body as { token?: string };
-  if (!token) { res.status(400).json({ error: 'token is required' }); return; }
+  const { password } = req.body as { password?: string };
+  if (!password) { res.status(400).json({ error: 'password is required' }); return; }
 
-  const user = queryOne<UserRow>('SELECT mfa_secret, mfa_enabled FROM users WHERE id = ?', [userId]);
-  if (!user?.mfa_secret || user.mfa_enabled !== 1) {
+  const user = queryOne<UserRow>('SELECT password_hash, mfa_enabled FROM users WHERE id = ?', [userId]);
+  if (!user || user.mfa_enabled !== 1) {
     res.status(400).json({ error: 'MFA is not enabled' });
     return;
   }
 
-  const isValid = authenticator.verify({ token, secret: user.mfa_secret });
-  if (!isValid) { res.status(400).json({ error: 'Invalid verification code' }); return; }
+  const valid = await bcrypt.compare(password, user.password_hash);
+  if (!valid) { res.status(400).json({ error: 'Incorrect password' }); return; }
 
   execute('UPDATE users SET mfa_enabled = 0, mfa_secret = NULL WHERE id = ?', [userId]);
   res.json({ ok: true });

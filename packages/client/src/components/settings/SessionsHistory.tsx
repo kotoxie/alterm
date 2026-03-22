@@ -1,5 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useAuth } from '../../hooks/useAuth';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate as formatDateTz } from '../../utils/formatDate';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 
@@ -23,9 +25,7 @@ function formatDuration(start: string, end: string | null): string {
   return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
-function formatDate(iso: string) {
-  try { return new Date(iso).toLocaleString(); } catch { return iso; }
-}
+// formatDate is now timezone-aware — see below via formatDateTz + useTimezone()
 
 function formatTime(secs: number): string {
   const m = Math.floor(secs / 60);
@@ -371,6 +371,7 @@ function RecordingPlayer({
 
 export function SessionsHistory() {
   const { token } = useAuth();
+  const timezone = useTimezone();
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [playingId, setPlayingId] = useState<string | null>(null);
@@ -428,7 +429,7 @@ export function SessionsHistory() {
                     {s.protocol}
                   </span>
                 </td>
-                <td className="py-2 pr-4 text-text-secondary text-xs">{formatDate(s.startedAt)}</td>
+                <td className="py-2 pr-4 text-text-secondary text-xs">{formatDateTz(s.startedAt, timezone)}</td>
                 <td className="py-2 pr-4 text-text-secondary text-xs">{formatDuration(s.startedAt, s.endedAt)}</td>
                 <td className="py-2">
                   {s.hasRecording ? (
