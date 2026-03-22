@@ -5,6 +5,7 @@ type Settings = Record<string, string>;
 
 const DEFAULTS: Settings = {
   'app.name': 'Alterm',
+  'app.timezone': 'UTC',
   'ssh.font_size': '14',
   'ssh.font_family': '"Fira Code", monospace',
   'ssh.scrollback': '5000',

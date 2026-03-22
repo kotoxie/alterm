@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useAuth } from '../../hooks/useAuth';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate as formatDateTz } from '../../utils/formatDate';
 
 interface AuditEntry {
   id: string;
@@ -26,9 +28,7 @@ interface AuditUser {
   displayName: string | null;
 }
 
-function formatTs(iso: string) {
-  try { return new Date(iso).toLocaleString(); } catch { return iso; }
-}
+// formatTs is now replaced by formatDateTz(iso, timezone) using the app timezone
 
 function eventCategory(eventType: string): string {
   if (eventType.startsWith('auth.')) return 'auth';
@@ -94,6 +94,7 @@ function DetailsView({ details }: { details: unknown }) {
 
 export function AuditTrail() {
   const { token, user } = useAuth();
+  const timezone = useTimezone();
   const isAdmin = user?.role === 'admin';
 
   const [entries, setEntries] = useState<AuditEntry[]>([]);
@@ -320,7 +321,7 @@ export function AuditTrail() {
                     onClick={() => setExpandedId(expanded ? null : entry.id)}
                     className="border-b border-border cursor-pointer hover:bg-surface-hover transition-colors last:border-b-0"
                   >
-                    <td className="px-3 py-2 text-text-secondary text-xs whitespace-nowrap">{formatTs(entry.timestamp)}</td>
+                    <td className="px-3 py-2 text-text-secondary text-xs whitespace-nowrap">{formatDateTz(entry.timestamp, timezone)}</td>
                     <td className="px-3 py-2 text-text-primary text-xs">{entry.displayName ?? entry.username ?? <span className="text-text-secondary italic">System</span>}</td>
                     <td className="px-3 py-2">
                       <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${CATEGORY_CLASSES[cat] ?? CATEGORY_CLASSES.other}`}>

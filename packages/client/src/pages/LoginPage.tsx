@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { useAuth } from '../hooks/useAuth';
 
 export function LoginPage() {
@@ -12,6 +12,8 @@ export function LoginPage() {
   const [mfaRequired, setMfaRequired] = useState(false);
   const [mfaToken, setMfaToken] = useState('');
   const [mfaCode, setMfaCode] = useState('');
+  const [trustDevice, setTrustDevice] = useState(false);
+  const autoSubmittingRef = useRef(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -30,18 +32,34 @@ export function LoginPage() {
     }
   }
 
-  async function handleMfaSubmit(e: FormEvent) {
-    e.preventDefault();
+  async function submitMfaCode(code: string) {
+    if (autoSubmittingRef.current) return;
+    autoSubmittingRef.current = true;
     setError('');
     setSubmitting(true);
     try {
-      await completeMfaLogin(mfaToken, mfaCode);
+      await completeMfaLogin(mfaToken, code, trustDevice);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Invalid code');
+      setMfaCode(''); // Clear so user can retry
     } finally {
       setSubmitting(false);
+      autoSubmittingRef.current = false;
     }
   }
+
+  async function handleMfaSubmit(e: FormEvent) {
+    e.preventDefault();
+    await submitMfaCode(mfaCode);
+  }
+
+  // Auto-submit when all 6 digits are entered
+  useEffect(() => {
+    if (mfaCode.length === 6 && !submitting && !autoSubmittingRef.current) {
+      submitMfaCode(mfaCode);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mfaCode]);
 
   if (mfaRequired) {
     return (
@@ -66,10 +84,22 @@ export function LoginPage() {
                 required
                 autoFocus
                 placeholder="000000"
-                className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-center text-xl tracking-widest"
+                disabled={submitting}
+                className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-center text-xl tracking-widest disabled:opacity-60"
               />
-              <p className="text-xs text-text-secondary mt-1">Enter the 6-digit code from your authenticator app.</p>
+              <p className="text-xs text-text-secondary mt-1">
+                {submitting ? 'Verifying…' : 'Enter the 6-digit code — it submits automatically.'}
+              </p>
             </div>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={trustDevice}
+                onChange={(e) => setTrustDevice(e.target.checked)}
+                className="w-4 h-4 accent-accent rounded"
+              />
+              <span className="text-sm text-text-secondary">Don't ask for MFA on this device for 30 days</span>
+            </label>
             {error && <p className="text-red-500 text-sm">{error}</p>}
             <button
               type="submit"
@@ -80,7 +110,7 @@ export function LoginPage() {
             </button>
             <button
               type="button"
-              onClick={() => { setMfaRequired(false); setMfaCode(''); setMfaToken(''); }}
+              onClick={() => { setMfaRequired(false); setMfaCode(''); setMfaToken(''); setError(''); }}
               className="w-full py-2 px-4 border border-border rounded text-text-secondary hover:bg-surface-hover text-sm"
             >
               Back to login

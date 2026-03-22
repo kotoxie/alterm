@@ -18,7 +18,7 @@ interface AuthContextValue {
   token: string | null;
   loading: boolean;
   login: (username: string, password: string) => Promise<LoginResult>;
-  completeMfaLogin: (mfaToken: string, code: string) => Promise<void>;
+  completeMfaLogin: (mfaToken: string, code: string, trustDevice?: boolean) => Promise<void>;
   logout: () => void;
   setup: (username: string, password: string, displayName: string) => Promise<void>;
   needsSetup: boolean | null;
@@ -84,10 +84,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return {};
   }, []);
 
-  const completeMfaLogin = useCallback(async (mfaToken: string, code: string) => {
+  const completeMfaLogin = useCallback(async (mfaToken: string, code: string, trustDevice?: boolean) => {
     const { token: t, user: u } = await apiFetch('/auth/login/mfa', {
       method: 'POST',
-      body: JSON.stringify({ mfaToken, code }),
+      body: JSON.stringify({ mfaToken, code, trustDevice: !!trustDevice }),
     }) as { token: string; user: User };
     localStorage.setItem('alterm-token', t);
     setToken(t);
