@@ -6,7 +6,7 @@ type Settings = Record<string, string>;
 const DEFAULTS: Settings = {
   'app.name': 'Alterm',
   'ssh.font_size': '14',
-  'ssh.font_family': 'Cascadia Code, Fira Code, Menlo, Monaco, Courier New, monospace',
+  'ssh.font_family': '"Fira Code", monospace',
   'ssh.scrollback': '5000',
   'ssh.cursor_style': 'block',
 };
