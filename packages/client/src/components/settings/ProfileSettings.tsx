@@ -95,6 +95,7 @@ export function ProfileSettings() {
   const [profileMsg, setProfileMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
 
+  const [showPwForm, setShowPwForm] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -199,6 +200,8 @@ export function ProfileSettings() {
         setCurrentPassword('');
         setNewPassword('');
         setConfirmPassword('');
+        // Auto-close the form after a short delay so the user sees the success message
+        setTimeout(() => { setShowPwForm(false); setPwMsg(null); }, 1500);
       } else {
         const d = await res.json();
         setPwMsg({ type: 'error', text: d.error || 'Failed to change password.' });
@@ -392,50 +395,79 @@ export function ProfileSettings() {
 
       {/* Change Password */}
       <section>
-        <h2 className="text-base font-semibold text-text-primary mb-4">Change Password</h2>
-        <form onSubmit={handlePasswordSave} className="space-y-4">
+        <div className="flex items-center justify-between mb-2">
           <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1">Current Password</label>
-            <input
-              type="password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
-            />
+            <h2 className="text-base font-semibold text-text-primary">Change Password</h2>
+            {!showPwForm && (
+              <p className="text-sm text-text-secondary mt-0.5">Update your account password.</p>
+            )}
           </div>
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1">New Password</label>
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1">Confirm New Password</label>
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
-            />
-          </div>
-
-          {pwMsg && (
-            <p className={`text-sm ${pwMsg.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
-              {pwMsg.text}
-            </p>
+          {!showPwForm && (
+            <button
+              type="button"
+              onClick={() => { setShowPwForm(true); setPwMsg(null); }}
+              className="px-4 py-2 bg-surface-hover border border-border rounded text-sm text-text-primary hover:bg-surface font-medium"
+            >
+              Change Password
+            </button>
           )}
+        </div>
 
-          <button
-            type="submit"
-            disabled={savingPw}
-            className="px-4 py-2 bg-accent text-white rounded hover:bg-accent-hover disabled:opacity-50 text-sm font-medium"
-          >
-            {savingPw ? 'Saving...' : 'Change Password'}
-          </button>
-        </form>
+        {showPwForm && (
+          <form onSubmit={handlePasswordSave} className="space-y-4 mt-4">
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-1">Current Password</label>
+              <input
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                autoFocus
+                className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-1">New Password</label>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-1">Confirm New Password</label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
+              />
+            </div>
+
+            {pwMsg && (
+              <p className={`text-sm ${pwMsg.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+                {pwMsg.text}
+              </p>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={savingPw}
+                className="px-4 py-2 bg-accent text-white rounded hover:bg-accent-hover disabled:opacity-50 text-sm font-medium"
+              >
+                {savingPw ? 'Saving...' : 'Save Password'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowPwForm(false); setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); setPwMsg(null); }}
+                className="px-4 py-2 border border-border rounded text-text-secondary hover:bg-surface-hover text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        )}
       </section>
 
       <hr className="border-border" />
