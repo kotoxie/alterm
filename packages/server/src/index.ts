@@ -57,7 +57,8 @@ async function main() {
         scriptSrc: ["'self'", "'wasm-unsafe-eval'"],
         connectSrc: ["'self'", "wss:", "ws:", "data:"],
         imgSrc: ["'self'", "data:", "blob:"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com"],
       },
     },
   }));
