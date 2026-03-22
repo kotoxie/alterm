@@ -236,6 +236,24 @@ function runMigrations() {
         UPDATE settings SET value = '"Fira Code", monospace' WHERE key = 'ssh.font_family';
       `,
     },
+    {
+      version: 7,
+      sql: `
+        CREATE TABLE login_sessions (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          token_hash TEXT NOT NULL UNIQUE,
+          browser TEXT,
+          os TEXT,
+          ip_address TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          last_used_at TEXT NOT NULL DEFAULT (datetime('now')),
+          revoked INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX idx_login_sessions_user ON login_sessions(user_id);
+        CREATE INDEX idx_login_sessions_token_hash ON login_sessions(token_hash);
+      `,
+    },
   ];
 
   for (const migration of migrations) {
