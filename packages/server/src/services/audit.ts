@@ -12,7 +12,12 @@ export interface AuditEvent {
   ipAddress?: string;
 }
 
+function normalizeIp(ip: string | undefined): string | undefined {
+  return ip?.replace(/^::ffff:/i, '');
+}
+
 export function logAudit(event: AuditEvent): void {
+  if (event.ipAddress) event = { ...event, ipAddress: normalizeIp(event.ipAddress) };
   try {
     execute(
       `INSERT INTO audit_log (id, user_id, event_type, target, details_json, ip_address)
