@@ -25,8 +25,11 @@ export function VncSession({ connectionId, connectionName, isActive, onStatusCha
     if (!containerRef.current || !token) return;
 
     let cancelled = false;
+    let sessionRevoked = false;
     let rfb: import('@novnc/novnc/lib/rfb.js').default | null = null;
     let resizeObserver: ResizeObserver | null = null;
+    const onRevoked = () => { sessionRevoked = true; };
+    window.addEventListener('alterm:unauthorized', onRevoked);
 
     async function connect() {
       try {
@@ -60,7 +63,7 @@ export function VncSession({ connectionId, connectionName, isActive, onStatusCha
         });
 
         rfb.addEventListener('disconnect', (e: Event) => {
-          if (!cancelled) {
+          if (!cancelled && !sessionRevoked) {
             const detail = (e as CustomEvent).detail;
             if (detail?.clean === false) {
               setErrorMsg('Connection lost unexpectedly');
@@ -70,7 +73,7 @@ export function VncSession({ connectionId, connectionName, isActive, onStatusCha
         });
 
         rfb.addEventListener('securityfailure', () => {
-          if (!cancelled) {
+          if (!cancelled && !sessionRevoked) {
             setErrorMsg('VNC authentication failed');
             setAndNotify('disconnected');
           }
@@ -98,6 +101,7 @@ export function VncSession({ connectionId, connectionName, isActive, onStatusCha
 
     return () => {
       cancelled = true;
+      window.removeEventListener('alterm:unauthorized', onRevoked);
       resizeObserver?.disconnect();
       if (rfbRef.current) {
         try { rfbRef.current.disconnect(); } catch { /* ignore */ }

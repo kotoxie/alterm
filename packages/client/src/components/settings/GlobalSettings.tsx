@@ -9,48 +9,14 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'sessions', label: 'Sessions' },
 ];
 
-const TIMEZONES = [
-  'UTC',
-  'America/New_York',
-  'America/Chicago',
-  'America/Denver',
-  'America/Los_Angeles',
-  'America/Toronto',
-  'America/Vancouver',
-  'America/Sao_Paulo',
-  'America/Argentina/Buenos_Aires',
-  'Europe/London',
-  'Europe/Paris',
-  'Europe/Berlin',
-  'Europe/Madrid',
-  'Europe/Rome',
-  'Europe/Amsterdam',
-  'Europe/Stockholm',
-  'Europe/Warsaw',
-  'Europe/Helsinki',
-  'Europe/Athens',
-  'Europe/Istanbul',
-  'Europe/Moscow',
-  'Asia/Dubai',
-  'Asia/Karachi',
-  'Asia/Kolkata',
-  'Asia/Dhaka',
-  'Asia/Bangkok',
-  'Asia/Jakarta',
-  'Asia/Singapore',
-  'Asia/Shanghai',
-  'Asia/Tokyo',
-  'Asia/Seoul',
-  'Asia/Manila',
-  'Australia/Sydney',
-  'Australia/Melbourne',
-  'Australia/Perth',
-  'Pacific/Auckland',
-  'Pacific/Honolulu',
-  'Africa/Cairo',
-  'Africa/Lagos',
-  'Africa/Johannesburg',
-];
+// All IANA timezones supported by the runtime (Intl API)
+const TIMEZONES: string[] = (() => {
+  try {
+    return Intl.supportedValuesOf('timeZone');
+  } catch {
+    return ['UTC'];
+  }
+})();
 
 function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
   return (

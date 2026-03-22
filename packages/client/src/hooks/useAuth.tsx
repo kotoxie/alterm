@@ -96,9 +96,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
+    const t = localStorage.getItem('alterm-token');
     localStorage.removeItem('alterm-token');
     setToken(null);
     setUser(null);
+    // Revoke the session on the server (fire-and-forget — UI clears immediately)
+    if (t) {
+      fetch('/api/v1/auth/logout', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${t}` },
+      }).catch(() => { /* ignore network errors on logout */ });
+    }
   }, []);
 
   // Kick the user out when any fetch returns 401 (e.g. session revoked remotely)

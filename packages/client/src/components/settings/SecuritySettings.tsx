@@ -13,10 +13,14 @@ export function SecuritySettings() {
   const { token } = useAuth();
   const { settings, refresh } = useSettings();
 
-  // Session & lockout state
+  // Session timeout state
   const [sessionTimeout, setSessionTimeout] = useState('0');
   const [idleTimeout, setIdleTimeout] = useState('0');
   const [maxSessionMinutes, setMaxSessionMinutes] = useState('0');
+  const [sessionMsg, setSessionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [savingSession, setSavingSession] = useState(false);
+
+  // Login lockout state
   const [maxFailed, setMaxFailed] = useState('5');
   const [lockoutMinutes, setLockoutMinutes] = useState('30');
   const [lockoutMsg, setLockoutMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -72,6 +76,27 @@ export function SecuritySettings() {
     }
   }
 
+  async function handleSessionSave(e: FormEvent) {
+    e.preventDefault();
+    setSavingSession(true);
+    setSessionMsg(null);
+    try {
+      await saveSetting(
+        {
+          'security.session_timeout_minutes': sessionTimeout,
+          'security.idle_timeout_minutes': idleTimeout,
+          'security.max_session_minutes': maxSessionMinutes,
+        },
+        () => setSessionMsg({ type: 'success', text: 'Saved.' }),
+        (msg) => setSessionMsg({ type: 'error', text: msg }),
+      );
+    } catch {
+      setSessionMsg({ type: 'error', text: 'Network error.' });
+    } finally {
+      setSavingSession(false);
+    }
+  }
+
   async function handleLockoutSave(e: FormEvent) {
     e.preventDefault();
     setSavingLockout(true);
@@ -79,9 +104,6 @@ export function SecuritySettings() {
     try {
       await saveSetting(
         {
-          'security.session_timeout_minutes': sessionTimeout,
-          'security.idle_timeout_minutes': idleTimeout,
-          'security.max_session_minutes': maxSessionMinutes,
           'security.max_failed_logins': maxFailed,
           'security.lockout_minutes': lockoutMinutes,
         },
@@ -152,11 +174,11 @@ export function SecuritySettings() {
 
   return (
     <div className="max-w-lg space-y-8">
-      {/* Session & Lockout */}
+      {/* Session Timeouts */}
       <section>
-        <h2 className="text-base font-semibold text-text-primary mb-1">Session &amp; Lockout</h2>
-        <p className="text-sm text-text-secondary mb-4">Configure session timeout and brute-force protection.</p>
-        <form onSubmit={handleLockoutSave} className="space-y-4">
+        <h2 className="text-base font-semibold text-text-primary mb-1">Session Timeouts</h2>
+        <p className="text-sm text-text-secondary mb-4">Control how long sessions remain active. Set to 0 to disable.</p>
+        <form onSubmit={handleSessionSave} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-text-secondary mb-1">
               Session timeout (minutes) <span className="font-normal">— 0 = disabled</span>
@@ -166,18 +188,6 @@ export function SecuritySettings() {
               min="0"
               value={sessionTimeout}
               onChange={(e) => setSessionTimeout(e.target.value)}
-              className="w-40 px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1">
-              Max session time (minutes) <span className="font-normal">— 0 = no limit</span>
-            </label>
-            <input
-              type="number"
-              min="0"
-              value={maxSessionMinutes}
-              onChange={(e) => setMaxSessionMinutes(e.target.value)}
               className="w-40 px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
             />
           </div>
@@ -193,6 +203,40 @@ export function SecuritySettings() {
               className="w-40 px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
             />
           </div>
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-1">
+              Max session time (minutes) <span className="font-normal">— 0 = no limit</span>
+            </label>
+            <input
+              type="number"
+              min="0"
+              value={maxSessionMinutes}
+              onChange={(e) => setMaxSessionMinutes(e.target.value)}
+              className="w-40 px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
+            />
+          </div>
+          {sessionMsg && (
+            <p className={`text-sm ${sessionMsg.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+              {sessionMsg.text}
+            </p>
+          )}
+          <button
+            type="submit"
+            disabled={savingSession}
+            className="px-4 py-2 bg-accent text-white rounded hover:bg-accent-hover disabled:opacity-50 text-sm font-medium"
+          >
+            {savingSession ? 'Saving...' : 'Save'}
+          </button>
+        </form>
+      </section>
+
+      <hr className="border-border" />
+
+      {/* Login & Lockout */}
+      <section>
+        <h2 className="text-base font-semibold text-text-primary mb-1">Login &amp; Lockout</h2>
+        <p className="text-sm text-text-secondary mb-4">Configure brute-force protection and account lockout thresholds.</p>
+        <form onSubmit={handleLockoutSave} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-text-secondary mb-1">
               Max failed logins before lockout

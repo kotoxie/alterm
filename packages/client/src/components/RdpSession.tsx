@@ -134,10 +134,16 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
   // ── RDP session ────────────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
+    let sessionRevoked = false;
     let resizeObserver: ResizeObserver | null = null;
     let resizeTimer: ReturnType<typeof setTimeout> | null = null;
 
+    // Suppress disconnect overlay when session is revoked (global handler redirects to login)
+    const onRevoked = () => { sessionRevoked = true; };
+    window.addEventListener('alterm:unauthorized', onRevoked);
+
     const showDisconnect = (msg: string) => {
+      if (sessionRevoked) return;
       setDisconnected(true);
       setDisconnectMessage(msg);
       onStatusChange(tab.id, 'disconnected');
@@ -401,6 +407,7 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
 
     return () => {
       cancelled = true;
+      window.removeEventListener('alterm:unauthorized', onRevoked);
       resizeObserver?.disconnect();
       if (resizeTimer) clearTimeout(resizeTimer);
       if (sessionRef.current) {
