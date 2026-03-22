@@ -30,6 +30,35 @@ function autoInitials(displayName: string): string {
   return displayName.slice(0, 2).toUpperCase();
 }
 
+function relativeTime(dateStr: string): string {
+  const date = new Date(dateStr.replace(' ', 'T') + 'Z');
+  const diff = Date.now() - date.getTime();
+  if (diff < 60_000) return 'Just now';
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+  return `${Math.floor(diff / 86_400_000)}d ago`;
+}
+
+function getBrowserIcon(browser: string) {
+  const isMobile = browser === 'iOS' || browser === 'Android';
+  if (isMobile) {
+    return (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
+        <line x1="12" y1="18" x2="12.01" y2="18" />
+      </svg>
+    );
+  }
+  // Default: monitor/desktop icon
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+      <line x1="8" y1="21" x2="16" y2="21" />
+      <line x1="12" y1="17" x2="12" y2="21" />
+    </svg>
+  );
+}
+
 interface ProfileData {
   id: string;
   username: string;
@@ -37,6 +66,16 @@ interface ProfileData {
   email: string | null;
   avatarText: string | null;
   role: string;
+}
+
+interface LoginSession {
+  id: string;
+  browser: string;
+  os: string;
+  ipAddress: string;
+  createdAt: string;
+  lastUsedAt: string;
+  isCurrent: boolean;
 }
 
 export function ProfileSettings() {
@@ -54,6 +93,23 @@ export function ProfileSettings() {
   const [pwMsg, setPwMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [savingPw, setSavingPw] = useState(false);
 
+  const [sessions, setSessions] = useState<LoginSession[]>([]);
+
+  async function loadSessions() {
+    if (!token) return;
+    try {
+      const res = await fetch('/api/v1/profile/login-sessions', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const d = await res.json() as { sessions: LoginSession[] };
+        setSessions(d.sessions);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   useEffect(() => {
     if (!token) return;
     fetch('/api/v1/profile', { headers: { Authorization: `Bearer ${token}` } })
@@ -65,6 +121,8 @@ export function ProfileSettings() {
         setAvatarText(d.avatarText ?? '');
       })
       .catch(() => {});
+    loadSessions();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   const username = profile?.username ?? user?.username ?? '';
@@ -127,6 +185,32 @@ export function ProfileSettings() {
       setPwMsg({ type: 'error', text: 'Network error.' });
     } finally {
       setSavingPw(false);
+    }
+  }
+
+  async function handleRevoke(id: string) {
+    if (!token) return;
+    try {
+      await fetch(`/api/v1/profile/login-sessions/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      await loadSessions();
+    } catch {
+      // ignore
+    }
+  }
+
+  async function handleRevokeAll() {
+    if (!token) return;
+    try {
+      await fetch('/api/v1/profile/login-sessions', {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      await loadSessions();
+    } catch {
+      // ignore
     }
   }
 
@@ -252,6 +336,72 @@ export function ProfileSettings() {
             {savingPw ? 'Saving...' : 'Change Password'}
           </button>
         </form>
+      </section>
+
+      <hr className="border-border" />
+
+      {/* Active Sessions */}
+      <section>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-base font-semibold text-text-primary">Active Sessions</h2>
+          {sessions.filter((s) => !s.isCurrent).length > 0 && (
+            <button
+              onClick={handleRevokeAll}
+              className="text-xs px-3 py-1.5 rounded border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors"
+            >
+              Sign out all other sessions
+            </button>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          {sessions.map((session) => (
+            <div
+              key={session.id}
+              className={`flex items-center gap-3 p-3 rounded-lg border ${
+                session.isCurrent ? 'border-accent/40 bg-accent/5' : 'border-border bg-surface'
+              }`}
+            >
+              {/* Browser/OS icon */}
+              <div className="shrink-0 text-text-secondary">
+                {getBrowserIcon(session.os)}
+              </div>
+
+              {/* Info */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-text-primary">
+                    {session.browser} on {session.os}
+                  </span>
+                  {session.isCurrent && (
+                    <span className="text-xs px-1.5 py-0.5 rounded-full bg-accent/20 text-accent font-medium">
+                      Current
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-3 mt-0.5">
+                  <span className="text-xs text-text-secondary font-mono">{session.ipAddress}</span>
+                  <span className="text-xs text-text-secondary">·</span>
+                  <span className="text-xs text-text-secondary">Last active {relativeTime(session.lastUsedAt)}</span>
+                </div>
+              </div>
+
+              {/* Sign out button */}
+              {!session.isCurrent && (
+                <button
+                  onClick={() => handleRevoke(session.id)}
+                  className="shrink-0 text-xs px-2.5 py-1 rounded border border-border text-text-secondary hover:text-red-400 hover:border-red-400/40 transition-colors"
+                >
+                  Sign out
+                </button>
+              )}
+            </div>
+          ))}
+
+          {sessions.length === 0 && (
+            <p className="text-sm text-text-secondary italic">No active sessions found.</p>
+          )}
+        </div>
       </section>
     </div>
   );
