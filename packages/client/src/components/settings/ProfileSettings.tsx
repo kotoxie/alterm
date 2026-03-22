@@ -283,7 +283,7 @@ export function ProfileSettings() {
       const res = await fetch('/api/v1/profile/mfa/disable', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ token: mfaDisableCode }),
+        body: JSON.stringify({ password: mfaDisableCode }),
       });
       if (res.ok) {
         setMfaEnabled(false);
@@ -532,21 +532,19 @@ export function ProfileSettings() {
               </button>
             ) : (
               <form onSubmit={handleMfaDisable} className="space-y-3">
-                <p className="text-sm text-text-secondary">Enter your authenticator code to confirm:</p>
+                <p className="text-sm text-text-secondary">Enter your account password to disable MFA:</p>
                 <input
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={6}
+                  type="password"
                   value={mfaDisableCode}
-                  onChange={(e) => setMfaDisableCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  placeholder="000000"
+                  onChange={(e) => setMfaDisableCode(e.target.value)}
+                  placeholder="Your password"
                   autoFocus
-                  className="w-40 px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm text-center tracking-widest"
+                  className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
                 />
                 <div className="flex gap-2">
                   <button
                     type="submit"
-                    disabled={mfaLoading || mfaDisableCode.length < 6}
+                    disabled={mfaLoading || mfaDisableCode.length < 1}
                     className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 disabled:opacity-50 text-sm font-medium"
                   >
                     {mfaLoading ? 'Disabling...' : 'Confirm Disable'}

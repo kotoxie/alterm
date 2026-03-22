@@ -268,6 +268,23 @@ function runMigrations() {
         ALTER TABLE users ADD COLUMN mfa_enabled INTEGER NOT NULL DEFAULT 0;
       `,
     },
+    {
+      version: 10,
+      sql: `
+        CREATE TABLE IF NOT EXISTS trusted_devices (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          token_hash TEXT NOT NULL UNIQUE,
+          browser TEXT,
+          os TEXT,
+          ip_address TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          expires_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_trusted_devices_user ON trusted_devices(user_id);
+        CREATE INDEX IF NOT EXISTS idx_trusted_devices_hash ON trusted_devices(token_hash);
+      `,
+    },
   ];
 
   for (const migration of migrations) {
