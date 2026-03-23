@@ -98,6 +98,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     const t = localStorage.getItem('alterm-token');
     localStorage.removeItem('alterm-token');
+    // Clear persisted sessions so they don't reopen on next login
+    localStorage.removeItem('alterm-sessions');
     setToken(null);
     setUser(null);
     // Revoke the session on the server (fire-and-forget — UI clears immediately)
