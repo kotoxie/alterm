@@ -51,10 +51,16 @@ export function Header({ onToggleSidebar, onOpenSettings }: HeaderProps) {
   }
 
   const appName = settings['app.name'] ?? 'Alterm';
+  const appLogo = settings['app.logo'] ?? '';
   const username = user?.username ?? '';
   const displayName = user?.displayName ?? username;
   const initials = autoInitials(displayName || username);
   const avatarColor = getAvatarColor(username);
+
+  // Sync browser tab title with app name
+  useEffect(() => {
+    document.title = appName;
+  }, [appName]);
 
   return (
     <header className="flex items-center justify-between h-12 px-4 bg-surface-alt border-b border-border shrink-0">
@@ -68,7 +74,11 @@ export function Header({ onToggleSidebar, onOpenSettings }: HeaderProps) {
             <path d="M3 12h18M3 6h18M3 18h18" />
           </svg>
         </button>
-        <span className="text-lg font-bold text-text-primary tracking-tight">{appName}</span>
+        {appLogo ? (
+          <img src={appLogo} alt={appName} className="h-7 w-auto max-w-[140px] object-contain" />
+        ) : (
+          <span className="text-lg font-bold text-text-primary tracking-tight">{appName}</span>
+        )}
         <button
           onClick={handleVersionClick}
           disabled={checking}
