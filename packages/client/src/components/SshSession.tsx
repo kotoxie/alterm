@@ -4,8 +4,8 @@ import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import type { Tab } from '../pages/MainLayout';
 import { useAuth } from '../hooks/useAuth';
-import { useSettings } from '../hooks/useSettings';
-import { SSH_THEMES, DEFAULT_THEME, type SshThemeName } from '../lib/sshThemes';
+import { useSshPrefs } from '../hooks/useSshPrefs';
+import { SSH_THEMES } from '../lib/sshThemes';
 
 interface SshSessionProps {
   tab: Tab;
@@ -26,19 +26,16 @@ export function SshSession({ tab, isActive, onStatusChange, onClose }: SshSessio
   const fitAddonRef = useRef<FitAddon | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const { token } = useAuth();
-  const { settings } = useSettings();
+  const sshPrefs = useSshPrefs();
   const [disconnected, setDisconnected] = useState(false);
   const [disconnectMessage, setDisconnectMessage] = useState('');
   const [reconnectCount, setReconnectCount] = useState(0);
   const [activeTunnels, setActiveTunnels] = useState<TunnelInfo[]>([]);
 
-  // Capture SSH settings as primitives so useEffect doesn't re-run on object identity change
-  const sshFontSize = parseInt(settings['ssh.font_size'] ?? '14', 10);
-  const sshFontFamily = settings['ssh.font_family'] ?? '"Fira Code", monospace';
-  const sshScrollback = parseInt(settings['ssh.scrollback'] ?? '5000', 10);
-  const sshCursorStyle = (settings['ssh.cursor_style'] ?? 'block') as 'block' | 'bar' | 'underline';
-  const sshCursorBlink = settings['ssh.cursor_blink'] !== 'false';
-  const sshTheme = SSH_THEMES[(settings['ssh.theme'] as SshThemeName) ?? DEFAULT_THEME] ?? SSH_THEMES[DEFAULT_THEME];
+  // Destructure per-user SSH prefs (fetched from /api/v1/profile/ssh-prefs)
+  const { fontSize: sshFontSize, fontFamily: sshFontFamily, scrollback: sshScrollback,
+          cursorStyle: sshCursorStyle, cursorBlink: sshCursorBlink, theme: sshThemeName } = sshPrefs;
+  const sshTheme = SSH_THEMES[sshThemeName] ?? SSH_THEMES['vscode-dark'];
 
   const handleReconnect = useCallback(() => {
     setDisconnected(false);
