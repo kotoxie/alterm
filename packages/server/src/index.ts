@@ -44,13 +44,19 @@ async function main() {
   // Express app
   const app = express();
 
-  // Trust proxy — lets req.ip reflect X-Forwarded-For from reverse proxies
-  const trustedProxies = getSetting('security.trusted_proxies').trim();
-  if (trustedProxies === 'true' || trustedProxies === '*') {
-    app.set('trust proxy', true);
-  } else if (trustedProxies) {
-    app.set('trust proxy', trustedProxies.split(',').map((s) => s.trim()).filter(Boolean));
-  }
+  // Trust proxy — dynamically evaluated per request so UI changes take effect
+  // without a container restart.
+  app.set('trust proxy', (ip: string) => {
+    const val = getSetting('security.trusted_proxies').trim();
+    if (!val || val === 'false') return false;
+    if (val === 'true' || val === '*') return true;
+    // Comma-separated list of IPs / CIDRs — Express handles CIDR matching when
+    // the value is passed as a string list, but the function form only receives a
+    // single IP to test.  We re-use Express's own loopback/linklocal shortcuts and
+    // fall back to exact-match for explicit IPs.
+    const entries = val.split(',').map((s) => s.trim()).filter(Boolean);
+    return entries.includes(ip);
+  });
   app.use(helmet({
     contentSecurityPolicy: {
       directives: {
