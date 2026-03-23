@@ -144,16 +144,19 @@ export function setupSshProxy(server: https.Server): void {
     if (!conn || conn.protocol !== 'ssh') { ws.close(4002, 'Not found or not SSH'); return; }
 
     const sessionDbId = uuid();
-    execute('INSERT INTO sessions (id, user_id, connection_id, protocol) VALUES (?, ?, ?, ?)',
-      [sessionDbId, userId, connectionId, 'ssh']);
+    const globalRecording = getSetting('session.recording_enabled') === 'true';
+    const doRecord = globalRecording && conn.recording_enabled === 1;
+
+    // Only track in sessions table when a recording will be made
+    if (doRecord) {
+      execute('INSERT INTO sessions (id, user_id, connection_id, protocol) VALUES (?, ?, ?, ?)',
+        [sessionDbId, userId, connectionId, 'ssh']);
+    }
     logAudit({
       userId, eventType: 'session.ssh.connect',
       target: `${conn.host}:${conn.port}`,
       details: { connectionId, sessionId: sessionDbId, connectionName: conn.name }, ipAddress: clientIp,
     });
-
-    const globalRecording = getSetting('session.recording_enabled') === 'true';
-    const doRecord = globalRecording && conn.recording_enabled === 1;
     let castFile: fs.WriteStream | null = null;
     let castStart = 0;
 

@@ -1,7 +1,7 @@
 import net from 'net';
 import type { Server } from 'https';
 import { WebSocketServer } from 'ws';
-import { queryOne, execute } from '../db/helpers.js';
+import { queryOne } from '../db/helpers.js';
 import { verifyToken } from '../services/jwt.js';
 import { hashToken, isSessionRevoked } from '../services/loginSession.js';
 import { registerWs, unregisterWs } from './wsRegistry.js';
@@ -48,26 +48,22 @@ export function setupVncProxy(server: Server): void {
     wss.handleUpgrade(req, socket as Parameters<typeof wss.handleUpgrade>[1], head, (ws) => {
       registerWs(vncTokenHash, ws);
 
-      const sessionDbId = uuid();
-      execute(
-        `INSERT INTO sessions (id, user_id, connection_id, protocol, started_at) VALUES (?, ?, ?, 'vnc', datetime('now'))`,
-        [sessionDbId, userId, connectionId],
-      );
+      // VNC has no recording support — sessions are tracked via audit trail only
+      const sessionId = uuid();
       logAudit({
         userId,
         eventType: 'session.vnc.connect',
         target: `${connHost}:${connPort || 5900}`,
-        details: { connectionId, sessionId: sessionDbId },
+        details: { connectionId, sessionId },
         ipAddress: clientIp,
       });
 
       function teardown() {
-        execute(`UPDATE sessions SET ended_at = datetime('now') WHERE id = ?`, [sessionDbId]);
         logAudit({
           userId,
           eventType: 'session.vnc.disconnect',
           target: `${connHost}:${connPort || 5900}`,
-          details: { connectionId, sessionId: sessionDbId },
+          details: { connectionId, sessionId },
           ipAddress: clientIp,
         });
         unregisterWs(vncTokenHash, ws);
