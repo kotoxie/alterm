@@ -218,7 +218,7 @@ export function GlobalSettings() {
                 </button>
               )}
             </div>
-            <p className="text-xs text-text-secondary mt-1">PNG, JPEG, SVG or WebP. Replaces the text title in the header.</p>
+            <p className="text-xs text-text-secondary mt-1">PNG, JPEG, SVG or WebP, max 4 MB. Replaces the text title in the header.</p>
           </div>
           {generalMsg && (
             <p className={`text-sm ${generalMsg.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>

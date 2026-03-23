@@ -1,10 +1,13 @@
 import net from 'net';
 import type { Server } from 'https';
 import { WebSocketServer } from 'ws';
-import { queryOne } from '../db/helpers.js';
+import { queryOne, execute } from '../db/helpers.js';
 import { verifyToken } from '../services/jwt.js';
 import { hashToken, isSessionRevoked } from '../services/loginSession.js';
 import { registerWs, unregisterWs } from './wsRegistry.js';
+import { logAudit } from '../services/audit.js';
+import { resolveClientIp } from '../services/ip.js';
+import { v4 as uuid } from 'uuid';
 
 export function setupVncProxy(server: Server): void {
   const wss = new WebSocketServer({ noServer: true });
@@ -38,10 +41,40 @@ export function setupVncProxy(server: Server): void {
     );
     if (!conn) { socket.destroy(); return; }
 
+    const connHost = conn.host;
+    const connPort = conn.port;
+    const clientIp = resolveClientIp(req);
+
     wss.handleUpgrade(req, socket as Parameters<typeof wss.handleUpgrade>[1], head, (ws) => {
       registerWs(vncTokenHash, ws);
-      ws.once('close', () => unregisterWs(vncTokenHash, ws));
-      const tcp = net.connect(conn.port || 5900, conn.host);
+
+      const sessionDbId = uuid();
+      execute(
+        `INSERT INTO sessions (id, user_id, connection_id, protocol, started_at) VALUES (?, ?, ?, 'vnc', datetime('now'))`,
+        [sessionDbId, userId, connectionId],
+      );
+      logAudit({
+        userId,
+        eventType: 'session.vnc.connect',
+        target: `${connHost}:${connPort || 5900}`,
+        details: { connectionId, sessionId: sessionDbId },
+        ipAddress: clientIp,
+      });
+
+      function teardown() {
+        execute(`UPDATE sessions SET ended_at = datetime('now') WHERE id = ?`, [sessionDbId]);
+        logAudit({
+          userId,
+          eventType: 'session.vnc.disconnect',
+          target: `${connHost}:${connPort || 5900}`,
+          details: { connectionId, sessionId: sessionDbId },
+          ipAddress: clientIp,
+        });
+        unregisterWs(vncTokenHash, ws);
+      }
+
+      ws.once('close', teardown);
+      const tcp = net.connect(connPort || 5900, connHost);
 
       tcp.on('connect', () => {
         ws.on('message', (data) => { tcp.write(data as Buffer); });
