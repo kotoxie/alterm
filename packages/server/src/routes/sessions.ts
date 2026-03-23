@@ -23,7 +23,7 @@ router.get('/', (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const isAdmin = req.user!.role === 'admin';
   const page = Math.max(1, parseInt(req.query.page as string || '1', 10));
-  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string || '50', 10)));
+  const limit = Math.min(2000, Math.max(1, parseInt(req.query.limit as string || '50', 10)));
   const offset = (page - 1) * limit;
 
   const whereClause = isAdmin ? '' : 'WHERE s.user_id = ?';

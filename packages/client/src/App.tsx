@@ -32,8 +32,10 @@ export function App() {
     );
   }
 
+  // When logged in, redirect /login → / so the URL doesn't stay as "/login" after auth
   return (
     <Routes>
+      <Route path="/login" element={<Navigate to="/" replace />} />
       <Route path="/*" element={<MainLayout />} />
     </Routes>
   );
