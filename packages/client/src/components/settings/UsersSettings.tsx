@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import type React from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/formatDate';
@@ -64,6 +65,59 @@ export function UsersSettings() {
 
   // Per-row messages
   const [rowMsgs, setRowMsgs] = useState<Record<string, { type: 'success' | 'error'; text: string }>>({});
+
+  // Edit user modal state
+  const [editUser, setEditUser] = useState<UserRow | null>(null);
+  const [editDisplayName, setEditDisplayName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editRole, setEditRole] = useState<'user' | 'admin'>('user');
+  const [editMsg, setEditMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  function openEdit(u: UserRow) {
+    setEditUser(u);
+    setEditDisplayName(u.displayName);
+    setEditEmail(u.email ?? '');
+    setEditRole(u.role as 'user' | 'admin');
+    setEditMsg(null);
+  }
+
+  function closeEdit() {
+    setEditUser(null);
+    setEditMsg(null);
+  }
+
+  async function handleEditSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!token || !editUser) return;
+    setSaving(true);
+    setEditMsg(null);
+    try {
+      const res = await fetch(`/api/v1/users/${editUser.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          displayName: editDisplayName.trim(),
+          email: editEmail.trim() || null,
+          role: editRole,
+        }),
+      });
+      const d = await res.json() as { error?: string };
+      if (res.ok) {
+        setUsers((prev) => prev.map((u) => u.id === editUser.id
+          ? { ...u, displayName: editDisplayName.trim(), email: editEmail.trim() || null, role: editRole }
+          : u));
+        setEditMsg({ type: 'success', text: 'Saved.' });
+        setTimeout(closeEdit, 900);
+      } else {
+        setEditMsg({ type: 'error', text: d.error || 'Failed to save.' });
+      }
+    } catch {
+      setEditMsg({ type: 'error', text: 'Network error.' });
+    } finally {
+      setSaving(false);
+    }
+  }
 
   // Reset password state
   const [resetPasswordUserId, setResetPasswordUserId] = useState<string | null>(null);
@@ -377,6 +431,17 @@ export function UsersSettings() {
                         </button>
                       )}
                       <button
+                        onClick={() => openEdit(u)}
+                        className="px-2 py-1 text-xs border border-border rounded text-text-secondary hover:bg-surface-hover flex items-center gap-1"
+                        title="Edit user"
+                      >
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                        </svg>
+                        Edit
+                      </button>
+                      <button
                         onClick={() => handleDelete(u.id, u.username)}
                         disabled={isSelf}
                         className="px-2 py-1 text-xs border border-red-500/30 rounded text-red-400 hover:bg-red-500/10 disabled:opacity-30 disabled:cursor-not-allowed"
@@ -392,6 +457,83 @@ export function UsersSettings() {
         </table>
         {users.length === 0 && <p className="text-text-secondary text-sm py-4 text-center">No users found.</p>}
       </div>
+
+      {/* Edit User Modal */}
+      {editUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) closeEdit(); }}>
+          <div className="bg-surface-alt border border-border rounded-lg shadow-xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-semibold text-text-primary">Edit User — {editUser.username}</h3>
+              <button onClick={closeEdit} className="p-1 rounded hover:bg-surface-hover text-text-secondary hover:text-text-primary">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+
+            <form onSubmit={handleEditSave} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-text-secondary mb-1">Display Name</label>
+                <input
+                  type="text"
+                  required
+                  value={editDisplayName}
+                  onChange={(e) => setEditDisplayName(e.target.value)}
+                  autoFocus
+                  className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-text-secondary mb-1">Email</label>
+                <input
+                  type="email"
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-text-secondary mb-1">Role</label>
+                <select
+                  value={editRole}
+                  onChange={(e) => setEditRole(e.target.value as 'user' | 'admin')}
+                  disabled={editUser.id === currentUser?.id}
+                  className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <option value="user">User</option>
+                  <option value="admin">Admin</option>
+                </select>
+                {editUser.id === currentUser?.id && (
+                  <p className="text-xs text-text-secondary mt-1">You cannot change your own role.</p>
+                )}
+              </div>
+
+              {editMsg && (
+                <p className={`text-sm ${editMsg.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+                  {editMsg.text}
+                </p>
+              )}
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="flex-1 py-2 px-4 bg-accent text-white rounded hover:bg-accent-hover disabled:opacity-50 font-medium text-sm"
+                >
+                  {saving ? 'Saving…' : 'Save Changes'}
+                </button>
+                <button
+                  type="button"
+                  onClick={closeEdit}
+                  className="px-4 py-2 border border-border rounded text-text-secondary hover:bg-surface-hover text-sm"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
