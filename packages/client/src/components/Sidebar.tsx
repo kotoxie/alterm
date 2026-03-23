@@ -492,8 +492,9 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const y = e.clientY - rect.top;
     const h = rect.height;
-    if (y < h * 0.28) return 'before';
-    if (y > h * 0.72) return 'after';
+    // Use 40% zones so before/after are easier to hit without needing to aim precisely
+    if (y < h * 0.40) return 'before';
+    if (y > h * 0.60) return 'after';
     return 'inside';
   }
 
@@ -629,10 +630,11 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
     const totalCount = countConnections(group);
 
     return (
-      <div key={group.id} style={isDraggingThisGroup ? { opacity: 0.45 } : undefined}>
-        {/* Insert-before line */}
+      // relative wrapper so absolute indicators don't shift layout (prevents jumping)
+      <div key={group.id} className="relative" style={isDraggingThisGroup ? { opacity: 0.45 } : undefined}>
+        {/* Insert-before: absolute so it has zero layout impact */}
         {indicator === 'before' && (
-          <div className="h-0.5 bg-accent mx-2 rounded-full my-0.5 pointer-events-none" />
+          <div className="absolute top-0 left-2 right-2 h-0.5 bg-accent rounded-full -translate-y-px z-20 pointer-events-none" />
         )}
         <div
           draggable
@@ -671,6 +673,10 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
             }
           }}
           onDragLeave={(e) => {
+            // Only clear when leaving to an element OUTSIDE this row — not into a child
+            // (chevron, icon, text). Without this check every child hover fires onDragLeave
+            // and flickers/clears the indicator.
+            if (e.currentTarget.contains(e.relatedTarget as Node)) return;
             e.stopPropagation();
             setDragOverId(null);
             setDropIndicator(null);
@@ -709,9 +715,9 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
             <TrashIcon size={11} />
           </button>
         </div>
-        {/* Insert-after line */}
+        {/* Insert-after: absolute so it has zero layout impact */}
         {indicator === 'after' && (
-          <div className="h-0.5 bg-accent mx-2 rounded-full my-0.5 pointer-events-none" />
+          <div className="absolute bottom-0 left-2 right-2 h-0.5 bg-accent rounded-full translate-y-px z-20 pointer-events-none" />
         )}
 
         {expanded && (
