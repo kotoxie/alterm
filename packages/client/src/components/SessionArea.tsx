@@ -35,7 +35,7 @@ export function SessionArea({ tabs, activeTabId, onStatusChange, onClose }: Sess
               <RdpSession tab={tab} onStatusChange={onStatusChange} onClose={onClose} />
             )}
             {tab.protocol === 'ssh' && (
-              <SshSession tab={tab} isActive={isActive} onStatusChange={onStatusChange} onClose={onClose} />
+              <SshSession tab={tab} isActive={isActive} paneWidth={0} paneHeight={0} onStatusChange={onStatusChange} onClose={onClose} />
             )}
             {tab.protocol === 'smb' && (
               <SmbSession
