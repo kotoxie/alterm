@@ -14,7 +14,6 @@ export function SecuritySettings() {
   const { settings, refresh } = useSettings();
 
   // Session timeout state
-  const [sessionTimeout, setSessionTimeout] = useState('0');
   const [idleTimeout, setIdleTimeout] = useState('0');
   const [maxSessionMinutes, setMaxSessionMinutes] = useState('0');
   const [sessionMsg, setSessionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -42,7 +41,6 @@ export function SecuritySettings() {
   const [savingProxy, setSavingProxy] = useState(false);
 
   useEffect(() => {
-    setSessionTimeout(settings['security.session_timeout_minutes'] ?? '0');
     setIdleTimeout(settings['security.idle_timeout_minutes'] ?? '0');
     setMaxSessionMinutes(settings['security.max_session_minutes'] ?? '0');
     setMaxFailed(settings['security.max_failed_logins'] ?? '5');
@@ -83,7 +81,6 @@ export function SecuritySettings() {
     try {
       await saveSetting(
         {
-          'security.session_timeout_minutes': sessionTimeout,
           'security.idle_timeout_minutes': idleTimeout,
           'security.max_session_minutes': maxSessionMinutes,
         },
@@ -181,20 +178,9 @@ export function SecuritySettings() {
         <form onSubmit={handleSessionSave} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-text-secondary mb-1">
-              Session timeout (minutes) <span className="font-normal">— 0 = disabled</span>
-            </label>
-            <input
-              type="number"
-              min="0"
-              value={sessionTimeout}
-              onChange={(e) => setSessionTimeout(e.target.value)}
-              className="w-40 px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1">
               Idle timeout (minutes) <span className="font-normal">— 0 = disabled</span>
             </label>
+            <p className="text-xs text-text-secondary mb-1">Automatically revokes a session after this many minutes of inactivity. Any API request resets the clock.</p>
             <input
               type="number"
               min="0"
@@ -207,6 +193,7 @@ export function SecuritySettings() {
             <label className="block text-sm font-medium text-text-secondary mb-1">
               Max session time (minutes) <span className="font-normal">— 0 = no limit</span>
             </label>
+            <p className="text-xs text-text-secondary mb-1">Hard limit on session lifetime regardless of activity. The JWT token expires after this many minutes and the user must log in again.</p>
             <input
               type="number"
               min="0"

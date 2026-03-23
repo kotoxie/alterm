@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import type { Request, Response, NextFunction } from 'express';
 import { verifyToken, type JwtPayload } from '../services/jwt.js';
-import { isSessionRevoked, touchSession } from '../services/loginSession.js';
+import { checkAndTouchSession } from '../services/loginSession.js';
 
 declare global {
   namespace Express {
@@ -24,12 +24,16 @@ export function authRequired(req: Request, res: Response, next: NextFunction): v
     const payload = verifyToken(token);
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
 
-    if (isSessionRevoked(tokenHash)) {
+    const sessionStatus = checkAndTouchSession(tokenHash);
+    if (sessionStatus === 'revoked') {
       res.status(401).json({ error: 'Session has been revoked' });
       return;
     }
+    if (sessionStatus === 'idle_expired') {
+      res.status(401).json({ error: 'Session expired due to inactivity' });
+      return;
+    }
 
-    touchSession(tokenHash);
     req.user = { ...payload, tokenHash };
     next();
   } catch {
