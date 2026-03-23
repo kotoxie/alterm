@@ -132,6 +132,8 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
   const [draggingConnId, setDraggingConnId] = useState<string | null>(null);
   const [draggingGroupId, setDraggingGroupId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+  // Fine-grained indicator for folder reorder drags: before/after = insert line, inside = nest
+  const [dropIndicator, setDropIndicator] = useState<{ id: string; position: 'before' | 'after' | 'inside' } | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
   const [folderContextMenu, setFolderContextMenu] = useState<FolderContextMenu | null>(null);
   const [bgContextMenu, setBgContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -391,6 +393,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
     setDraggingConnId(null);
     setDraggingGroupId(null);
     setDragOverId(null);
+    setDropIndicator(null);
   }
 
   function isAncestorOrSelf(candidateId: string, dragged: string, list: ConnectionGroup[]): boolean {
@@ -428,6 +431,72 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
     fetchConnections();
   }
 
+  // Return siblings (groups at the same level) for a given group id
+  function getGroupSiblings(groupId: string, list: ConnectionGroup[]): ConnectionGroup[] {
+    // Root level?
+    if (list.some(g => g.id === groupId)) return list;
+    for (const g of list) {
+      if (g.children.some(c => c.id === groupId)) return g.children;
+      const found = getGroupSiblings(groupId, g.children);
+      if (found.length > 0) return found;
+    }
+    return [];
+  }
+
+  // Get the parentId of a group (null = root, undefined = not found)
+  function getGroupParentId(groupId: string, list: ConnectionGroup[], parentId: string | null = null): string | null | undefined {
+    for (const g of list) {
+      if (g.id === groupId) return parentId;
+      const found = getGroupParentId(groupId, g.children, g.id);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  }
+
+  async function reorderGroup(draggedId: string, targetId: string, position: 'before' | 'after') {
+    if (!token || draggedId === targetId) return;
+    const siblings = getGroupSiblings(draggedId, groups);
+    const targetParentId = getGroupParentId(targetId, groups);
+    const draggedParentId = getGroupParentId(draggedId, groups);
+
+    // If they're at different levels, first reparent then reorder
+    let workingSiblings = siblings;
+    if (draggedParentId !== targetParentId) {
+      // Reparent first (synchronously by optimistic update)
+      await fetch(`/api/v1/connections/groups/${draggedId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ parentId: targetParentId ?? null }),
+      });
+      // Treat target's siblings as working set for ordering
+      workingSiblings = getGroupSiblings(targetId, groups);
+    }
+
+    // Build reordered array: remove dragged, insert at correct position relative to target
+    const withoutDragged = workingSiblings.filter(g => g.id !== draggedId);
+    const targetIdx = withoutDragged.findIndex(g => g.id === targetId);
+    const insertIdx = targetIdx === -1 ? withoutDragged.length : position === 'before' ? targetIdx : targetIdx + 1;
+    const draggedGroup = workingSiblings.find(g => g.id === draggedId) ?? { id: draggedId } as ConnectionGroup;
+    const reordered = [...withoutDragged.slice(0, insertIdx), draggedGroup, ...withoutDragged.slice(insertIdx)];
+
+    const items = reordered.map((g, i) => ({ id: g.id, sortOrder: i * 10 }));
+    await fetch('/api/v1/connections/groups/reorder', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ items }),
+    });
+    fetchConnections();
+  }
+
+  function getDropPosition(e: React.DragEvent): 'before' | 'after' | 'inside' {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const h = rect.height;
+    if (y < h * 0.28) return 'before';
+    if (y > h * 0.72) return 'after';
+    return 'inside';
+  }
+
   function handleGroupDrop(e: React.DragEvent, groupId: string) {
     e.preventDefault();
     e.stopPropagation();
@@ -436,12 +505,18 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
       setExpandedGroups((prev) => new Set([...prev, groupId]));
     } else if (draggingGroupId && draggingGroupId !== groupId) {
       if (!isAncestorOrSelf(groupId, draggingGroupId, groups)) {
-        void moveGroup(draggingGroupId, groupId);
+        const pos = dropIndicator?.id === groupId ? dropIndicator.position : 'inside';
+        if (pos === 'inside') {
+          void moveGroup(draggingGroupId, groupId);
+        } else {
+          void reorderGroup(draggingGroupId, groupId, pos);
+        }
       }
     }
     setDraggingConnId(null);
     setDraggingGroupId(null);
     setDragOverId(null);
+    setDropIndicator(null);
   }
 
   function handleUngroupedDrop(e: React.DragEvent) {
@@ -451,6 +526,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
     setDraggingConnId(null);
     setDraggingGroupId(null);
     setDragOverId(null);
+    setDropIndicator(null);
   }
 
   function handleConnContextMenu(e: RMouseEvent, conn: Connection) {
@@ -547,11 +623,17 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
     const isDraggingThisGroup = draggingGroupId === group.id;
     const isInvalidDropTarget = draggingGroupId !== null &&
       isAncestorOrSelf(group.id, draggingGroupId, groups);
-    const isDropTarget = dragOverId === group.id && !isInvalidDropTarget;
+    const indicator = dropIndicator?.id === group.id && !isInvalidDropTarget ? dropIndicator.position : null;
+    // Legacy connection-drag highlight
+    const isConnDropTarget = draggingConnId !== null && dragOverId === group.id;
     const totalCount = countConnections(group);
 
     return (
       <div key={group.id} style={isDraggingThisGroup ? { opacity: 0.45 } : undefined}>
+        {/* Insert-before line */}
+        {indicator === 'before' && (
+          <div className="h-0.5 bg-accent mx-2 rounded-full my-0.5 pointer-events-none" />
+        )}
         <div
           draggable
           onDragStart={(e) => {
@@ -563,7 +645,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
           onDragEnd={handleDragEnd}
           className={clsx(
             'flex items-center gap-1.5 px-3 py-1.5 text-sm rounded mx-1 cursor-pointer group/folder',
-            isDropTarget
+            indicator === 'inside' || isConnDropTarget
               ? 'bg-accent/20 ring-1 ring-inset ring-accent/40'
               : 'hover:bg-surface-hover',
           )}
@@ -578,10 +660,21 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
             e.stopPropagation();
             if (!isInvalidDropTarget) {
               e.dataTransfer.dropEffect = 'move';
-              setDragOverId(group.id);
+              if (draggingGroupId) {
+                // For folder drags: compute before/after/inside from mouse position
+                const pos = getDropPosition(e);
+                setDropIndicator({ id: group.id, position: pos });
+              } else {
+                // For connection drags: always "inside"
+                setDragOverId(group.id);
+              }
             }
           }}
-          onDragLeave={(e) => { e.stopPropagation(); setDragOverId(null); }}
+          onDragLeave={(e) => {
+            e.stopPropagation();
+            setDragOverId(null);
+            setDropIndicator(null);
+          }}
           onDrop={(e) => handleGroupDrop(e, group.id)}
         >
           <svg
@@ -616,6 +709,10 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
             <TrashIcon size={11} />
           </button>
         </div>
+        {/* Insert-after line */}
+        {indicator === 'after' && (
+          <div className="h-0.5 bg-accent mx-2 rounded-full my-0.5 pointer-events-none" />
+        )}
 
         {expanded && (
           <div className="ml-3 border-l border-border/40 pl-1">
