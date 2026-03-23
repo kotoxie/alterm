@@ -47,6 +47,10 @@ async function main() {
   // Trust proxy — dynamically evaluated per request so UI changes take effect
   // without a container restart.
   app.set('trust proxy', (ip: string) => {
+    // Node.js reports IPv4 clients as ::ffff:x.x.x.x on dual-stack sockets.
+    // Strip the IPv6-mapped prefix so configured entries like "192.168.1.1"
+    // or "192.168.1.0/24" match correctly.
+    const addr = ip.startsWith('::ffff:') ? ip.slice(7) : ip;
     const val = getSetting('security.trusted_proxies').trim();
     if (!val || val === 'false') return false;
     if (val === 'true' || val === '*') return true;
@@ -61,10 +65,10 @@ async function main() {
           const mask = bits === 0 ? 0 : (~0 << (32 - bits)) >>> 0;
           const toNum = (s: string) =>
             s.split('.').reduce((acc, o) => ((acc << 8) + parseInt(o, 10)) >>> 0, 0) >>> 0;
-          return (toNum(ip) & mask) === (toNum(range) & mask);
+          return (toNum(addr) & mask) === (toNum(range) & mask);
         } catch { return false; }
       }
-      return entry === ip;
+      return entry === addr;
     });
   });
   app.use(helmet({
