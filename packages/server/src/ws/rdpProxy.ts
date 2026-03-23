@@ -9,6 +9,7 @@ import { registerWs, unregisterWs } from './wsRegistry.js';
 import { queryOne, execute } from '../db/helpers.js';
 import { decrypt } from '../services/encryption.js';
 import { logAudit } from '../services/audit.js';
+import { resolveClientIp } from '../services/ip.js';
 import { v4 as uuid } from 'uuid';
 
 interface ConnectionRow {
@@ -214,7 +215,7 @@ export function setupRdpProxy(server: https.Server): void {
     const url = new URL(req.url || '', `https://${req.headers.host}`);
     const token = url.searchParams.get('token');
     const connectionId = url.searchParams.get('connectionId');
-    const clientIp = req.socket.remoteAddress || 'unknown';
+    const clientIp = resolveClientIp(req);
 
     if (!token || !connectionId) { ws.close(4001, 'Missing token or connectionId'); return; }
 
@@ -352,7 +353,7 @@ export function setupRdpProxy(server: https.Server): void {
     const url = new URL(req.url || '', `https://${req.headers.host}`);
     const token = url.searchParams.get('token');
     const connectionId = url.searchParams.get('connectionId');
-    const clientIp = req.socket.remoteAddress || 'unknown';
+    const clientIp = resolveClientIp(req);
 
     if (!token || !connectionId) {
       ws.close(4001, 'Missing token or connectionId');
