@@ -95,6 +95,8 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
   }, []);
 
   useEffect(() => {
+    let fsResizeTimer: ReturnType<typeof setTimeout> | null = null;
+
     const onFsChange = () => {
       const inFs = !!document.fullscreenElement;
       setIsFullscreen(inFs);
@@ -106,24 +108,23 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (navigator as any).keyboard?.unlock?.();
       }
+      // Resize after the browser finishes layout for the new fullscreen state.
+      // rAF is not reliable here — fullscreenchange can fire before the element's
+      // dimensions have settled. A 100 ms timeout ensures we read the correct size.
+      if (fsResizeTimer) clearTimeout(fsResizeTimer);
+      fsResizeTimer = setTimeout(() => {
+        if (!sessionRef.current || !containerRef.current) return;
+        const w = containerRef.current.clientWidth;
+        const h = Math.max(containerRef.current.clientHeight, 1);
+        if (w > 0 && h > 0) sessionRef.current.resize(w, h);
+      }, 100);
     };
     document.addEventListener('fullscreenchange', onFsChange);
-    return () => document.removeEventListener('fullscreenchange', onFsChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', onFsChange);
+      if (fsResizeTimer) clearTimeout(fsResizeTimer);
+    };
   }, []);
-
-  // ── Resize immediately on fullscreen exit so the canvas isn't cut ─────────
-  useEffect(() => {
-    if (isFullscreen) return; // only react to exit
-    // Use rAF to ensure browser has finished laying out after fullscreen transition
-    const raf = requestAnimationFrame(() => {
-      if (!sessionRef.current || !containerRef.current) return;
-      const w = containerRef.current.clientWidth;
-      const h = Math.max(containerRef.current.clientHeight, 1);
-      if (w <= 0 || h <= 0) return;
-      sessionRef.current.resize(w, h);
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [isFullscreen]);
 
   // ── Auto-open panel on connect, close after 3 s ────────────────────────────
   useEffect(() => {
