@@ -1,7 +1,8 @@
 import { Router, type Request, type Response } from 'express';
 import fs from 'fs';
-import { queryAll, queryOne } from '../db/helpers.js';
-import { authRequired } from '../middleware/auth.js';
+import { queryAll, queryOne, execute } from '../db/helpers.js';
+import { authRequired, adminRequired } from '../middleware/auth.js';
+import { logAudit } from '../services/audit.js';
 
 const router = Router();
 router.use(authRequired);
@@ -55,6 +56,36 @@ router.get('/', (req: Request, res: Response) => {
     page,
     limit,
   });
+});
+
+// DELETE / — purge all session history and recordings (admin only)
+router.delete('/', adminRequired, (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+
+  // Collect all recording file paths before deleting rows
+  const rows = queryAll<{ recording_path: string | null }>('SELECT recording_path FROM sessions', []);
+  const totalSessions = rows.length;
+
+  // Delete recording files from disk
+  let deletedRecordings = 0;
+  for (const row of rows) {
+    if (row.recording_path && fs.existsSync(row.recording_path)) {
+      try { fs.unlinkSync(row.recording_path); deletedRecordings++; } catch { /* ignore */ }
+    }
+  }
+
+  // Delete all session rows
+  execute('DELETE FROM sessions', []);
+
+  logAudit({
+    userId,
+    eventType: 'admin.sessions.purge',
+    target: 'all',
+    details: { deletedSessions: totalSessions, deletedRecordings },
+    ipAddress: req.ip,
+  });
+
+  res.json({ ok: true, deletedSessions: totalSessions, deletedRecordings });
 });
 
 // GET /:id/recording — stream asciicast file

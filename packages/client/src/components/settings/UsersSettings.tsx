@@ -66,6 +66,10 @@ export function UsersSettings() {
   // Per-row messages
   const [rowMsgs, setRowMsgs] = useState<Record<string, { type: 'success' | 'error'; text: string }>>({});
 
+  // Delete confirmation modal state
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; username: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
   // Edit user modal state
   const [editUser, setEditUser] = useState<UserRow | null>(null);
   const [editDisplayName, setEditDisplayName] = useState('');
@@ -181,18 +185,28 @@ export function UsersSettings() {
     }
   }
 
-  async function handleDelete(userId: string, username: string) {
-    if (!token) return;
-    if (!window.confirm(`Delete user "${username}"? This cannot be undone.`)) return;
-    const res = await fetch(`/api/v1/users/${userId}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (res.ok) {
-      setUsers((prev) => prev.filter((u) => u.id !== userId));
-    } else {
-      const d = await res.json();
-      setRowMsg(userId, { type: 'error', text: d.error || 'Failed.' });
+  async function confirmDelete() {
+    if (!token || !deleteTarget) return;
+    setDeleting(true);
+    const { id: userId } = deleteTarget;
+    try {
+      const res = await fetch(`/api/v1/users/${userId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        setUsers((prev) => prev.filter((u) => u.id !== userId));
+        setDeleteTarget(null);
+      } else {
+        const d = await res.json();
+        setRowMsg(userId, { type: 'error', text: d.error || 'Failed.' });
+        setDeleteTarget(null);
+      }
+    } catch {
+      setRowMsg(userId, { type: 'error', text: 'Network error.' });
+      setDeleteTarget(null);
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -442,7 +456,7 @@ export function UsersSettings() {
                         Edit
                       </button>
                       <button
-                        onClick={() => handleDelete(u.id, u.username)}
+                        onClick={() => setDeleteTarget({ id: u.id, username: u.username })}
                         disabled={isSelf}
                         className="px-2 py-1 text-xs border border-red-500/30 rounded text-red-400 hover:bg-red-500/10 disabled:opacity-30 disabled:cursor-not-allowed"
                       >
@@ -457,6 +471,47 @@ export function UsersSettings() {
         </table>
         {users.length === 0 && <p className="text-text-secondary text-sm py-4 text-center">No users found.</p>}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          onClick={(e) => { if (e.target === e.currentTarget) setDeleteTarget(null); }}>
+          <div className="bg-surface-alt border border-border rounded-lg shadow-xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-500/15 flex items-center justify-center shrink-0">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-red-400">
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                  <path d="M10 11v6M14 11v6" />
+                  <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-text-primary">Delete user?</h3>
+                <p className="text-sm text-text-secondary mt-1">
+                  Are you sure you want to delete <strong className="text-text-primary">{deleteTarget.username}</strong>?
+                  This action <strong className="text-red-400">cannot be undone</strong> and will remove all data associated with this user.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={confirmDelete}
+                disabled={deleting}
+                className="flex-1 py-2 px-4 bg-red-500 text-white rounded hover:bg-red-600 disabled:opacity-50 font-medium text-sm"
+              >
+                {deleting ? 'Deleting…' : 'Yes, delete user'}
+              </button>
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="px-4 py-2 border border-border rounded text-text-secondary hover:bg-surface-hover text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Edit User Modal */}
       {editUser && (
