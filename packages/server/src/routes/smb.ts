@@ -2,6 +2,8 @@ import { Router, type Request, type Response } from 'express';
 import { queryOne } from '../db/helpers.js';
 import { authRequired } from '../middleware/auth.js';
 import { decrypt } from '../services/encryption.js';
+import { logAudit } from '../services/audit.js';
+import { resolveClientIp } from '../services/ip.js';
 import SMB2 from '@marsaud/smb2';
 
 const router = Router();
@@ -81,6 +83,18 @@ router.post('/:connectionId/list', async (req: Request, res: Response) => {
 
   const { path: dirPath = '' } = req.body as { path?: string };
   let smb: SMB2 | null = null;
+
+  // Log connect audit event when opening the root (initial connection)
+  const isRootConnect = dirPath === '' || dirPath === '/' || dirPath === '\\';
+  if (isRootConnect) {
+    logAudit({
+      userId,
+      eventType: 'session.smb.connect',
+      target: `${conn.host}:${conn.port || 445}`,
+      details: { connectionId: req.params.connectionId },
+      ipAddress: resolveClientIp(req),
+    });
+  }
 
   try {
     smb = makeSmbClient(conn);
