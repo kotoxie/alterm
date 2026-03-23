@@ -6,7 +6,7 @@ import type https from 'https';
 import { verifyToken } from '../services/jwt.js';
 import { hashToken, isSessionRevoked } from '../services/loginSession.js';
 import { registerWs, unregisterWs } from './wsRegistry.js';
-import { queryOne, execute } from '../db/helpers.js';
+import { queryOne } from '../db/helpers.js';
 import { decrypt } from '../services/encryption.js';
 import { logAudit } from '../services/audit.js';
 import { resolveClientIp } from '../services/ip.js';
@@ -239,8 +239,7 @@ export function setupRdpProxy(server: https.Server): void {
     if (!conn || conn.protocol !== 'rdp') { ws.close(4002, 'Connection not found or not RDP'); return; }
 
     const sessionId = uuid();
-    execute('INSERT INTO sessions (id, user_id, connection_id, protocol) VALUES (?, ?, ?, ?)',
-      [sessionId, userId, connectionId, 'rdp']);
+    // RDP has no recording support — sessions are tracked via audit trail only
     logAudit({ userId, eventType: 'session.rdp.connect',
       target: `${conn.host}:${conn.port}`,
       details: { connectionId, sessionId, connectionName: conn.name }, ipAddress: clientIp });
@@ -341,7 +340,6 @@ export function setupRdpProxy(server: https.Server): void {
 
     ws.on('close', () => {
       cleanup();
-      execute("UPDATE sessions SET ended_at = datetime('now') WHERE id = ?", [sessionId]);
       logAudit({ userId, eventType: 'session.rdp.disconnect',
         target: `${conn.host}:${conn.port}`,
         details: { connectionId, sessionId }, ipAddress: clientIp });
@@ -385,12 +383,7 @@ export function setupRdpProxy(server: https.Server): void {
     }
 
     const sessionId = uuid();
-
-    execute(
-      'INSERT INTO sessions (id, user_id, connection_id, protocol) VALUES (?, ?, ?, ?)',
-      [sessionId, userId, connectionId, 'rdp'],
-    );
-
+    // RDP has no recording support — sessions are tracked via audit trail only
     logAudit({
       userId,
       eventType: 'session.rdp.connect',
@@ -458,8 +451,6 @@ export function setupRdpProxy(server: https.Server): void {
 
     ws.on('close', () => {
       tcp.destroy();
-      execute("UPDATE sessions SET ended_at = datetime('now') WHERE id = ?", [sessionId]);
-
       logAudit({
         userId,
         eventType: 'session.rdp.disconnect',

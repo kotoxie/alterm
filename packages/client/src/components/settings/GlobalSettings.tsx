@@ -3,11 +3,11 @@ import type React from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useSettings, invalidateSettings } from '../../hooks/useSettings';
 
-type Tab = 'general' | 'sessions';
+type Tab = 'general' | 'recordings';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'general', label: 'General' },
-  { id: 'sessions', label: 'Sessions' },
+  { id: 'recordings', label: 'Recordings' },
 ];
 
 // All IANA timezones supported by the runtime (Intl API)
@@ -51,13 +51,14 @@ export function GlobalSettings() {
   // Logo
   const [logoPreview, setLogoPreview] = useState<string>('');
 
-  // Sessions
+  // Recordings
   const [recordingEnabled, setRecordingEnabled] = useState(false);
   const [recordingRetention, setRecordingRetention] = useState('90');
-  const [maxConcurrent, setMaxConcurrent] = useState('0');
+  const [recordingMsg, setRecordingMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [savingRecording, setSavingRecording] = useState(false);
+
+  // Audit retention (shown in General tab)
   const [auditRetention, setAuditRetention] = useState('90');
-  const [sessionMsg, setSessionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [savingSession, setSavingSession] = useState(false);
 
   // Purge session history
   const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);
@@ -68,10 +69,9 @@ export function GlobalSettings() {
     setAppName(settings['app.name'] ?? 'Alterm');
     setTimezone(settings['app.timezone'] ?? 'UTC');
     setLogoPreview(settings['app.logo'] ?? '');
+    setAuditRetention(settings['audit.retention_days'] ?? '90');
     setRecordingEnabled(settings['session.recording_enabled'] === 'true');
     setRecordingRetention(settings['session.recording_retention_days'] ?? '90');
-    setMaxConcurrent(settings['session.max_concurrent'] ?? '0');
-    setAuditRetention(settings['audit.retention_days'] ?? '90');
   }, [settings]);
 
   async function saveSettings(updates: Record<string, string>): Promise<{ ok: boolean; error?: string }> {
@@ -95,7 +95,12 @@ export function GlobalSettings() {
     setSavingGeneral(true);
     setGeneralMsg(null);
     try {
-      const result = await saveSettings({ 'app.name': appName, 'app.timezone': timezone, 'app.logo': logoPreview });
+      const result = await saveSettings({
+        'app.name': appName,
+        'app.timezone': timezone,
+        'app.logo': logoPreview,
+        'audit.retention_days': auditRetention,
+      });
       setGeneralMsg(result.ok ? { type: 'success', text: 'Saved.' } : { type: 'error', text: result.error! });
     } catch {
       setGeneralMsg({ type: 'error', text: 'Network error.' });
@@ -136,22 +141,20 @@ export function GlobalSettings() {
     }
   }
 
-  async function handleSessionSave(e: FormEvent) {
+  async function handleRecordingSave(e: FormEvent) {
     e.preventDefault();
-    setSavingSession(true);
-    setSessionMsg(null);
+    setSavingRecording(true);
+    setRecordingMsg(null);
     try {
       const result = await saveSettings({
         'session.recording_enabled': String(recordingEnabled),
         'session.recording_retention_days': recordingRetention,
-        'session.max_concurrent': maxConcurrent,
-        'audit.retention_days': auditRetention,
       });
-      setSessionMsg(result.ok ? { type: 'success', text: 'Saved.' } : { type: 'error', text: result.error! });
+      setRecordingMsg(result.ok ? { type: 'success', text: 'Saved.' } : { type: 'error', text: result.error! });
     } catch {
-      setSessionMsg({ type: 'error', text: 'Network error.' });
+      setRecordingMsg({ type: 'error', text: 'Network error.' });
     } finally {
-      setSavingSession(false);
+      setSavingRecording(false);
     }
   }
 
@@ -220,6 +223,16 @@ export function GlobalSettings() {
             </div>
             <p className="text-xs text-text-secondary mt-1">PNG, JPEG, SVG or WebP, max 4 MB. Replaces the text title in the header.</p>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-1">Audit log retention (days)</label>
+            <input
+              type="number"
+              min="1"
+              value={auditRetention}
+              onChange={(e) => setAuditRetention(e.target.value)}
+              className="w-40 px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
+            />
+          </div>
           {generalMsg && (
             <p className={`text-sm ${generalMsg.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
               {generalMsg.text}
@@ -235,16 +248,17 @@ export function GlobalSettings() {
         </form>
       )}
 
-      {/* Sessions */}
-      {activeTab === 'sessions' && (
+      {/* Recordings */}
+      {activeTab === 'recordings' && (
         <div className="space-y-6 max-w-lg">
-        <form onSubmit={handleSessionSave} className="space-y-4">
+        <form onSubmit={handleRecordingSave} className="space-y-4">
           <div className="flex items-center gap-3">
             <Toggle value={recordingEnabled} onChange={setRecordingEnabled} />
             <span className="text-sm text-text-secondary">Session recording enabled</span>
           </div>
           <div>
             <label className="block text-sm font-medium text-text-secondary mb-1">Recording retention (days)</label>
+            <p className="text-xs text-text-secondary mb-1">Recordings older than this will be automatically removed.</p>
             <input
               type="number"
               min="1"
@@ -253,39 +267,17 @@ export function GlobalSettings() {
               className="w-40 px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1">
-              Max concurrent sessions <span className="font-normal">(0 = unlimited)</span>
-            </label>
-            <input
-              type="number"
-              min="0"
-              value={maxConcurrent}
-              onChange={(e) => setMaxConcurrent(e.target.value)}
-              className="w-40 px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1">Audit log retention (days)</label>
-            <input
-              type="number"
-              min="1"
-              value={auditRetention}
-              onChange={(e) => setAuditRetention(e.target.value)}
-              className="w-40 px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
-            />
-          </div>
-          {sessionMsg && (
-            <p className={`text-sm ${sessionMsg.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
-              {sessionMsg.text}
+          {recordingMsg && (
+            <p className={`text-sm ${recordingMsg.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+              {recordingMsg.text}
             </p>
           )}
           <button
             type="submit"
-            disabled={savingSession}
+            disabled={savingRecording}
             className="px-4 py-2 bg-accent text-white rounded hover:bg-accent-hover disabled:opacity-50 text-sm font-medium"
           >
-            {savingSession ? 'Saving...' : 'Save'}
+            {savingRecording ? 'Saving...' : 'Save'}
           </button>
         </form>
 
@@ -300,8 +292,8 @@ export function GlobalSettings() {
           </h3>
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="text-sm font-medium text-text-primary">Delete all session history</p>
-              <p className="text-xs text-text-secondary mt-0.5">Permanently deletes all session records and associated recordings from disk.</p>
+              <p className="text-sm font-medium text-text-primary">Delete all recordings</p>
+              <p className="text-xs text-text-secondary mt-0.5">Permanently deletes all recording files and their session records from disk.</p>
             </div>
             <button
               type="button"
@@ -329,9 +321,9 @@ export function GlobalSettings() {
                   </svg>
                 </div>
                 <div>
-                  <h3 className="text-base font-semibold text-text-primary">Delete all session history?</h3>
+                  <h3 className="text-base font-semibold text-text-primary">Delete all recordings?</h3>
                   <p className="text-sm text-text-secondary mt-1">
-                    This will permanently delete <strong className="text-text-primary">all session records and every recording file</strong> from disk.
+                    This will permanently delete <strong className="text-text-primary">all recording files and their session records</strong> from disk.
                     This action <strong className="text-red-400">cannot be undone</strong>.
                   </p>
                   <p className="text-sm text-text-secondary mt-2">An entry will be written to the Audit Trail recording this deletion.</p>
