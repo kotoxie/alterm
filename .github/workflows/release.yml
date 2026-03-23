@@ -57,6 +57,7 @@ jobs:
         with:
           prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
+          append_body: true
           body: |
             ## Container image
 
