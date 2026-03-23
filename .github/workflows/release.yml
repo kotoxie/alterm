@@ -52,17 +52,36 @@ jobs:
           cache-to: type=gha,mode=max
           provenance: false
 
+      - name: Build release notes
+        id: notes
+        run: |
+          PREV=$(git tag --sort=-version:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+' | sed -n '2p')
+          if [ -z "$PREV" ]; then
+            RANGE="HEAD"
+          else
+            RANGE="${PREV}..HEAD"
+          fi
+          CHANGES=$(git log $RANGE --pretty=format:"- %s" --no-merges | grep -v '^- ci:' | grep -v '^- chore:' || true)
+          if [ -z "$CHANGES" ]; then
+            CHANGES="- Minor improvements and bug fixes"
+          fi
+          EOF_MARKER=$(openssl rand -hex 8)
+          echo "body<<${EOF_MARKER}" >> "$GITHUB_OUTPUT"
+          echo "## What's Changed" >> "$GITHUB_OUTPUT"
+          echo "" >> "$GITHUB_OUTPUT"
+          echo "$CHANGES" >> "$GITHUB_OUTPUT"
+          echo "" >> "$GITHUB_OUTPUT"
+          echo "## Container image" >> "$GITHUB_OUTPUT"
+          echo "" >> "$GITHUB_OUTPUT"
+          echo '```bash' >> "$GITHUB_OUTPUT"
+          echo "docker run -d -p 7443:7443 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          echo '```' >> "$GITHUB_OUTPUT"
+          echo "" >> "$GITHUB_OUTPUT"
+          echo "**Digest:** \`${{ steps.build.outputs.digest }}\`" >> "$GITHUB_OUTPUT"
+          echo "${EOF_MARKER}" >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           prerelease: ${{ contains(github.ref_name, '-') }}
-          generate_release_notes: true
-          append_body: true
-          body: |
-            ## Container image
-
-            ```bash
-            docker run -d -p 7443:7443 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
-            ```
-
-            **Digest:** `${{ steps.build.outputs.digest }}`
+          body: ${{ steps.notes.outputs.body }}
