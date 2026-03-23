@@ -128,9 +128,9 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [showModal, setShowModal] = useState(false);
   const [editingConnection, setEditingConnection] = useState<Connection | null>(null);
-  const [showNewFolder, setShowNewFolder] = useState(false);
-  const [newFolderName, setNewFolderName] = useState('');
+  const [inlineNewGroup, setInlineNewGroup] = useState<{ parentId: string | null; name: string } | null>(null);
   const [draggingConnId, setDraggingConnId] = useState<string | null>(null);
+  const [draggingGroupId, setDraggingGroupId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
   const [folderContextMenu, setFolderContextMenu] = useState<FolderContextMenu | null>(null);
@@ -140,7 +140,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
   const [renamingGroupId, setRenamingGroupId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [newConnGroupId, setNewConnGroupId] = useState<string | null>(null);
-  const newFolderInputRef = useRef<HTMLInputElement>(null);
+  const inlineNewGroupInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const folderMenuRef = useRef<HTMLDivElement>(null);
   const bgMenuRef = useRef<HTMLDivElement>(null);
@@ -235,8 +235,10 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
   }, [checkHealth]);
 
   useEffect(() => {
-    if (showNewFolder) newFolderInputRef.current?.focus();
-  }, [showNewFolder]);
+    if (inlineNewGroup !== null) {
+      setTimeout(() => inlineNewGroupInputRef.current?.focus(), 30);
+    }
+  }, [inlineNewGroup]);
 
   function toggleGroup(id: string) {
     setExpandedGroups((prev) => {
@@ -275,17 +277,31 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
     fetchConnections();
   }
 
-  async function createSubfolder(parentId: string) {
-    const name = window.prompt('Subfolder name:');
-    if (!name?.trim() || !token) return;
+  function startInlineNewFolder(parentId: string | null) {
+    if (parentId !== null) {
+      setExpandedGroups(prev => new Set([...prev, parentId]));
+    }
+    setInlineNewGroup({ parentId, name: '' });
+  }
+
+  async function commitInlineNewFolder() {
+    if (!inlineNewGroup || !token) return;
+    const name = inlineNewGroup.name.trim();
+    if (!name) { setInlineNewGroup(null); return; }
     await fetch('/api/v1/connections/groups', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name: name.trim(), parentId }),
+      body: JSON.stringify({ name, parentId: inlineNewGroup.parentId }),
     });
-    // Ensure parent stays expanded after subfolder creation
-    setExpandedGroups((prev) => new Set([...prev, parentId]));
+    if (inlineNewGroup.parentId) {
+      setExpandedGroups(prev => new Set([...prev, inlineNewGroup.parentId!]));
+    }
+    setInlineNewGroup(null);
     fetchConnections();
+  }
+
+  function cancelInlineNewFolder() {
+    setInlineNewGroup(null);
   }
 
   function openNewConnectionInFolder(groupId: string | null) {
@@ -322,19 +338,6 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
       setDuplicatePrefill(prefill);
       setShowModal(true);
     } catch { /* ignore */ }
-  }
-
-  async function createFolder() {
-    const name = newFolderName.trim();
-    if (!name || !token) return;
-    await fetch('/api/v1/connections/groups', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name }),
-    });
-    setNewFolderName('');
-    setShowNewFolder(false);
-    fetchConnections();
   }
 
   async function moveConnection(connId: string, targetGroupId: string | null) {
@@ -386,14 +389,43 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
 
   function handleDragEnd() {
     setDraggingConnId(null);
+    setDraggingGroupId(null);
     setDragOverId(null);
   }
 
-  function handleGroupDragOver(e: React.DragEvent, groupId: string) {
-    e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = 'move';
-    setDragOverId(groupId);
+  function isAncestorOrSelf(candidateId: string, dragged: string, list: ConnectionGroup[]): boolean {
+    function findSubtree(id: string, nodes: ConnectionGroup[]): ConnectionGroup | null {
+      for (const n of nodes) {
+        if (n.id === id) return n;
+        const f = findSubtree(id, n.children);
+        if (f) return f;
+      }
+      return null;
+    }
+    function containsId(id: string, nodes: ConnectionGroup[]): boolean {
+      for (const n of nodes) {
+        if (n.id === id) return true;
+        if (containsId(id, n.children)) return true;
+      }
+      return false;
+    }
+    if (candidateId === dragged) return true;
+    const draggedNode = findSubtree(dragged, list);
+    if (!draggedNode) return false;
+    return containsId(candidateId, draggedNode.children);
+  }
+
+  async function moveGroup(groupId: string, targetParentId: string | null) {
+    if (!token) return;
+    await fetch(`/api/v1/connections/groups/${groupId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ parentId: targetParentId }),
+    });
+    if (targetParentId) {
+      setExpandedGroups(prev => new Set([...prev, targetParentId]));
+    }
+    fetchConnections();
   }
 
   function handleGroupDrop(e: React.DragEvent, groupId: string) {
@@ -402,15 +434,22 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
     if (draggingConnId) {
       moveConnection(draggingConnId, groupId);
       setExpandedGroups((prev) => new Set([...prev, groupId]));
+    } else if (draggingGroupId && draggingGroupId !== groupId) {
+      if (!isAncestorOrSelf(groupId, draggingGroupId, groups)) {
+        void moveGroup(draggingGroupId, groupId);
+      }
     }
     setDraggingConnId(null);
+    setDraggingGroupId(null);
     setDragOverId(null);
   }
 
   function handleUngroupedDrop(e: React.DragEvent) {
     e.preventDefault();
     if (draggingConnId) moveConnection(draggingConnId, null);
+    else if (draggingGroupId) void moveGroup(draggingGroupId, null);
     setDraggingConnId(null);
+    setDraggingGroupId(null);
     setDragOverId(null);
   }
 
@@ -462,14 +501,66 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
     );
   }
 
-  function renderGroup(group: ConnectionGroup) {
+  function countConnections(group: ConnectionGroup): number {
+    return group.connections.length + group.children.reduce((s, c) => s + countConnections(c), 0);
+  }
+
+  function renderInlineNewFolder() {
+    return (
+      <div className="flex items-center gap-1 px-2 py-1 mx-1 my-0.5 rounded bg-surface border border-accent/50">
+        <FolderIcon size={12} />
+        <input
+          ref={inlineNewGroupInputRef}
+          value={inlineNewGroup?.name ?? ''}
+          onChange={e => setInlineNewGroup(prev => prev ? { ...prev, name: e.target.value } : null)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') { e.preventDefault(); void commitInlineNewFolder(); }
+            if (e.key === 'Escape') cancelInlineNewFolder();
+          }}
+          placeholder="Folder name…"
+          className="flex-1 min-w-0 px-1 py-0 text-sm bg-transparent text-text-primary focus:outline-none"
+        />
+        <button
+          onMouseDown={e => { e.preventDefault(); void commitInlineNewFolder(); }}
+          className="p-0.5 rounded text-green-500 hover:bg-surface-hover"
+          title="Create (Enter)"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        </button>
+        <button
+          onMouseDown={e => { e.preventDefault(); cancelInlineNewFolder(); }}
+          className="p-0.5 rounded text-text-secondary hover:bg-surface-hover hover:text-red-400"
+          title="Cancel (Esc)"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+    );
+  }
+
+  function renderGroup(group: ConnectionGroup, depth = 0) {
     const expanded = expandedGroups.has(group.id);
-    const isDropTarget = dragOverId === group.id;
-    const totalCount = group.connections.length + group.children.reduce((s, c) => s + c.connections.length, 0);
+    const isDraggingThisGroup = draggingGroupId === group.id;
+    const isInvalidDropTarget = draggingGroupId !== null &&
+      isAncestorOrSelf(group.id, draggingGroupId, groups);
+    const isDropTarget = dragOverId === group.id && !isInvalidDropTarget;
+    const totalCount = countConnections(group);
 
     return (
-      <div key={group.id}>
+      <div key={group.id} style={isDraggingThisGroup ? { opacity: 0.45 } : undefined}>
         <div
+          draggable
+          onDragStart={(e) => {
+            e.stopPropagation();
+            setDraggingGroupId(group.id);
+            setDraggingConnId(null);
+            e.dataTransfer.effectAllowed = 'move';
+          }}
+          onDragEnd={handleDragEnd}
           className={clsx(
             'flex items-center gap-1.5 px-3 py-1.5 text-sm rounded mx-1 cursor-pointer group/folder',
             isDropTarget
@@ -482,7 +573,14 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
             e.stopPropagation();
             setFolderContextMenu({ x: e.clientX, y: e.clientY, group });
           }}
-          onDragOver={(e) => handleGroupDragOver(e, group.id)}
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!isInvalidDropTarget) {
+              e.dataTransfer.dropEffect = 'move';
+              setDragOverId(group.id);
+            }
+          }}
           onDragLeave={(e) => { e.stopPropagation(); setDragOverId(null); }}
           onDrop={(e) => handleGroupDrop(e, group.id)}
         >
@@ -522,8 +620,9 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
         {expanded && (
           <div className="ml-3 border-l border-border/40 pl-1">
             {group.connections.map(renderConnection)}
-            {group.children.map(renderGroup)}
-            {group.connections.length === 0 && group.children.length === 0 && (
+            {group.children.map(g => renderGroup(g, depth + 1))}
+            {inlineNewGroup?.parentId === group.id && renderInlineNewFolder()}
+            {group.connections.length === 0 && group.children.length === 0 && !inlineNewGroup && (
               <p className="text-xs text-text-secondary px-3 py-1 italic">Empty folder</p>
             )}
           </div>
@@ -547,41 +646,13 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
             + New Connection
           </button>
 
-          {showNewFolder ? (
-            <div className="flex gap-1">
-              <input
-                ref={newFolderInputRef}
-                value={newFolderName}
-                onChange={(e) => setNewFolderName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') createFolder();
-                  if (e.key === 'Escape') { setShowNewFolder(false); setNewFolderName(''); }
-                }}
-                placeholder="Folder name"
-                className="flex-1 min-w-0 px-2 py-1 text-sm bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
-              />
-              <button
-                onClick={createFolder}
-                className="px-2 py-1 text-sm bg-accent text-white rounded hover:bg-accent-hover"
-              >
-                ✓
-              </button>
-              <button
-                onClick={() => { setShowNewFolder(false); setNewFolderName(''); }}
-                className="px-2 py-1 text-sm border border-border rounded text-text-secondary hover:bg-surface-hover"
-              >
-                ✕
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setShowNewFolder(true)}
-              className="w-full py-1 px-3 text-sm border border-border rounded text-text-secondary hover:bg-surface-hover flex items-center gap-1.5"
-            >
-              <FolderIcon />
-              + New Folder
-            </button>
-          )}
+          <button
+            onClick={() => startInlineNewFolder(null)}
+            className="w-full py-1 px-3 text-sm border border-border rounded text-text-secondary hover:bg-surface-hover flex items-center gap-1.5"
+          >
+            <FolderIcon />
+            + New Folder
+          </button>
 
           {/* Import/Export row */}
           <div className="flex gap-1">
@@ -613,7 +684,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
         <div
           className={clsx(
             'flex-1 py-2 overflow-y-auto transition-colors',
-            draggingConnId && dragOverId === 'ungrouped' && 'bg-accent/5',
+            (draggingConnId || draggingGroupId) && dragOverId === 'ungrouped' && 'bg-accent/5',
           )}
           onDragOver={(e) => { e.preventDefault(); setDragOverId('ungrouped'); }}
           onDragLeave={() => setDragOverId(null)}
@@ -626,6 +697,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
             }
           }}
         >
+          {inlineNewGroup?.parentId === null && renderInlineNewFolder()}
           {groups.map(renderGroup)}
           {ungrouped.map(renderConnection)}
 
@@ -662,7 +734,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
             </div>
           )}
 
-          {draggingConnId && (
+          {(draggingConnId || draggingGroupId) && (
             <p className="text-xs text-text-secondary text-center py-2 opacity-60">
               Drop here to remove from folder
             </p>
@@ -781,7 +853,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
           </button>
           <button
             className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
-            onClick={() => { setShowNewFolder(true); setBgContextMenu(null); }}
+            onClick={() => { startInlineNewFolder(null); setBgContextMenu(null); }}
           >
             <FolderIcon />
             New Folder
@@ -821,7 +893,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
           </button>
           <button
             className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
-            onClick={() => { createSubfolder(folderContextMenu.group.id); setFolderContextMenu(null); }}
+            onClick={() => { startInlineNewFolder(folderContextMenu.group.id); setFolderContextMenu(null); }}
           >
             <SubfolderIcon />
             New Subfolder
