@@ -7,6 +7,7 @@ const DEFAULTS: Record<string, string> = {
   'security.session_timeout_minutes': '0',
   'security.max_failed_logins': '5',
   'security.lockout_minutes': '30',
+  'security.trusted_proxies': '',
   'security.ip_rules_enabled': 'false',
   'security.ip_rules_mode': 'allowlist',
   'audit.retention_days': '90',
