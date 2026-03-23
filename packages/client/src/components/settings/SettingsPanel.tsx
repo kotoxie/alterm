@@ -116,7 +116,7 @@ const MY_SETTINGS_NAV: NavItem[] = [
 const ADMIN_NAV: NavItem[] = [
   { id: 'global', label: 'General', icon: <SlidersIcon />, adminOnly: true },
   { id: 'security', label: 'Security', icon: <ShieldIcon />, adminOnly: true },
-  { id: 'sessions', label: 'Sessions', icon: <HistoryIcon />, adminOnly: true },
+  { id: 'sessions', label: 'Recordings', icon: <HistoryIcon />, adminOnly: true },
   { id: 'audit', label: 'Audit', icon: <ListIcon />, adminOnly: true },
   { id: 'users', label: 'Users', icon: <UsersIcon />, adminOnly: true },
 ];
@@ -132,7 +132,7 @@ const NAV_LABEL_MAP: Record<Section, string> = {
   'users': 'Users',
   'audit': 'Audit Trail',
   'global': 'General',
-  'sessions': 'Sessions',
+  'sessions': 'Session Recordings',
 };
 
 export function SettingsPanel({ isOpen, onClose, initialSection }: SettingsPanelProps) {

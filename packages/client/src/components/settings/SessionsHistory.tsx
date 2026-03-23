@@ -242,7 +242,6 @@ function FilterBar({
   search, setSearch,
   protocol, setProtocol,
   userFilter, setUserFilter,
-  status, setStatus,
   dateFrom, setDateFrom,
   dateTo, setDateTo,
   userOptions,
@@ -251,13 +250,12 @@ function FilterBar({
   search: string; setSearch: (v: string) => void;
   protocol: string; setProtocol: (v: string) => void;
   userFilter: string; setUserFilter: (v: string) => void;
-  status: string; setStatus: (v: string) => void;
   dateFrom: string; setDateFrom: (v: string) => void;
   dateTo: string; setDateTo: (v: string) => void;
   userOptions: string[];
   onReset: () => void;
 }) {
-  const hasFilters = search || protocol !== 'all' || userFilter !== 'all' || status !== 'all' || dateFrom || dateTo;
+  const hasFilters = search || protocol !== 'all' || userFilter !== 'all' || dateFrom || dateTo;
   const inputCls = 'px-2.5 py-1.5 bg-surface border border-border rounded text-text-primary text-xs focus:outline-none focus:ring-1 focus:ring-accent';
 
   return (
@@ -289,13 +287,6 @@ function FilterBar({
           {userOptions.map((u) => <option key={u} value={u}>{u}</option>)}
         </select>
       )}
-
-      {/* Status */}
-      <select value={status} onChange={(e) => setStatus(e.target.value)} className={inputCls}>
-        <option value="all">All status</option>
-        <option value="active">Active</option>
-        <option value="completed">Completed</option>
-      </select>
 
       {/* Date range */}
       <div className="flex items-center gap-1">
@@ -331,7 +322,6 @@ export function SessionsHistory() {
   const [search, setSearch] = useState('');
   const [protocol, setProtocol] = useState('all');
   const [userFilter, setUserFilter] = useState('all');
-  const [status, setStatus] = useState('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
@@ -342,7 +332,8 @@ export function SessionsHistory() {
       const res = await fetch('/api/v1/sessions?limit=2000', { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) {
         const d = await res.json() as { sessions: SessionRow[] };
-        setSessions(d.sessions);
+        // Only keep sessions that have a recording
+        setSessions(d.sessions.filter((s) => s.hasRecording));
       }
     } catch { /* ignore */ }
     setLoading(false);
@@ -362,8 +353,6 @@ export function SessionsHistory() {
       if (search && !s.connectionName?.toLowerCase().includes(search.toLowerCase())) return false;
       if (protocol !== 'all' && s.protocol !== protocol) return false;
       if (userFilter !== 'all' && s.username !== userFilter) return false;
-      if (status === 'active' && s.endedAt !== null) return false;
-      if (status === 'completed' && s.endedAt === null) return false;
       if (dateFrom) {
         const from = new Date(dateFrom + 'T00:00:00Z').getTime();
         if (new Date(s.startedAt.replace(' ', 'T') + 'Z').getTime() < from) return false;
@@ -374,23 +363,22 @@ export function SessionsHistory() {
       }
       return true;
     });
-  }, [sessions, search, protocol, userFilter, status, dateFrom, dateTo]);
+  }, [sessions, search, protocol, userFilter, dateFrom, dateTo]);
 
   function resetFilters() {
     setSearch('');
     setProtocol('all');
     setUserFilter('all');
-    setStatus('all');
     setDateFrom('');
     setDateTo('');
   }
 
-  if (loading) return <p className="text-text-secondary text-sm">Loading sessions...</p>;
+  if (loading) return <p className="text-text-secondary text-sm">Loading recordings...</p>;
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold text-text-primary">Session History</h2>
+        <h2 className="text-base font-semibold text-text-primary">Session Recordings</h2>
         <button onClick={() => void loadSessions()}
           className="text-xs text-text-secondary hover:text-text-primary px-2 py-1 rounded hover:bg-surface-hover">
           ↻ Refresh
@@ -401,7 +389,6 @@ export function SessionsHistory() {
         search={search} setSearch={setSearch}
         protocol={protocol} setProtocol={setProtocol}
         userFilter={userFilter} setUserFilter={setUserFilter}
-        status={status} setStatus={setStatus}
         dateFrom={dateFrom} setDateFrom={setDateFrom}
         dateTo={dateTo} setDateTo={setDateTo}
         userOptions={userOptions}
@@ -411,15 +398,15 @@ export function SessionsHistory() {
       {/* Result count */}
       {(filtered.length !== sessions.length || sessions.length > 0) && (
         <p className="text-xs text-text-secondary">
-          Showing <span className="font-medium text-text-primary">{filtered.length}</span> of {sessions.length} sessions
+          Showing <span className="font-medium text-text-primary">{filtered.length}</span> of {sessions.length} recordings
         </p>
       )}
 
       {filtered.length === 0 && sessions.length > 0 && (
-        <p className="text-text-secondary text-sm py-4 text-center">No sessions match the current filters.</p>
+        <p className="text-text-secondary text-sm py-4 text-center">No recordings match the current filters.</p>
       )}
       {sessions.length === 0 && (
-        <p className="text-text-secondary text-sm">No sessions recorded yet.</p>
+        <p className="text-text-secondary text-sm">No recordings yet. Enable session recording in Settings › General › Recordings.</p>
       )}
 
       {filtered.length > 0 && (
@@ -432,7 +419,7 @@ export function SessionsHistory() {
                 <th className="pb-2 pr-4 font-medium">Protocol</th>
                 <th className="pb-2 pr-4 font-medium">Started</th>
                 <th className="pb-2 pr-4 font-medium">Duration</th>
-                <th className="pb-2 font-medium">Recording</th>
+                <th className="pb-2 font-medium">Play</th>
               </tr>
             </thead>
             <tbody>
@@ -446,26 +433,13 @@ export function SessionsHistory() {
                     </span>
                   </td>
                   <td className="py-2 pr-4 text-text-secondary text-xs">{formatDateTz(s.startedAt, timezone)}</td>
-                  <td className="py-2 pr-4 text-xs">
-                    {s.endedAt === null ? (
-                      <span className="flex items-center gap-1 text-green-400 font-medium">
-                        <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse inline-block" />
-                        Active
-                      </span>
-                    ) : (
-                      <span className="text-text-secondary">{formatDuration(s.startedAt, s.endedAt)}</span>
-                    )}
-                  </td>
+                  <td className="py-2 pr-4 text-xs text-text-secondary">{formatDuration(s.startedAt, s.endedAt)}</td>
                   <td className="py-2">
-                    {s.hasRecording ? (
-                      <button onClick={() => setPlayingId(s.id)}
-                        className="px-2 py-1 text-xs bg-accent/10 text-accent rounded hover:bg-accent/20 border border-accent/20 flex items-center gap-1">
-                        <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3" /></svg>
-                        Play
-                      </button>
-                    ) : (
-                      <span className="text-xs text-text-secondary opacity-50">—</span>
-                    )}
+                    <button onClick={() => setPlayingId(s.id)}
+                      className="px-2 py-1 text-xs bg-accent/10 text-accent rounded hover:bg-accent/20 border border-accent/20 flex items-center gap-1">
+                      <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3" /></svg>
+                      Play
+                    </button>
                   </td>
                 </tr>
               ))}
