@@ -74,6 +74,7 @@ interface RdpSessionProps {
 export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
   const outerRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sessionRef = useRef<any>(null);
   const { token } = useAuth();
@@ -110,6 +111,24 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
     document.addEventListener('fullscreenchange', onFsChange);
     return () => document.removeEventListener('fullscreenchange', onFsChange);
   }, []);
+
+  // ── Resize immediately on fullscreen exit so the canvas isn't cut ─────────
+  useEffect(() => {
+    if (isFullscreen) return; // only react to exit
+    // Use rAF to ensure browser has finished laying out after fullscreen transition
+    const raf = requestAnimationFrame(() => {
+      if (!sessionRef.current || !containerRef.current) return;
+      const w = containerRef.current.clientWidth;
+      const h = Math.max(containerRef.current.clientHeight, 1);
+      if (w <= 0 || h <= 0) return;
+      if (canvasRef.current) {
+        canvasRef.current.width = w;
+        canvasRef.current.height = h;
+      }
+      sessionRef.current.resize(w, h);
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [isFullscreen]);
 
   // ── Auto-open panel on connect, close after 3 s ────────────────────────────
   useEffect(() => {
@@ -176,6 +195,7 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
         canvas.height = container.clientHeight || 720;
         container.innerHTML = '';
         container.appendChild(canvas);
+        canvasRef.current = canvas;
 
         const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${proto}//${window.location.host}/ws/rdp-raw?token=${encodeURIComponent(token)}&connectionId=${encodeURIComponent(tab.connectionId)}`;
@@ -255,6 +275,11 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
             const w = containerRef.current.clientWidth;
             const h = Math.max(containerRef.current.clientHeight, 1);
             if (w <= 0 || h <= 0) return;
+            // Update canvas pixel dimensions so IronRDP draws at the right resolution
+            if (canvasRef.current) {
+              canvasRef.current.width = w;
+              canvasRef.current.height = h;
+            }
             sessionRef.current.resize(w, h);
           }, RESIZE_DEBOUNCE_MS);
         });
@@ -410,6 +435,7 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
       window.removeEventListener('alterm:unauthorized', onRevoked);
       resizeObserver?.disconnect();
       if (resizeTimer) clearTimeout(resizeTimer);
+      canvasRef.current = null;
       if (sessionRef.current) {
         try { sessionRef.current.shutdown(); } catch { /* ignore */ }
         sessionRef.current = null;

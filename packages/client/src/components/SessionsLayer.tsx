@@ -42,6 +42,8 @@ export function SessionsLayer({
         // Determine visibility and position
         let style: React.CSSProperties;
         let isActive = false;
+        let paneW = 0;
+        let paneH = 0;
 
         if (!location) {
           // Tab not assigned to any pane
@@ -56,6 +58,8 @@ export function SessionsLayer({
             style = { position: 'absolute', display: 'none' };
           } else {
             isActive = location.paneId === activePaneId;
+            paneW = rect.w;
+            paneH = rect.h;
             style = {
               position: 'absolute',
               left: rect.x,
@@ -78,6 +82,8 @@ export function SessionsLayer({
               <SshSession
                 tab={tab}
                 isActive={isActive}
+                paneWidth={paneW}
+                paneHeight={paneH}
                 onStatusChange={onStatusChange}
                 onClose={onClose}
               />
