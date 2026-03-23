@@ -50,12 +50,22 @@ async function main() {
     const val = getSetting('security.trusted_proxies').trim();
     if (!val || val === 'false') return false;
     if (val === 'true' || val === '*') return true;
-    // Comma-separated list of IPs / CIDRs — Express handles CIDR matching when
-    // the value is passed as a string list, but the function form only receives a
-    // single IP to test.  We re-use Express's own loopback/linklocal shortcuts and
-    // fall back to exact-match for explicit IPs.
     const entries = val.split(',').map((s) => s.trim()).filter(Boolean);
-    return entries.includes(ip);
+    return entries.some((entry) => {
+      if (entry.includes('/')) {
+        // CIDR match (IPv4 only)
+        try {
+          const [range, bitsStr] = entry.split('/');
+          const bits = parseInt(bitsStr, 10);
+          if (bits < 0 || bits > 32) return false;
+          const mask = bits === 0 ? 0 : (~0 << (32 - bits)) >>> 0;
+          const toNum = (s: string) =>
+            s.split('.').reduce((acc, o) => ((acc << 8) + parseInt(o, 10)) >>> 0, 0) >>> 0;
+          return (toNum(ip) & mask) === (toNum(range) & mask);
+        } catch { return false; }
+      }
+      return entry === ip;
+    });
   });
   app.use(helmet({
     contentSecurityPolicy: {
