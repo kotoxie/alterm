@@ -427,6 +427,21 @@ router.get('/:id/session', (req: Request, res: Response) => {
 // --- Connection Groups ---
 // IMPORTANT: these routes must be defined BEFORE /:id routes to avoid shadowing
 
+// PUT /groups/reorder — batch-update sort_order for a set of groups (manual sort)
+router.put('/groups/reorder', (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const { items } = req.body as { items?: { id: string; sortOrder: number }[] };
+  if (!Array.isArray(items)) { res.status(400).json({ error: 'items array is required' }); return; }
+  for (const item of items) {
+    const group = queryOne<{ user_id: string }>(
+      'SELECT user_id FROM connection_groups WHERE id = ?', [item.id],
+    );
+    if (!group || (group.user_id !== userId && req.user!.role !== 'admin')) continue;
+    execute('UPDATE connection_groups SET sort_order = ? WHERE id = ?', [item.sortOrder, item.id]);
+  }
+  res.json({ success: true });
+});
+
 router.post('/groups', (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const { name, parentId } = req.body;
