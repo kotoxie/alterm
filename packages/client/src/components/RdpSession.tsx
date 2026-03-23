@@ -184,6 +184,13 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
 
         const container = containerRef.current!;
         const canvas = document.createElement('canvas');
+        // Use absolute positioning so the canvas always fills containerRef
+        // regardless of canvas.height (intrinsic pixel height). Without this,
+        // browsers may resolve height:100% against the canvas's intrinsic height
+        // (set by IronRDP) rather than the flex-allocated container height.
+        canvas.style.position = 'absolute';
+        canvas.style.top = '0';
+        canvas.style.left = '0';
         canvas.style.width = '100%';
         canvas.style.height = '100%';
         canvas.style.display = 'block';
@@ -201,10 +208,11 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
         // the style attribute. This is safe — IronRDP uses canvas.width/height
         // (pixel properties) for WebGL rendering, not the CSS style properties.
         canvasStyleGuard = new MutationObserver(() => {
-          if (canvas.style.width !== '100%' || canvas.style.height !== '100%') {
-            canvas.style.width = '100%';
-            canvas.style.height = '100%';
-          }
+          if (canvas.style.position !== 'absolute') canvas.style.position = 'absolute';
+          if (canvas.style.top !== '0px') canvas.style.top = '0';
+          if (canvas.style.left !== '0px') canvas.style.left = '0';
+          if (canvas.style.width !== '100%') canvas.style.width = '100%';
+          if (canvas.style.height !== '100%') canvas.style.height = '100%';
         });
         canvasStyleGuard.observe(canvas, { attributes: true, attributeFilter: ['style'] });
 
@@ -453,7 +461,7 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
 
   return (
     <div ref={outerRef} className="absolute inset-0 flex flex-col bg-black overflow-hidden">
-      <div ref={containerRef} className="flex-1 w-full" />
+      <div ref={containerRef} className="flex-1 w-full relative" />
 
       {/* Disconnect overlay */}
       {disconnected && (
