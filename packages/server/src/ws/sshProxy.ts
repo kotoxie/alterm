@@ -11,6 +11,7 @@ import { registerWs, unregisterWs } from './wsRegistry.js';
 import { queryOne, execute } from '../db/helpers.js';
 import { decrypt } from '../services/encryption.js';
 import { logAudit } from '../services/audit.js';
+import { resolveClientIp } from '../services/ip.js';
 import { config } from '../config.js';
 import { getSetting } from '../services/settings.js';
 import { v4 as uuid } from 'uuid';
@@ -108,7 +109,7 @@ export function setupSshProxy(server: https.Server): void {
     const token = url.searchParams.get('token');
     const connectionId = url.searchParams.get('connectionId');
     const clientSessionId = url.searchParams.get('sessionId') || uuid();
-    const clientIp = req.socket.remoteAddress || 'unknown';
+    const clientIp = resolveClientIp(req);
 
     if (!token || !connectionId) { ws.close(4001, 'Missing params'); return; }
 
