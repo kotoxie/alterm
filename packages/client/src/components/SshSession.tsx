@@ -10,6 +10,10 @@ import { SSH_THEMES } from '../lib/sshThemes';
 interface SshSessionProps {
   tab: Tab;
   isActive: boolean;
+  /** Pixel width of the pane rect — passed from SessionsLayer so fit() is driven by React state */
+  paneWidth: number;
+  /** Pixel height of the pane rect */
+  paneHeight: number;
   onStatusChange: (tabId: string, status: Tab['status']) => void;
   onClose: (tabId: string) => void;
 }
@@ -20,7 +24,7 @@ interface TunnelInfo {
   remotePort: number;
 }
 
-export function SshSession({ tab, isActive, onStatusChange, onClose }: SshSessionProps) {
+export function SshSession({ tab, isActive, paneWidth, paneHeight, onStatusChange, onClose }: SshSessionProps) {
   const termRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -43,6 +47,21 @@ export function SshSession({ tab, isActive, onStatusChange, onClose }: SshSessio
     setActiveTunnels([]);
     setReconnectCount((n) => n + 1);
   }, []);
+
+  // Re-fit when the pane rect changes (sidebar drag, window resize, split pane resize).
+  // paneWidth/paneHeight come directly from React state (leafRects), so this fires
+  // synchronously in the React commit cycle — more reliable than a ResizeObserver chain.
+  useEffect(() => {
+    if (paneWidth === 0 || paneHeight === 0) return;
+    const fit = fitAddonRef.current;
+    const term = terminalRef.current;
+    const ws = wsRef.current;
+    if (!fit || !term) return;
+    fit.fit();
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+    }
+  }, [paneWidth, paneHeight]);
 
   // Re-fit + notify server when this tab becomes active (was hidden before)
   useEffect(() => {
@@ -151,17 +170,9 @@ export function SshSession({ tab, isActive, onStatusChange, onClose }: SshSessio
       if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'data', data }));
     });
 
-    const resizeObserver = new ResizeObserver(() => {
-      fitAddon.fit();
-      if (ws.readyState === WebSocket.OPEN)
-        ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
-    });
-    resizeObserver.observe(termRef.current);
-
     return () => {
       cancelled = true;
       clearTimeout(fitTimer);
-      resizeObserver.disconnect();
       dataDispose.dispose();
       if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) ws.close();
       term.dispose();
