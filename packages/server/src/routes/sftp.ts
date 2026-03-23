@@ -4,6 +4,8 @@ import type { SFTPWrapper } from 'ssh2';
 import { queryOne } from '../db/helpers.js';
 import { authRequired } from '../middleware/auth.js';
 import { decrypt } from '../services/encryption.js';
+import { logAudit } from '../services/audit.js';
+import { resolveClientIp } from '../services/ip.js';
 
 const router = Router();
 router.use(authRequired);
@@ -62,6 +64,18 @@ router.post('/:connectionId/list', async (req: Request, res: Response) => {
 
   const { path: dirPath = '/' } = req.body as { path?: string };
   let ssh: SshClient | null = null;
+
+  // Log connect audit event on root navigation (initial connection open)
+  const isRootConnect = dirPath === '/' || dirPath === '' || dirPath === '.';
+  if (isRootConnect) {
+    logAudit({
+      userId,
+      eventType: 'session.sftp.connect',
+      target: `${conn.host}:${conn.port || 22}`,
+      details: { connectionId: req.params.connectionId },
+      ipAddress: resolveClientIp(req),
+    });
+  }
 
   try {
     const result = await connectSftp(conn);

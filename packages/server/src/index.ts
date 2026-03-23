@@ -86,7 +86,7 @@ async function main() {
   app.use('/api/v1/smb/:connectionId/upload', express.raw({ limit: '100mb', type: '*/*' }));
   app.use('/api/v1/sftp/:connectionId/upload', express.raw({ limit: '100mb', type: '*/*' }));
   app.use('/api/v1/ftp/:connectionId/upload', express.raw({ limit: '100mb', type: '*/*' }));
-  app.use(express.json());
+  app.use(express.json({ limit: '6mb' })); // allow base64-encoded logos (~4 MB image → ~5.4 MB base64)
   app.use(cookieParser());
 
   // API routes
