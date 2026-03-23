@@ -152,6 +152,7 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
     let sessionRevoked = false;
     let resizeObserver: ResizeObserver | null = null;
     let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+    let canvasStyleGuard: MutationObserver | null = null;
 
     // Suppress disconnect overlay when session is revoked (global handler redirects to login)
     const onRevoked = () => { sessionRevoked = true; };
@@ -191,6 +192,21 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
         canvas.height = container.clientHeight || 720;
         container.innerHTML = '';
         container.appendChild(canvas);
+
+        // IronRDP sets absolute pixel values on canvas.style.width/height during
+        // resize (e.g. '1920px'/'1080px'). After fullscreen exit the container
+        // shrinks but the canvas CSS stays at the fullscreen size, causing the
+        // bottom of the desktop (taskbar) to be clipped by overflow-hidden.
+        // Guard against this by resetting to 100%×100% whenever IronRDP changes
+        // the style attribute. This is safe — IronRDP uses canvas.width/height
+        // (pixel properties) for WebGL rendering, not the CSS style properties.
+        canvasStyleGuard = new MutationObserver(() => {
+          if (canvas.style.width !== '100%' || canvas.style.height !== '100%') {
+            canvas.style.width = '100%';
+            canvas.style.height = '100%';
+          }
+        });
+        canvasStyleGuard.observe(canvas, { attributes: true, attributeFilter: ['style'] });
 
         const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${proto}//${window.location.host}/ws/rdp-raw?token=${encodeURIComponent(token)}&connectionId=${encodeURIComponent(tab.connectionId)}`;
@@ -424,6 +440,7 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
       cancelled = true;
       window.removeEventListener('alterm:unauthorized', onRevoked);
       resizeObserver?.disconnect();
+      canvasStyleGuard?.disconnect();
       if (resizeTimer) clearTimeout(resizeTimer);
       if (sessionRef.current) {
         try { sessionRef.current.shutdown(); } catch { /* ignore */ }
