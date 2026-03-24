@@ -1,6 +1,6 @@
 services:
   alterm:
-    build: .
+    image: ghcr.io/kotoxie/alterm:latest
     container_name: alterm    
     ports:
       - "7443:7443"
