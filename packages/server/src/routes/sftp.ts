@@ -24,7 +24,7 @@ function getConn(connectionId: string, userId: string): ConnRow | null {
   return queryOne<ConnRow>(
     `SELECT id, host, port, username, encrypted_password, user_id, shared
      FROM connections
-     WHERE id = ? AND (user_id = ? OR shared = 1) AND protocol = 'sftp'`,
+     WHERE id = ? AND (user_id = ? OR shared = 1) AND protocol IN ('sftp', 'ssh')`,
     [connectionId, userId],
   ) ?? null;
 }
