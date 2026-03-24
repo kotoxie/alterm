@@ -47,10 +47,71 @@ function parseCast(text: string): { header: CastHeader; events: CastEvent[] } {
   return { header, events };
 }
 
-function RecordingPlayer({
+function VideoPlayer({
   sessionId, token, onClose,
 }: { sessionId: string; token: string; onClose: () => void }) {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await fetch(`/api/v1/sessions/${sessionId}/recording`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error('Recording not found');
+        const blob = await res.blob();
+        setBlobUrl(URL.createObjectURL(blob));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Failed to load');
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+    return () => { if (blobUrl) URL.revokeObjectURL(blobUrl); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, token]);
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-[60] flex flex-col bg-[#0a0a0a]">
+      <div className="flex items-center gap-3 px-4 py-2 bg-[#141414] border-b border-[#2e2e2e] shrink-0">
+        <span className="text-sm font-semibold text-[#efefef]">RDP Recording</span>
+        <div className="flex-1" />
+        <button onClick={onClose} className="p-1.5 rounded hover:bg-[#272727] text-[#888] hover:text-[#efefef]" title="Close (Esc)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+      <div className="flex-1 flex items-center justify-center overflow-hidden">
+        {loading && <p className="text-[#888] text-sm">Loading recording...</p>}
+        {error && <p className="text-red-400 text-sm">{error}</p>}
+        {blobUrl && (
+          <video
+            ref={videoRef}
+            src={blobUrl}
+            controls
+            autoPlay
+            className="max-w-full max-h-full"
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RecordingPlayer({
+  sessionId, token, onClose,
+}: { sessionId: string; token: string; onClose: () => void }) {const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
 
@@ -317,6 +378,7 @@ export function SessionsHistory() {
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const [playingProtocol, setPlayingProtocol] = useState<string>('ssh');
 
   // Filters
   const [search, setSearch] = useState('');
@@ -435,7 +497,7 @@ export function SessionsHistory() {
                   <td className="py-2 pr-4 text-text-secondary text-xs">{formatDateTz(s.startedAt, timezone)}</td>
                   <td className="py-2 pr-4 text-xs text-text-secondary">{formatDuration(s.startedAt, s.endedAt)}</td>
                   <td className="py-2">
-                    <button onClick={() => setPlayingId(s.id)}
+                    <button onClick={() => { setPlayingId(s.id); setPlayingProtocol(s.protocol); }}
                       className="px-2 py-1 text-xs bg-accent/10 text-accent rounded hover:bg-accent/20 border border-accent/20 flex items-center gap-1">
                       <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3" /></svg>
                       Play
@@ -448,7 +510,10 @@ export function SessionsHistory() {
         </div>
       )}
 
-      {playingId && token && (
+      {playingId && token && playingProtocol === 'rdp' && (
+        <VideoPlayer sessionId={playingId} token={token} onClose={() => setPlayingId(null)} />
+      )}
+      {playingId && token && playingProtocol !== 'rdp' && (
         <RecordingPlayer sessionId={playingId} token={token} onClose={() => setPlayingId(null)} />
       )}
     </div>
