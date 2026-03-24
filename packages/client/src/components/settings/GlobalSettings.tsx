@@ -5,6 +5,13 @@ import { useSettings, invalidateSettings } from '../../hooks/useSettings';
 
 type Tab = 'general' | 'recordings';
 
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return `${(bytes / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
 const TABS: { id: Tab; label: string }[] = [
   { id: 'general', label: 'General' },
   { id: 'recordings', label: 'Recordings' },
@@ -65,6 +72,9 @@ export function GlobalSettings() {
   const [purging, setPurging] = useState(false);
   const [purgeMsg, setPurgeMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // Recording storage
+  const [storageBytes, setStorageBytes] = useState<number | null>(null);
+
   useEffect(() => {
     setAppName(settings['app.name'] ?? 'Alterm');
     setTimezone(settings['app.timezone'] ?? 'UTC');
@@ -73,6 +83,14 @@ export function GlobalSettings() {
     setRecordingEnabled(settings['session.recording_enabled'] === 'true');
     setRecordingRetention(settings['session.recording_retention_days'] ?? '90');
   }, [settings]);
+
+  useEffect(() => {
+    if (activeTab !== 'recordings' || !token) return;
+    fetch('/api/v1/sessions/storage', { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.ok ? r.json() : null)
+      .then((d: { bytes: number } | null) => { if (d) setStorageBytes(d.bytes); })
+      .catch(() => {});
+  }, [activeTab, token]);
 
   async function saveSettings(updates: Record<string, string>): Promise<{ ok: boolean; error?: string }> {
     if (!token) return { ok: false, error: 'Not authenticated' };
@@ -131,6 +149,7 @@ export function GlobalSettings() {
       if (res.ok) {
         setPurgeMsg({ type: 'success', text: `Deleted ${d.deletedSessions ?? 0} sessions and ${d.deletedRecordings ?? 0} recordings.` });
         setShowPurgeConfirm(false);
+        setStorageBytes(0);
       } else {
         setPurgeMsg({ type: 'error', text: d.error || 'Failed to purge.' });
       }
@@ -254,7 +273,7 @@ export function GlobalSettings() {
         <form onSubmit={handleRecordingSave} className="space-y-4">
           <div className="flex items-center gap-3">
             <Toggle value={recordingEnabled} onChange={setRecordingEnabled} />
-            <span className="text-sm text-text-secondary">Session recording enabled</span>
+            <span className="text-sm text-text-secondary">Session recording enabled <span className="text-xs text-text-secondary/60">(SSH &amp; RDP)</span></span>
           </div>
           <div>
             <label className="block text-sm font-medium text-text-secondary mb-1">Recording retention (days)</label>
@@ -280,6 +299,30 @@ export function GlobalSettings() {
             {savingRecording ? 'Saving...' : 'Save'}
           </button>
         </form>
+
+        {/* Storage usage */}
+        {storageBytes !== null && (
+          <div className="border border-border rounded-lg p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-medium text-text-primary flex items-center gap-2">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-text-secondary">
+                  <ellipse cx="12" cy="5" rx="9" ry="3" />
+                  <path d="M3 5v14a9 3 0 0 0 18 0V5" />
+                  <path d="M3 12a9 3 0 0 0 18 0" />
+                </svg>
+                Recording Storage
+              </h3>
+              <span className="text-xs font-mono text-text-secondary">{formatBytes(storageBytes)}</span>
+            </div>
+            <div className="w-full h-2 bg-surface rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full bg-accent transition-all"
+                style={{ width: storageBytes > 0 ? `${Math.min(100, (storageBytes / (10 * 1024 ** 3)) * 100)}%` : '0%' }}
+              />
+            </div>
+            <p className="text-xs text-text-secondary">Space used by all recording files on disk.</p>
+          </div>
+        )}
 
         {/* Danger zone */}
         <div className="mt-8 border border-red-500/20 rounded-lg p-4 space-y-3">
