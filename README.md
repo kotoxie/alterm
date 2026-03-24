@@ -123,4 +123,4 @@ npm install && npm run build && npm start
 
 ## 📄 License
 
-[MIT](LICENSE)
+[MIT]
