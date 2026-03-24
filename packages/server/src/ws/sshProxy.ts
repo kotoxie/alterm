@@ -161,7 +161,19 @@ export function setupSshProxy(server: https.Server): void {
     let castStart = 0;
 
     const ssh = new SshClient();
+    // Start with sane defaults. The client sends a resize message immediately on
+    // ws.open, but wireClientWs isn't attached yet at that point — so we capture
+    // it here with a temporary listener and update cols/rows before the shell opens.
     let cols = 80, rows = 24;
+    ws.once('message', (msg: Buffer | string) => {
+      try {
+        const json = JSON.parse(typeof msg === 'string' ? msg : msg.toString('utf8'));
+        if (json.type === 'resize' && json.cols > 0 && json.rows > 0) {
+          cols = json.cols;
+          rows = json.rows;
+        }
+      } catch { /* not a resize — ignore */ }
+    });
 
     ssh.on('banner', (message: string) => {
       if (ws.readyState === WebSocket.OPEN) ws.send(Buffer.from(message));
