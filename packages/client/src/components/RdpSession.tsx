@@ -155,7 +155,6 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
     let resizeObserver: ResizeObserver | null = null;
     let resizeTimer: ReturnType<typeof setTimeout> | null = null;
     let canvasStyleGuard: MutationObserver | null = null;
-    let rafId: number | null = null;
 
     // Suppress disconnect overlay when session is revoked (global handler redirects to login)
     const onRevoked = () => { sessionRevoked = true; };
@@ -202,6 +201,23 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
         canvas.height = container.clientHeight || 720;
         container.innerHTML = '';
         container.appendChild(canvas);
+
+        // ── Intercept getContext to force preserveDrawingBuffer=true ─────────
+        // IronRDP calls canvas.getContext('webgl2'/'webgl') internally when
+        // renderCanvas() is invoked. By default WebGL contexts clear their
+        // framebuffer after compositing (preserveDrawingBuffer=false), which
+        // makes captureStream() read an already-cleared buffer → blank video.
+        // We override getContext before IronRDP can call it so the context is
+        // created with preserveDrawingBuffer=true, letting captureStream() read
+        // the actual rendered frame on the original canvas — no mirror needed.
+        const origGetContext = canvas.getContext.bind(canvas);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (canvas as any).getContext = function(contextId: string, opts?: WebGLContextAttributes) {
+          if (contextId === 'webgl2' || contextId === 'webgl') {
+            opts = { ...opts, preserveDrawingBuffer: true };
+          }
+          return origGetContext(contextId as any, opts);
+        };
 
         // IronRDP sets absolute pixel values on canvas.style.width/height during
         // resize (e.g. '1920px'/'1080px'). After fullscreen exit the container
@@ -290,10 +306,8 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
         onStatusChange(tab.id, 'connected');
 
         // ── RDP recording via canvas.captureStream + MediaRecorder ──────────
-        // IronRDP renders via WebGL with preserveDrawingBuffer=false, so
-        // captureStream() on the WebGL canvas yields blank frames (the GPU
-        // swaps the buffer before the capture runs). Fix: copy each frame to a
-        // 2D canvas via rAF (before the swap) and capture that instead.
+        // preserveDrawingBuffer=true was forced via the getContext override above,
+        // so captureStream() on the original WebGL canvas reads actual frames.
         try {
           const recRes = await fetch('/api/v1/sessions/rdp-session', {
             method: 'POST',
@@ -307,28 +321,7 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
               const mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9')
                 ? 'video/webm; codecs=vp9'
                 : 'video/webm';
-
-              // Mirror canvas: a plain 2D canvas that rAF copies WebGL frames into
-              const mirror = document.createElement('canvas');
-              mirror.width = canvas.width;
-              mirror.height = canvas.height;
-              const ctx2d = mirror.getContext('2d')!;
-
-              // Sync mirror size when IronRDP resizes the source canvas
-              const sizeObserver = new MutationObserver(() => {
-                if (mirror.width !== canvas.width) mirror.width = canvas.width;
-                if (mirror.height !== canvas.height) mirror.height = canvas.height;
-              });
-              sizeObserver.observe(canvas, { attributes: true, attributeFilter: ['width', 'height'] });
-
-              // rAF loop — runs before GPU buffer swap, so drawImage sees the rendered frame
-              function copyFrame() {
-                ctx2d.drawImage(canvas, 0, 0);
-                rafId = requestAnimationFrame(copyFrame);
-              }
-              rafId = requestAnimationFrame(copyFrame);
-
-              const stream = mirror.captureStream(10);
+              const stream = canvas.captureStream(10);
               const mr = new MediaRecorder(stream, { mimeType });
               mr.ondataavailable = (e) => {
                 if (e.data.size > 0 && rdpSessionIdRef.current) {
@@ -511,8 +504,6 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
       resizeObserver?.disconnect();
       canvasStyleGuard?.disconnect();
       if (resizeTimer) clearTimeout(resizeTimer);
-      // Stop the rAF copy loop before stopping the MediaRecorder
-      if (rafId !== null) cancelAnimationFrame(rafId);
       // Stop recording and finalize the session
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         mediaRecorderRef.current.stop();
