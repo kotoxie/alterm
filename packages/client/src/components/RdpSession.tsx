@@ -155,6 +155,7 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
     let resizeObserver: ResizeObserver | null = null;
     let resizeTimer: ReturnType<typeof setTimeout> | null = null;
     let canvasStyleGuard: MutationObserver | null = null;
+    let rafId: number | null = null;
 
     // Suppress disconnect overlay when session is revoked (global handler redirects to login)
     const onRevoked = () => { sessionRevoked = true; };
@@ -293,7 +294,6 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
         // captureStream() on the WebGL canvas yields blank frames (the GPU
         // swaps the buffer before the capture runs). Fix: copy each frame to a
         // 2D canvas via rAF (before the swap) and capture that instead.
-        let rafId: number | null = null;
         try {
           const recRes = await fetch('/api/v1/sessions/rdp-session', {
             method: 'POST',
