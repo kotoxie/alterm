@@ -58,6 +58,7 @@ function VideoPlayer({
   const [speed, setSpeed] = useState(1);
   const [currentTime, setCurrentTime] = useState(0);
   const [totalTime, setTotalTime] = useState(0);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     let url: string | null = null;
@@ -86,6 +87,23 @@ function VideoPlayer({
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
   }, [onClose]);
+
+  async function handleDownload() {
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      const res = await fetch(`/api/v1/sessions/${sessionId}/recording`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error();
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `rdp-recording-${sessionId}.webm`; a.click();
+      URL.revokeObjectURL(url);
+    } catch { /* ignore */ }
+    setDownloading(false);
+  }
 
   function onVideoLoaded() {
     const v = videoRef.current;
@@ -124,6 +142,17 @@ function VideoPlayer({
       <div className="flex items-center gap-3 px-4 py-2 bg-[#141414] border-b border-[#2e2e2e] shrink-0">
         <span className="text-sm font-semibold text-[#efefef]">RDP Recording</span>
         <div className="flex-1" />
+        <button
+          onClick={() => void handleDownload()}
+          disabled={downloading || loading || !!error}
+          className="p-1.5 rounded hover:bg-[#272727] text-[#888] hover:text-[#efefef] disabled:opacity-40 flex items-center gap-1.5 text-xs"
+          title="Download .webm"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          Download
+        </button>
         <button onClick={onClose} className="p-1.5 rounded hover:bg-[#272727] text-[#888] hover:text-[#efefef]" title="Close (Esc)">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -223,12 +252,30 @@ function RecordingPlayer({
   const [currentTime, setCurrentTime] = useState(0);
   const [totalTime, setTotalTime] = useState(0);
   const [title, setTitle] = useState('');
+  const [downloading, setDownloading] = useState(false);
 
   const eventsRef = useRef<CastEvent[]>([]);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playingRef = useRef(false);
   const speedRef = useRef(1);
   const isSeeking = useRef(false);
+
+  async function handleDownload() {
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      const res = await fetch(`/api/v1/sessions/${sessionId}/recording`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error();
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `ssh-recording-${sessionId}.cast`; a.click();
+      URL.revokeObjectURL(url);
+    } catch { /* ignore */ }
+    setDownloading(false);
+  }
 
   const cancelPlayback = useCallback(() => {
     playingRef.current = false;
@@ -334,6 +381,17 @@ function RecordingPlayer({
       <div className="flex items-center gap-3 px-4 py-2 bg-[#141414] border-b border-[#2e2e2e] shrink-0">
         <span className="text-sm font-semibold text-[#efefef] truncate">{title || 'Session Recording'}</span>
         <div className="flex-1" />
+        <button
+          onClick={() => void handleDownload()}
+          disabled={downloading || loading || !!error}
+          className="p-1.5 rounded hover:bg-[#272727] text-[#888] hover:text-[#efefef] disabled:opacity-40 flex items-center gap-1.5 text-xs"
+          title="Download .cast"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          Download
+        </button>
         <button onClick={onClose} className="p-1.5 rounded hover:bg-[#272727] text-[#888] hover:text-[#efefef]" title="Close (Esc)">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -480,6 +538,7 @@ export function SessionsHistory() {
   const [loading, setLoading] = useState(true);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [playingProtocol, setPlayingProtocol] = useState<string>('ssh');
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -500,6 +559,27 @@ export function SessionsHistory() {
       }
     } catch { /* ignore */ }
     setLoading(false);
+  }
+
+  async function downloadRecording(s: SessionRow) {
+    if (!token || downloadingId) return;
+    setDownloadingId(s.id);
+    try {
+      const res = await fetch(`/api/v1/sessions/${s.id}/recording`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Download failed');
+      const blob = await res.blob();
+      const ext = s.protocol === 'rdp' ? 'webm' : 'cast';
+      const name = `${s.connectionName ?? 'session'}_${s.startedAt.replace(/[: ]/g, '-').slice(0, 19)}.${ext}`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch { /* ignore */ }
+    setDownloadingId(null);
   }
 
   useEffect(() => { void loadSessions(); }, [token]);
@@ -582,7 +662,8 @@ export function SessionsHistory() {
                 <th className="pb-2 pr-4 font-medium">Protocol</th>
                 <th className="pb-2 pr-4 font-medium">Started</th>
                 <th className="pb-2 pr-4 font-medium">Duration</th>
-                <th className="pb-2 font-medium">Play</th>
+                <th className="pb-2 pr-4 font-medium">Play</th>
+                <th className="pb-2 font-medium">Download</th>
               </tr>
             </thead>
             <tbody>
@@ -597,11 +678,26 @@ export function SessionsHistory() {
                   </td>
                   <td className="py-2 pr-4 text-text-secondary text-xs">{formatDateTz(s.startedAt, timezone)}</td>
                   <td className="py-2 pr-4 text-xs text-text-secondary">{formatDuration(s.startedAt, s.endedAt)}</td>
-                  <td className="py-2">
+                  <td className="py-2 pr-4">
                     <button onClick={() => { setPlayingId(s.id); setPlayingProtocol(s.protocol); }}
                       className="px-2 py-1 text-xs bg-accent/10 text-accent rounded hover:bg-accent/20 border border-accent/20 flex items-center gap-1">
                       <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3" /></svg>
                       Play
+                    </button>
+                  </td>
+                  <td className="py-2">
+                    <button
+                      onClick={() => void downloadRecording(s)}
+                      disabled={downloadingId === s.id}
+                      className="px-2 py-1 text-xs border border-border text-text-secondary rounded hover:bg-surface-hover hover:text-text-primary disabled:opacity-50 flex items-center gap-1"
+                      title={`Download as .${s.protocol === 'rdp' ? 'webm' : 'cast'}`}
+                    >
+                      {downloadingId === s.id ? (
+                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
+                      ) : (
+                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+                      )}
+                      {downloadingId === s.id ? '…' : 'Download'}
                     </button>
                   </td>
                 </tr>
