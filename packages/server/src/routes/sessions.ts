@@ -2,7 +2,6 @@ import { Router, type Request, type Response } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuid } from 'uuid';
-import express from 'express';
 import { queryAll, queryOne, execute } from '../db/helpers.js';
 import { authRequired, adminRequired } from '../middleware/auth.js';
 import { logAudit } from '../services/audit.js';
@@ -145,7 +144,7 @@ router.post('/rdp-session', (req: Request, res: Response) => {
 });
 
 // POST /:id/recording/chunk — append a binary WebM chunk to the recording file
-router.post('/:id/recording/chunk', express.raw({ type: '*/*', limit: '10mb' }), (req: Request, res: Response) => {
+router.post('/:id/recording/chunk', (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const isAdmin = req.user!.role === 'admin';
   const { id } = req.params;
