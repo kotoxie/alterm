@@ -92,7 +92,7 @@ router.delete('/', adminRequired, (req: Request, res: Response) => {
   res.json({ ok: true, deletedSessions: totalSessions, deletedRecordings });
 });
 
-// GET /:id/recording — stream recording file (.cast or .webm)
+// GET /:id/recording — stream recording file (.cast or .webm) with Range support
 router.get('/:id/recording', (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const isAdmin = req.user!.role === 'admin';
@@ -109,10 +109,44 @@ router.get('/:id/recording', (req: Request, res: Response) => {
     res.status(404).json({ error: 'Recording not found' }); return;
   }
 
-  const isWebm = session.recording_path.endsWith('.webm');
-  res.setHeader('Content-Type', isWebm ? 'video/webm' : 'text/plain');
+  const filePath = session.recording_path;
+  const isWebm = filePath.endsWith('.webm');
+  const mimeType = isWebm ? 'video/webm' : 'text/plain';
+  const stat = fs.statSync(filePath);
+  const fileSize = stat.size;
+
+  // For WebM video, implement proper HTTP Range request support so the browser
+  // <video> element can seek and determine duration. Without this, MediaRecorder
+  // WebM files appear unplayable in browsers (duration = NaN, no seeking).
+  if (isWebm) {
+    const rangeHeader = req.headers['range'];
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Cache-Control', 'no-cache');
+
+    if (rangeHeader) {
+      const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+      if (!match) { res.status(416).send('Range Not Satisfiable'); return; }
+      const start = parseInt(match[1], 10);
+      const end = match[2] ? parseInt(match[2], 10) : fileSize - 1;
+      if (start > end || end >= fileSize) { res.status(416).send('Range Not Satisfiable'); return; }
+      const chunkSize = end - start + 1;
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
+      res.setHeader('Content-Length', chunkSize);
+      fs.createReadStream(filePath, { start, end }).pipe(res);
+    } else {
+      res.status(200);
+      res.setHeader('Content-Length', fileSize);
+      fs.createReadStream(filePath).pipe(res);
+    }
+    return;
+  }
+
+  res.setHeader('Content-Type', mimeType);
   res.setHeader('Cache-Control', 'no-cache');
-  fs.createReadStream(session.recording_path).pipe(res);
+  res.setHeader('Content-Length', fileSize);
+  fs.createReadStream(filePath).pipe(res);
 });
 
 // POST /rdp-session — create a session row for an RDP recording and return sessionId
