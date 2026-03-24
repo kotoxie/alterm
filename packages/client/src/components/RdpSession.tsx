@@ -289,6 +289,11 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
         onStatusChange(tab.id, 'connected');
 
         // ── RDP recording via canvas.captureStream + MediaRecorder ──────────
+        // IronRDP renders via WebGL with preserveDrawingBuffer=false, so
+        // captureStream() on the WebGL canvas yields blank frames (the GPU
+        // swaps the buffer before the capture runs). Fix: copy each frame to a
+        // 2D canvas via rAF (before the swap) and capture that instead.
+        let rafId: number | null = null;
         try {
           const recRes = await fetch('/api/v1/sessions/rdp-session', {
             method: 'POST',
@@ -302,7 +307,28 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
               const mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9')
                 ? 'video/webm; codecs=vp9'
                 : 'video/webm';
-              const stream = canvas.captureStream(10);
+
+              // Mirror canvas: a plain 2D canvas that rAF copies WebGL frames into
+              const mirror = document.createElement('canvas');
+              mirror.width = canvas.width;
+              mirror.height = canvas.height;
+              const ctx2d = mirror.getContext('2d')!;
+
+              // Sync mirror size when IronRDP resizes the source canvas
+              const sizeObserver = new MutationObserver(() => {
+                if (mirror.width !== canvas.width) mirror.width = canvas.width;
+                if (mirror.height !== canvas.height) mirror.height = canvas.height;
+              });
+              sizeObserver.observe(canvas, { attributes: true, attributeFilter: ['width', 'height'] });
+
+              // rAF loop — runs before GPU buffer swap, so drawImage sees the rendered frame
+              function copyFrame() {
+                ctx2d.drawImage(canvas, 0, 0);
+                rafId = requestAnimationFrame(copyFrame);
+              }
+              rafId = requestAnimationFrame(copyFrame);
+
+              const stream = mirror.captureStream(10);
               const mr = new MediaRecorder(stream, { mimeType });
               mr.ondataavailable = (e) => {
                 if (e.data.size > 0 && rdpSessionIdRef.current) {
@@ -315,7 +341,7 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
                   }).catch(() => {});
                 }
               };
-              mr.start(5000); // collect a chunk every 5 seconds
+              mr.start(5000);
               mediaRecorderRef.current = mr;
             }
           }
@@ -485,6 +511,8 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
       resizeObserver?.disconnect();
       canvasStyleGuard?.disconnect();
       if (resizeTimer) clearTimeout(resizeTimer);
+      // Stop the rAF copy loop before stopping the MediaRecorder
+      if (rafId !== null) cancelAnimationFrame(rafId);
       // Stop recording and finalize the session
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         mediaRecorderRef.current.stop();

@@ -120,10 +120,10 @@ export function SshSession({ tab, isActive, paneWidth, paneHeight, onStatusChang
     terminalRef.current = term;
     fitAddonRef.current = fitAddon;
 
-    // Use a short timeout so the flex layout fully settles before measuring
-    const fitTimer = setTimeout(() => {
-      if (!cancelled) fitAddon.fit();
-    }, 50);
+    // Fit synchronously — the flex container is already laid out when this effect
+    // runs (paneWidth/paneHeight are non-zero). This ensures term.cols/rows are
+    // correct BEFORE the WebSocket opens and sends the initial resize message.
+    fitAddon.fit();
 
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${proto}//${window.location.host}/ws/ssh?token=${encodeURIComponent(token)}&connectionId=${encodeURIComponent(tab.connectionId)}&sessionId=${encodeURIComponent(tab.clientSessionId)}`;
@@ -172,7 +172,6 @@ export function SshSession({ tab, isActive, paneWidth, paneHeight, onStatusChang
 
     return () => {
       cancelled = true;
-      clearTimeout(fitTimer);
       dataDispose.dispose();
       if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) ws.close();
       term.dispose();
