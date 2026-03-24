@@ -69,10 +69,13 @@ function VideoPlayer({
         });
         if (!res.ok) throw new Error('Recording not found');
         const blob = await res.blob();
-        // Force video/webm type so the browser's video element accepts it
         const typedBlob = blob.type === 'video/webm' ? blob : new Blob([blob], { type: 'video/webm' });
         url = URL.createObjectURL(typedBlob);
         setBlobUrl(url);
+        // Dismiss loading immediately — don't wait for onLoadedMetadata.
+        // MediaRecorder WebM files often lack a Duration element so the browser
+        // may never fire loadedmetadata; we show the video element right away.
+        setLoading(false);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to load');
         setLoading(false);
@@ -105,17 +108,34 @@ function VideoPlayer({
     setDownloading(false);
   }
 
-  function onVideoLoaded() {
+  function onVideoMeta() {
     const v = videoRef.current;
     if (!v) return;
-    setTotalTime(v.duration || 0);
-    setLoading(false);
+    // duration is Infinity for MediaRecorder live WebM — treat as unknown
+    if (isFinite(v.duration)) setTotalTime(v.duration);
+  }
+
+  function onCanPlay() {
+    const v = videoRef.current;
+    if (!v) return;
+    if (isFinite(v.duration)) setTotalTime(v.duration);
     v.play().catch(() => {});
+  }
+
+  function onVideoError() {
+    const v = videoRef.current;
+    const code = v?.error?.code ?? 0;
+    const msgs: Record<number, string> = {
+      1: 'Playback aborted', 2: 'Network error', 3: 'Decode error', 4: 'Format not supported',
+    };
+    setError(msgs[code] ?? 'Playback error');
   }
 
   function onTimeUpdate() {
     const v = videoRef.current;
-    if (v) setCurrentTime(v.currentTime);
+    if (!v) return;
+    setCurrentTime(v.currentTime);
+    if (isFinite(v.duration)) setTotalTime(v.duration);
   }
 
   function onPlayPause() {
@@ -144,7 +164,7 @@ function VideoPlayer({
         <div className="flex-1" />
         <button
           onClick={() => void handleDownload()}
-          disabled={downloading || loading || !!error}
+          disabled={downloading || !!error}
           className="p-1.5 rounded hover:bg-[#272727] text-[#888] hover:text-[#efefef] disabled:opacity-40 flex items-center gap-1.5 text-xs"
           title="Download .webm"
         >
@@ -159,19 +179,21 @@ function VideoPlayer({
           </svg>
         </button>
       </div>
-      <div className="flex-1 flex items-center justify-center overflow-hidden bg-black">
-        {loading && !error && <p className="text-[#888] text-sm">Loading recording...</p>}
+      <div className="flex-1 flex items-center justify-center overflow-hidden bg-black relative">
+        {loading && <p className="text-[#888] text-sm absolute">Loading recording...</p>}
         {error && <p className="text-red-400 text-sm">{error}</p>}
-        {blobUrl && (
+        {blobUrl && !error && (
           <video
             ref={videoRef}
             src={blobUrl}
             className="max-w-full max-h-full"
-            onLoadedMetadata={onVideoLoaded}
+            onLoadedMetadata={onVideoMeta}
+            onCanPlay={onCanPlay}
             onTimeUpdate={onTimeUpdate}
             onPlay={() => setPlaying(true)}
             onPause={() => setPlaying(false)}
             onEnded={() => setPlaying(false)}
+            onError={onVideoError}
           />
         )}
       </div>
@@ -188,14 +210,14 @@ function VideoPlayer({
               <span className="text-green-500/70">FINISHED</span>
             ) : 'PAUSED'}
           </span>
-          <span className="text-[#888]">{formatTime(totalTime)}</span>
+          <span className="text-[#888]">{totalTime > 0 ? formatTime(totalTime) : '--:--'}</span>
         </div>
         <div className="relative">
           <div className="absolute top-1/2 left-0 h-1 rounded-full bg-blue-500/60 pointer-events-none -translate-y-1/2" style={{ width: `${progress}%` }} />
           <input
             type="range" min={0} max={totalTime || 1} step={0.1} value={currentTime}
             onChange={(e) => onSeek(parseFloat(e.target.value))}
-            disabled={loading || !!error || totalTime === 0}
+            disabled={!!error || totalTime === 0}
             className="w-full h-1 appearance-none bg-[#2e2e2e] rounded-full cursor-pointer disabled:opacity-40
               [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5
               [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:cursor-pointer
@@ -207,7 +229,7 @@ function VideoPlayer({
         <div className="flex items-center justify-center gap-2 pt-0.5">
           <button
             onClick={onPlayPause}
-            disabled={loading || !!error}
+            disabled={!!error}
             className="px-3 py-1.5 text-xs border border-[#2e2e2e] rounded text-[#efefef] hover:bg-[#1c1c1c] disabled:opacity-40 flex items-center gap-1.5"
           >
             {playing
