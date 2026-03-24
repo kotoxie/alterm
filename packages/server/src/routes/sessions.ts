@@ -1,8 +1,13 @@
 import { Router, type Request, type Response } from 'express';
 import fs from 'fs';
+import path from 'path';
+import { v4 as uuid } from 'uuid';
+import express from 'express';
 import { queryAll, queryOne, execute } from '../db/helpers.js';
 import { authRequired, adminRequired } from '../middleware/auth.js';
 import { logAudit } from '../services/audit.js';
+import { getSetting } from '../services/settings.js';
+import { config } from '../config.js';
 
 const router = Router();
 router.use(authRequired);
@@ -88,7 +93,7 @@ router.delete('/', adminRequired, (req: Request, res: Response) => {
   res.json({ ok: true, deletedSessions: totalSessions, deletedRecordings });
 });
 
-// GET /:id/recording — stream asciicast file
+// GET /:id/recording — stream recording file (.cast or .webm)
 router.get('/:id/recording', (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const isAdmin = req.user!.role === 'admin';
@@ -105,9 +110,97 @@ router.get('/:id/recording', (req: Request, res: Response) => {
     res.status(404).json({ error: 'Recording not found' }); return;
   }
 
-  res.setHeader('Content-Type', 'text/plain');
+  const isWebm = session.recording_path.endsWith('.webm');
+  res.setHeader('Content-Type', isWebm ? 'video/webm' : 'text/plain');
   res.setHeader('Cache-Control', 'no-cache');
   fs.createReadStream(session.recording_path).pipe(res);
+});
+
+// POST /rdp-session — create a session row for an RDP recording and return sessionId
+router.post('/rdp-session', (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const { connectionId } = req.body as { connectionId?: string };
+  if (!connectionId) { res.status(400).json({ error: 'connectionId required' }); return; }
+
+  const conn = queryOne<{ id: string; recording_enabled: number }>(
+    'SELECT id, recording_enabled FROM connections WHERE id = ? AND (user_id = ? OR shared = 1)',
+    [connectionId, userId],
+  );
+  if (!conn) { res.status(404).json({ error: 'Connection not found' }); return; }
+
+  const globalRecording = getSetting('session.recording_enabled') === 'true';
+  const shouldRecord = globalRecording && conn.recording_enabled === 1;
+
+  if (!shouldRecord) {
+    res.json({ sessionId: null, shouldRecord: false });
+    return;
+  }
+
+  const sessionId = uuid();
+  execute(
+    'INSERT INTO sessions (id, user_id, connection_id, protocol) VALUES (?, ?, ?, ?)',
+    [sessionId, userId, connectionId, 'rdp'],
+  );
+  res.json({ sessionId, shouldRecord: true });
+});
+
+// POST /:id/recording/chunk — append a binary WebM chunk to the recording file
+router.post('/:id/recording/chunk', express.raw({ type: '*/*', limit: '10mb' }), (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const isAdmin = req.user!.role === 'admin';
+  const { id } = req.params;
+
+  const session = queryOne<{ recording_path: string | null; user_id: string }>(
+    'SELECT recording_path, user_id FROM sessions WHERE id = ?',
+    [id],
+  );
+  if (!session) { res.status(404).json({ error: 'Session not found' }); return; }
+  if (!isAdmin && session.user_id !== userId) { res.status(403).json({ error: 'Forbidden' }); return; }
+
+  let filePath = session.recording_path;
+  if (!filePath) {
+    fs.mkdirSync(config.recordingsDir, { recursive: true });
+    filePath = path.join(config.recordingsDir, `${id}.webm`);
+    execute('UPDATE sessions SET recording_path = ? WHERE id = ?', [filePath, id]);
+  }
+
+  try {
+    fs.appendFileSync(filePath, req.body as Buffer);
+  } catch {
+    res.status(500).json({ error: 'Failed to write chunk' }); return;
+  }
+  res.json({ ok: true });
+});
+
+// POST /:id/recording/finalize — mark RDP session as ended
+router.post('/:id/recording/finalize', (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const isAdmin = req.user!.role === 'admin';
+  const { id } = req.params;
+
+  const session = queryOne<{ user_id: string }>(
+    'SELECT user_id FROM sessions WHERE id = ?',
+    [id],
+  );
+  if (!session) { res.status(404).json({ error: 'Session not found' }); return; }
+  if (!isAdmin && session.user_id !== userId) { res.status(403).json({ error: 'Forbidden' }); return; }
+
+  execute("UPDATE sessions SET ended_at = datetime('now') WHERE id = ?", [id]);
+  res.json({ ok: true });
+});
+
+// GET /storage — return total bytes used by all recording files (admin only)
+router.get('/storage', adminRequired, (_req: Request, res: Response) => {
+  let totalBytes = 0;
+  if (fs.existsSync(config.recordingsDir)) {
+    for (const f of fs.readdirSync(config.recordingsDir)) {
+      try {
+        const stat = fs.statSync(path.join(config.recordingsDir, f));
+        if (stat.isFile()) totalBytes += stat.size;
+      } catch { /* ignore */ }
+    }
+  }
+  res.json({ bytes: totalBytes });
 });
 
 export default router;

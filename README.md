@@ -52,7 +52,7 @@ Open **`https://<YOUR_IP>:7443`** — on first launch you'll be prompted to crea
 ### 🖥️ Protocols
 | Protocol | Details |
 |---|---|
-| **RDP** | WebAssembly-powered — no web-sockets, no Java, native browser speed |
+| **RDP** | WebAssembly-powered (IronRDP) — no Guacamole, no Java, native browser speed. **Session recording via canvas capture (WebM video)** |
 | **SSH** | Full xterm.js terminal, port-forward tunnels, session recording & playback |
 | **VNC** | Remote desktop via noVNC |
 | **SMB** | File browser for Windows network shares |
@@ -74,7 +74,7 @@ Open **`https://<YOUR_IP>:7443`** — on first launch you'll be prompted to crea
 ### 🔒 Security & Administration
 - **Multi-user** with admin and user roles
 - **Audit trail** — every login, session, and config change logged with before/after diffs
-- **Session recording** — record SSH sessions, replay with a timeline scrubber
+- **Session recording** — record SSH sessions (asciinema) and RDP sessions (WebM video), replay in-browser
 - **Idle timeout** — configurable auto-logout after inactivity
 - **Security lockout** — brute-force protection with configurable failed-login rules
 - **TLS** — self-signed cert generated on first launch; bring your own cert optionally

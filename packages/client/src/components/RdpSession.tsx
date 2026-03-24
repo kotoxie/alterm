@@ -76,6 +76,8 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sessionRef = useRef<any>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const rdpSessionIdRef = useRef<string | null>(null);
   const { token } = useAuth();
   const [status, setStatus] = useState<string>('Initializing...');
   const [disconnected, setDisconnected] = useState(false);
@@ -286,6 +288,39 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
         setStatus('Connected');
         onStatusChange(tab.id, 'connected');
 
+        // ── RDP recording via canvas.captureStream + MediaRecorder ──────────
+        try {
+          const recRes = await fetch('/api/v1/sessions/rdp-session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ connectionId: tab.connectionId }),
+          });
+          if (recRes.ok) {
+            const recData = await recRes.json() as { sessionId: string | null; shouldRecord: boolean };
+            if (recData.shouldRecord && recData.sessionId) {
+              rdpSessionIdRef.current = recData.sessionId;
+              const mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9')
+                ? 'video/webm; codecs=vp9'
+                : 'video/webm';
+              const stream = canvas.captureStream(10);
+              const mr = new MediaRecorder(stream, { mimeType });
+              mr.ondataavailable = (e) => {
+                if (e.data.size > 0 && rdpSessionIdRef.current) {
+                  e.data.arrayBuffer().then((buf) => {
+                    fetch(`/api/v1/sessions/${rdpSessionIdRef.current}/recording/chunk`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/octet-stream', Authorization: `Bearer ${token}` },
+                      body: buf,
+                    }).catch(() => {});
+                  }).catch(() => {});
+                }
+              };
+              mr.start(5000); // collect a chunk every 5 seconds
+              mediaRecorderRef.current = mr;
+            }
+          }
+        } catch { /* recording unavailable — ignore */ }
+
         // ── Auto-resize (debounced) ────────────────────────────────────────
         resizeObserver = new ResizeObserver(() => {
           if (resizeTimer) clearTimeout(resizeTimer);
@@ -450,6 +485,18 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
       resizeObserver?.disconnect();
       canvasStyleGuard?.disconnect();
       if (resizeTimer) clearTimeout(resizeTimer);
+      // Stop recording and finalize the session
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
+      mediaRecorderRef.current = null;
+      if (rdpSessionIdRef.current) {
+        fetch(`/api/v1/sessions/${rdpSessionIdRef.current}/recording/finalize`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token ?? ''}` },
+        }).catch(() => {});
+        rdpSessionIdRef.current = null;
+      }
       if (sessionRef.current) {
         try { sessionRef.current.shutdown(); } catch { /* ignore */ }
         sessionRef.current = null;
