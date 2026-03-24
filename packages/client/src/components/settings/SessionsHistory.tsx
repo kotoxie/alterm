@@ -68,7 +68,9 @@ function VideoPlayer({
         });
         if (!res.ok) throw new Error('Recording not found');
         const blob = await res.blob();
-        url = URL.createObjectURL(blob);
+        // Force video/webm type so the browser's video element accepts it
+        const typedBlob = blob.type === 'video/webm' ? blob : new Blob([blob], { type: 'video/webm' });
+        url = URL.createObjectURL(typedBlob);
         setBlobUrl(url);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to load');
