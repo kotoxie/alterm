@@ -146,6 +146,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const folderMenuRef = useRef<HTMLDivElement>(null);
   const bgMenuRef = useRef<HTMLDivElement>(null);
+  const skipHealthCheckRef = useRef(false);
 
   // Close connection context menu on outside click / Escape
   useEffect(() => {
@@ -227,7 +228,11 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
 
   useEffect(() => {
     if (groups.length > 0 || ungrouped.length > 0 || sharedConnections.length > 0) {
-      checkHealth();
+      if (skipHealthCheckRef.current) {
+        skipHealthCheckRef.current = false;
+      } else {
+        checkHealth();
+      }
     }
   }, [groups, ungrouped, sharedConnections, checkHealth]);
 
@@ -344,6 +349,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
 
   async function moveConnection(connId: string, targetGroupId: string | null) {
     if (!token) return;
+    skipHealthCheckRef.current = true;
     await fetch(`/api/v1/connections/${connId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -673,11 +679,8 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
             }
           }}
           onDragLeave={(e) => {
-            // Only clear when leaving to an element OUTSIDE this row — not into a child
-            // (chevron, icon, text). Without this check every child hover fires onDragLeave
-            // and flickers/clears the indicator.
-            if (e.currentTarget.contains(e.relatedTarget as Node)) return;
             e.stopPropagation();
+            if (e.currentTarget.contains(e.relatedTarget as Node)) return;
             setDragOverId(null);
             setDropIndicator(null);
           }}
