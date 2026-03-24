@@ -128,7 +128,9 @@ function VideoPlayer({
     const msgs: Record<number, string> = {
       1: 'Playback aborted', 2: 'Network error', 3: 'Decode error', 4: 'Format not supported',
     };
-    setError(msgs[code] ?? 'Playback error');
+    console.error('[VideoPlayer] media error code', code, v?.error?.message);
+    // Only surface fatal errors — don't hide the video element
+    if (code === 4) setError(msgs[code]);
   }
 
   function onTimeUpdate() {
@@ -181,12 +183,14 @@ function VideoPlayer({
       </div>
       <div className="flex-1 flex items-center justify-center overflow-hidden bg-black relative">
         {loading && <p className="text-[#888] text-sm absolute">Loading recording...</p>}
-        {error && <p className="text-red-400 text-sm">{error}</p>}
-        {blobUrl && !error && (
+        {error && <p className="text-red-400 text-sm absolute top-4">{error}</p>}
+        {blobUrl && (
           <video
             ref={videoRef}
             src={blobUrl}
             className="max-w-full max-h-full"
+            muted={false}
+            preload="auto"
             onLoadedMetadata={onVideoMeta}
             onCanPlay={onCanPlay}
             onTimeUpdate={onTimeUpdate}
