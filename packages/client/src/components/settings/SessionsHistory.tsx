@@ -59,6 +59,10 @@ function VideoPlayer({
   const [currentTime, setCurrentTime] = useState(0);
   const [totalTime, setTotalTime] = useState(0);
   const [downloading, setDownloading] = useState(false);
+  // Tracks whether we've done the duration-probe seek (seek to 1e101 to force
+  // the browser to discover the real duration of a MediaRecorder WebM file).
+  const durationProbed = useRef(false);
+  const pendingPlay = useRef(false);
 
   useEffect(() => {
     let url: string | null = null;
@@ -72,9 +76,6 @@ function VideoPlayer({
         const typedBlob = blob.type === 'video/webm' ? blob : new Blob([blob], { type: 'video/webm' });
         url = URL.createObjectURL(typedBlob);
         setBlobUrl(url);
-        // Dismiss loading immediately — don't wait for onLoadedMetadata.
-        // MediaRecorder WebM files often lack a Duration element so the browser
-        // may never fire loadedmetadata; we show the video element right away.
         setLoading(false);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to load');
@@ -111,26 +112,54 @@ function VideoPlayer({
   function onVideoMeta() {
     const v = videoRef.current;
     if (!v) return;
-    // duration is Infinity for MediaRecorder live WebM — treat as unknown
-    if (isFinite(v.duration)) setTotalTime(v.duration);
+    if (isFinite(v.duration)) {
+      setTotalTime(v.duration);
+    } else if (!durationProbed.current) {
+      // MediaRecorder WebM has no Duration header → duration=Infinity.
+      // Seeking to an enormous time forces the browser to scan to the actual
+      // last cluster and fire durationchange with the real finite duration.
+      durationProbed.current = true;
+      pendingPlay.current = true;
+      v.currentTime = 1e101;
+    }
   }
 
   function onCanPlay() {
     const v = videoRef.current;
     if (!v) return;
     if (isFinite(v.duration)) setTotalTime(v.duration);
+    // Don't auto-play until after the duration probe seek completes
+    if (!durationProbed.current || !isFinite(v.duration)) return;
     v.play().catch(() => {});
+  }
+
+  function onDurationChange() {
+    const v = videoRef.current;
+    if (!v || !isFinite(v.duration)) return;
+    setTotalTime(v.duration);
+    // After the probe seek resolved the duration, rewind and start playing
+    if (pendingPlay.current) {
+      pendingPlay.current = false;
+      v.currentTime = 0;
+    }
+  }
+
+  function onSeeked() {
+    const v = videoRef.current;
+    if (!v) return;
+    if (isFinite(v.duration)) setTotalTime(v.duration);
+    // After probe rewind to 0, begin playback
+    if (pendingPlay.current && v.currentTime === 0) {
+      pendingPlay.current = false;
+      v.play().catch(() => {});
+    }
   }
 
   function onVideoError() {
     const v = videoRef.current;
     const code = v?.error?.code ?? 0;
-    const msgs: Record<number, string> = {
-      1: 'Playback aborted', 2: 'Network error', 3: 'Decode error', 4: 'Format not supported',
-    };
     console.error('[VideoPlayer] media error code', code, v?.error?.message);
-    // Only surface fatal errors — don't hide the video element
-    if (code === 4) setError(msgs[code]);
+    if (code === 4) setError('Format not supported');
   }
 
   function onTimeUpdate() {
@@ -189,10 +218,11 @@ function VideoPlayer({
             ref={videoRef}
             src={blobUrl}
             className="max-w-full max-h-full"
-            muted={false}
             preload="auto"
             onLoadedMetadata={onVideoMeta}
+            onDurationChange={onDurationChange}
             onCanPlay={onCanPlay}
+            onSeeked={onSeeked}
             onTimeUpdate={onTimeUpdate}
             onPlay={() => setPlaying(true)}
             onPause={() => setPlaying(false)}
