@@ -47,16 +47,24 @@ router.get('/', (req: Request, res: Response) => {
   );
 
   res.json({
-    sessions: sessions.map((s) => ({
-      id: s.id,
-      userId: s.user_id,
-      protocol: s.protocol,
-      startedAt: s.started_at,
-      endedAt: s.ended_at,
-      hasRecording: !!s.recording_path && fs.existsSync(s.recording_path),
-      connectionName: s.connection_name,
-      username: s.username,
-    })),
+    sessions: sessions.map((s) => {
+      const exists = !!s.recording_path && fs.existsSync(s.recording_path);
+      let fileSize: number | null = null;
+      if (exists) {
+        try { fileSize = fs.statSync(s.recording_path!).size; } catch { /* ignore */ }
+      }
+      return {
+        id: s.id,
+        userId: s.user_id,
+        protocol: s.protocol,
+        startedAt: s.started_at,
+        endedAt: s.ended_at,
+        hasRecording: exists,
+        fileSize,
+        connectionName: s.connection_name,
+        username: s.username,
+      };
+    }),
     page,
     limit,
   });

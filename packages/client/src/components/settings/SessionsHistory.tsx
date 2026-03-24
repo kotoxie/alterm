@@ -11,6 +11,7 @@ interface SessionRow {
   startedAt: string;
   endedAt: string | null;
   hasRecording: boolean;
+  fileSize: number | null;
   connectionName: string | null;
   username: string | null;
 }
@@ -29,6 +30,14 @@ function formatTime(secs: number): string {
   const m = Math.floor(secs / 60);
   const s = Math.floor(secs % 60);
   return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function formatBytes(bytes: number | null): string {
+  if (bytes === null) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
 interface CastEvent { time: number; data: string; }
@@ -512,7 +521,7 @@ function RecordingPlayer({
   );
 }
 
-const PROTOCOLS = ['ssh', 'rdp', 'smb', 'vnc', 'sftp', 'ftp'] as const;
+const PROTOCOLS = ['ssh', 'rdp'] as const;
 
 function FilterBar({
   search, setSearch,
@@ -718,6 +727,7 @@ export function SessionsHistory() {
                 <th className="pb-2 pr-4 font-medium">Protocol</th>
                 <th className="pb-2 pr-4 font-medium">Started</th>
                 <th className="pb-2 pr-4 font-medium">Duration</th>
+                <th className="pb-2 pr-4 font-medium">File Size</th>
                 <th className="pb-2 pr-4 font-medium">Play</th>
                 <th className="pb-2 font-medium">Download</th>
               </tr>
@@ -734,6 +744,7 @@ export function SessionsHistory() {
                   </td>
                   <td className="py-2 pr-4 text-text-secondary text-xs">{formatDateTz(s.startedAt, timezone)}</td>
                   <td className="py-2 pr-4 text-xs text-text-secondary">{formatDuration(s.startedAt, s.endedAt)}</td>
+                  <td className="py-2 pr-4 text-xs text-text-secondary font-mono">{formatBytes(s.fileSize)}</td>
                   <td className="py-2 pr-4">
                     <button onClick={() => { setPlayingId(s.id); setPlayingProtocol(s.protocol); }}
                       className="px-2 py-1 text-xs bg-accent/10 text-accent rounded hover:bg-accent/20 border border-accent/20 flex items-center gap-1">
