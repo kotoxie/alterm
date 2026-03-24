@@ -54,8 +54,13 @@ function VideoPlayer({
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [playing, setPlaying] = useState(false);
+  const [speed, setSpeed] = useState(1);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [totalTime, setTotalTime] = useState(0);
 
   useEffect(() => {
+    let url: string | null = null;
     async function load() {
       try {
         const res = await fetch(`/api/v1/sessions/${sessionId}/recording`, {
@@ -63,16 +68,15 @@ function VideoPlayer({
         });
         if (!res.ok) throw new Error('Recording not found');
         const blob = await res.blob();
-        setBlobUrl(URL.createObjectURL(blob));
+        url = URL.createObjectURL(blob);
+        setBlobUrl(url);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to load');
-      } finally {
         setLoading(false);
       }
     }
     load();
-    return () => { if (blobUrl) URL.revokeObjectURL(blobUrl); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => { if (url) URL.revokeObjectURL(url); };
   }, [sessionId, token]);
 
   useEffect(() => {
@@ -80,6 +84,38 @@ function VideoPlayer({
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
   }, [onClose]);
+
+  function onVideoLoaded() {
+    const v = videoRef.current;
+    if (!v) return;
+    setTotalTime(v.duration || 0);
+    setLoading(false);
+    v.play().catch(() => {});
+  }
+
+  function onTimeUpdate() {
+    const v = videoRef.current;
+    if (v) setCurrentTime(v.currentTime);
+  }
+
+  function onPlayPause() {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) { v.play().catch(() => {}); } else { v.pause(); }
+  }
+
+  function onSeek(val: number) {
+    const v = videoRef.current;
+    if (v) { v.currentTime = val; setCurrentTime(val); }
+  }
+
+  function setPlaybackSpeed(s: number) {
+    const v = videoRef.current;
+    setSpeed(s);
+    if (v) v.playbackRate = s;
+  }
+
+  const progress = totalTime > 0 ? (currentTime / totalTime) * 100 : 0;
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-[#0a0a0a]">
@@ -92,18 +128,81 @@ function VideoPlayer({
           </svg>
         </button>
       </div>
-      <div className="flex-1 flex items-center justify-center overflow-hidden">
-        {loading && <p className="text-[#888] text-sm">Loading recording...</p>}
+      <div className="flex-1 flex items-center justify-center overflow-hidden bg-black">
+        {loading && !error && <p className="text-[#888] text-sm">Loading recording...</p>}
         {error && <p className="text-red-400 text-sm">{error}</p>}
         {blobUrl && (
           <video
             ref={videoRef}
             src={blobUrl}
-            controls
-            autoPlay
             className="max-w-full max-h-full"
+            onLoadedMetadata={onVideoLoaded}
+            onTimeUpdate={onTimeUpdate}
+            onPlay={() => setPlaying(true)}
+            onPause={() => setPlaying(false)}
+            onEnded={() => setPlaying(false)}
           />
         )}
+      </div>
+      <div className="shrink-0 px-4 py-3 bg-[#141414] border-t border-[#2e2e2e] space-y-2">
+        <div className="flex items-center justify-between text-xs font-mono">
+          <span className="text-[#888]">{formatTime(currentTime)}</span>
+          <span className="text-[#555]">
+            {playing ? (
+              <span className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse inline-block" />
+                PLAYING {speed !== 1 ? `(${speed}×)` : ''}
+              </span>
+            ) : currentTime >= totalTime && totalTime > 0 ? (
+              <span className="text-green-500/70">FINISHED</span>
+            ) : 'PAUSED'}
+          </span>
+          <span className="text-[#888]">{formatTime(totalTime)}</span>
+        </div>
+        <div className="relative">
+          <div className="absolute top-1/2 left-0 h-1 rounded-full bg-blue-500/60 pointer-events-none -translate-y-1/2" style={{ width: `${progress}%` }} />
+          <input
+            type="range" min={0} max={totalTime || 1} step={0.1} value={currentTime}
+            onChange={(e) => onSeek(parseFloat(e.target.value))}
+            disabled={loading || !!error || totalTime === 0}
+            className="w-full h-1 appearance-none bg-[#2e2e2e] rounded-full cursor-pointer disabled:opacity-40
+              [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5
+              [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:cursor-pointer
+              [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:rounded-full
+              [&::-moz-range-thumb]:bg-blue-500 [&::-moz-range-thumb]:border-none [&::-moz-range-thumb]:cursor-pointer"
+            style={{ background: 'transparent' }}
+          />
+        </div>
+        <div className="flex items-center justify-center gap-2 pt-0.5">
+          <button
+            onClick={onPlayPause}
+            disabled={loading || !!error}
+            className="px-3 py-1.5 text-xs border border-[#2e2e2e] rounded text-[#efefef] hover:bg-[#1c1c1c] disabled:opacity-40 flex items-center gap-1.5"
+          >
+            {playing
+              ? (<><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>Pause</>)
+              : (<><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3" /></svg>{currentTime > 0 ? 'Resume' : 'Play'}</>)
+            }
+          </button>
+          <button
+            onClick={() => onSeek(0)}
+            disabled={loading || !!error}
+            className="px-3 py-1.5 text-xs border border-[#2e2e2e] rounded text-[#888] hover:text-[#efefef] hover:bg-[#1c1c1c] disabled:opacity-40"
+          >
+            ↺ Replay
+          </button>
+          <div className="w-px h-4 bg-[#2e2e2e] mx-1" />
+          <span className="text-xs text-[#555]">Speed:</span>
+          {[0.25, 0.5, 1, 2, 4, 8].map((s) => (
+            <button
+              key={s}
+              onClick={() => setPlaybackSpeed(s)}
+              className={`px-2 py-0.5 text-xs rounded transition-colors ${speed === s ? 'bg-blue-500 text-white' : 'border border-[#2e2e2e] text-[#888] hover:border-[#444] hover:text-[#efefef]'}`}
+            >
+              {s}×
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -145,7 +244,7 @@ function RecordingPlayer({
       if (i >= events.length) { setPlaying(false); return; }
       const ev = events[i];
       const prevTime = i > 0 ? events[i - 1].time : ev.time;
-      const delay = i === startIdx ? 0 : Math.max(0, (ev.time - prevTime) * 1000 / speedRef.current);
+      const delay = i === startIdx ? 0 : Math.max(0, Math.min(2000, (ev.time - prevTime) * 1000 / speedRef.current));
       timerRef.current = setTimeout(() => {
         if (!playingRef.current) return;
         termRef.current?.write(ev.data);
