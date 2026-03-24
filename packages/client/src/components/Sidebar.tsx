@@ -721,7 +721,23 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
         )}
 
         {expanded && (
-          <div className="ml-3 border-l border-border/40 pl-1">
+          <div
+            className="ml-3 border-l border-border/40 pl-1"
+            onDragOver={(e) => {
+              if (draggingConnId) {
+                e.preventDefault();
+                e.stopPropagation();
+                setDragOverId(group.id);
+              }
+            }}
+            onDragLeave={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node))
+                setDragOverId(null);
+            }}
+            onDrop={(e) => {
+              if (draggingConnId) handleGroupDrop(e, group.id);
+            }}
+          >
             {group.connections.map(renderConnection)}
             {group.children.map(g => renderGroup(g, depth + 1))}
             {inlineNewGroup?.parentId === group.id && renderInlineNewFolder()}
@@ -900,6 +916,19 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
             </svg>
             Connect
           </button>
+          {contextMenu.conn.protocol === 'ssh' && (
+            <button
+              className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
+              onClick={() => { onConnect({ ...contextMenu.conn, protocol: 'sftp' }); setContextMenu(null); }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                <line x1="12" y1="11" x2="12" y2="17" />
+                <polyline points="9 14 12 17 15 14" />
+              </svg>
+              Open SFTP
+            </button>
+          )}
           <button
             className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
             onClick={() => { handleDuplicate(contextMenu.conn); setContextMenu(null); }}
