@@ -1,12 +1,22 @@
 import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { useAuth } from '../hooks/useAuth';
 
+interface ProvidersConfig {
+  local: boolean;
+  ldap: boolean;
+  oidc: boolean;
+  oidcButtonLabel: string;
+}
+
 export function LoginPage() {
   const { login, completeMfaLogin } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [providers, setProviders] = useState<ProvidersConfig | null>(null);
+  const [ssoError, setSsoError] = useState<string | null>(null);
+  const [loginMethod, setLoginMethod] = useState<'local' | 'ldap'>('local');
 
   // MFA step
   const [mfaRequired, setMfaRequired] = useState(false);
@@ -15,20 +25,72 @@ export function LoginPage() {
   const [trustDevice, setTrustDevice] = useState(false);
   const autoSubmittingRef = useRef(false);
 
+  useEffect(() => {
+    fetch('/api/v1/auth/providers')
+      .then((r) => r.json())
+      .then((d) => {
+        const cfg = d as ProvidersConfig;
+        setProviders(cfg);
+        // If only LDAP is enabled (not local), default to ldap method
+        if (!cfg.local && cfg.ldap) setLoginMethod('ldap');
+      })
+      .catch(() => setProviders({ local: true, ldap: false, oidc: false, oidcButtonLabel: 'Sign in with SSO' }));
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('sso')) {
+      window.history.replaceState({}, '', '/');
+      window.location.reload();
+    }
+    if (params.has('sso_error')) {
+      setSsoError(decodeURIComponent(params.get('sso_error') ?? 'SSO authentication failed'));
+      window.history.replaceState({}, '', '/');
+    }
+  }, []);
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError('');
+    setSsoError(null);
     setSubmitting(true);
     try {
-      const result = await login(username, password);
-      if (result.mfaRequired && result.mfaToken) {
-        setMfaToken(result.mfaToken);
-        setMfaRequired(true);
+      const effectiveMethod = loginMethod === 'ldap' || (!providers?.local && providers?.ldap) ? 'ldap' : 'local';
+      if (effectiveMethod === 'ldap') {
+        // Call LDAP endpoint directly
+        const res = await fetch('/api/v1/auth/login/ldap', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+        });
+        const data = await res.json() as { token?: string; user?: { id: string; username: string; displayName: string; role: 'admin' | 'user'; theme: string | null }; error?: string };
+        if (!res.ok) throw new Error(data.error || 'Login failed');
+        // Reload to pick up cookie-based auth
+        window.location.reload();
+      } else {
+        const result = await login(username, password);
+        if (result.mfaRequired && result.mfaToken) {
+          setMfaToken(result.mfaToken);
+          setMfaRequired(true);
+        }
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleSsoLogin() {
+    try {
+      const res = await fetch('/api/v1/auth/oidc/authorize', { credentials: 'include' });
+      const data = await res.json() as { url?: string; error?: string };
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        setError(data.error ?? 'SSO initialization failed');
+      }
+    } catch {
+      setError('SSO initialization failed');
     }
   }
 
@@ -41,7 +103,7 @@ export function LoginPage() {
       await completeMfaLogin(mfaToken, code, trustDevice);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Invalid code');
-      setMfaCode(''); // Clear so user can retry
+      setMfaCode('');
     } finally {
       setSubmitting(false);
       autoSubmittingRef.current = false;
@@ -60,6 +122,11 @@ export function LoginPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mfaCode]);
+
+  const showLocalForm = providers === null || providers.local || (!providers.local && !providers.oidc);
+  const showLdapForm = providers?.ldap ?? false;
+  const showPasswordForm = showLocalForm || showLdapForm;
+  const showMethodSelector = showLocalForm && showLdapForm;
 
   if (mfaRequired) {
     return (
@@ -128,37 +195,85 @@ export function LoginPage() {
           <h1 className="text-3xl font-bold text-text-primary">Alterm</h1>
           <p className="text-text-secondary mt-2">Sign in to continue</p>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
+
+        {(ssoError || error) && (
+          <p className="text-red-500 text-sm mb-4">{ssoError || error}</p>
+        )}
+
+        {showPasswordForm && (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {showMethodSelector && (
+              <div className="flex gap-2 p-1 bg-surface rounded border border-border">
+                <button
+                  type="button"
+                  onClick={() => setLoginMethod('local')}
+                  className={`flex-1 py-1.5 text-sm rounded transition-colors ${loginMethod === 'local' ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'}`}
+                >
+                  Local
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLoginMethod('ldap')}
+                  className={`flex-1 py-1.5 text-sm rounded transition-colors ${loginMethod === 'ldap' ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'}`}
+                >
+                  LDAP Directory
+                </button>
+              </div>
+            )}
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-1">Username</label>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+                autoFocus
+                className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-1">Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full py-2 px-4 bg-accent text-white rounded hover:bg-accent-hover disabled:opacity-50 font-medium"
+            >
+              {submitting ? 'Signing in...' : 'Sign In'}
+            </button>
+          </form>
+        )}
+
+        {/* SSO Button */}
+        {providers?.oidc && (
           <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1">Username</label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
-              autoFocus
-              className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-            />
+            {showPasswordForm && (
+              <div className="relative flex items-center my-4">
+                <div className="flex-grow border-t border-border" />
+                <span className="flex-shrink mx-4 text-xs text-text-secondary">or</span>
+                <div className="flex-grow border-t border-border" />
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={handleSsoLogin}
+              className="w-full py-2 px-4 border border-border rounded text-text-primary hover:bg-surface-hover flex items-center justify-center gap-2 font-medium"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83" />
+              </svg>
+              {providers.oidcButtonLabel}
+            </button>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-          </div>
-          {error && <p className="text-red-500 text-sm">{error}</p>}
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full py-2 px-4 bg-accent text-white rounded hover:bg-accent-hover disabled:opacity-50 font-medium"
-          >
-            {submitting ? 'Signing in...' : 'Sign In'}
-          </button>
-        </form>
+        )}
       </div>
     </div>
   );

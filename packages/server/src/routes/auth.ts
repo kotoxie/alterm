@@ -7,11 +7,13 @@ import { signToken, verifyToken, signMfaToken, verifyMfaToken } from '../service
 import { logAudit } from '../services/audit.js';
 import { getSetting } from '../services/settings.js';
 import { createLoginSession, hashToken } from '../services/loginSession.js';
-import { authRequired } from '../middleware/auth.js';
+import { authRequired, adminRequired } from '../middleware/auth.js';
 import { authenticator } from 'otplib';
 import { parseUA } from '../services/ua.js';
 import { issueWsTicket } from '../services/wsTicket.js';
 import { decrypt } from '../services/encryption.js';
+import { authenticateLdap } from '../services/ldap.js';
+import { buildOidcAuthUrl, handleOidcCallback, isOidcEnabled } from '../services/oidc.js';
 
 // ── IP-based rate limiting for login ──────────────────────────────────────────
 interface IpRecord { count: number; resetAt: number; }
@@ -83,6 +85,53 @@ function setTrustedDevice(req: Request, res: Response, userId: string): void {
 }
 
 const router = Router();
+
+// ── Helper: find or create a user authenticated via external provider ─────────
+async function findOrCreateProviderUser(
+  provider: 'ldap' | 'oidc',
+  providerId: string,
+  username: string,
+  email: string | null,
+  displayName: string | null,
+  isAdmin: boolean,
+): Promise<{ id: string; username: string; display_name: string; role: string }> {
+  const existing = queryOne<{ id: string; username: string; display_name: string; role: string }>(
+    'SELECT id, username, display_name, role FROM users WHERE auth_provider = ? AND provider_id = ?',
+    [provider, providerId],
+  );
+  if (existing) {
+    execute(
+      "UPDATE users SET display_name = COALESCE(?, display_name), email = COALESCE(?, email), updated_at = datetime('now') WHERE id = ?",
+      [displayName, email, existing.id],
+    );
+    return existing;
+  }
+
+  let finalUsername = username;
+  const usernameConflict = queryOne<{ id: string }>('SELECT id FROM users WHERE username = ?', [username]);
+  if (usernameConflict) {
+    finalUsername = `${username}_${provider}`;
+  }
+
+  const newId = uuid();
+  const role = isAdmin ? 'admin' : 'user';
+  execute(
+    `INSERT INTO users (id, username, display_name, email, role, auth_provider, provider_id, password_hash)
+     VALUES (?, ?, ?, ?, ?, ?, ?, '')`,
+    [newId, finalUsername, displayName ?? finalUsername, email, role, provider, providerId],
+  );
+
+  return { id: newId, username: finalUsername, display_name: displayName ?? finalUsername, role };
+}
+
+// ── GET /providers — unauthenticated; tells the login page what buttons to show ─
+router.get('/providers', (_req: Request, res: Response) => {
+  const localEnabled = getSetting('auth.local_enabled') !== 'false';
+  const ldapEnabled = getSetting('auth.ldap_enabled') === 'true';
+  const oidcEnabled = isOidcEnabled();
+  const oidcButtonLabel = getSetting('auth.oidc_button_label') || 'Sign in with SSO';
+  res.json({ local: localEnabled, ldap: ldapEnabled, oidc: oidcEnabled, oidcButtonLabel });
+});
 
 function setAuthCookie(res: Response, token: string, maxSessionMinutes?: number): void {
   const maxAgeMs = maxSessionMinutes
@@ -191,7 +240,12 @@ router.post('/login', async (req: Request, res: Response) => {
     return;
   }
 
-  // IP-based rate limiting (guards against password spraying / distributed brute force)
+  if (getSetting('auth.local_enabled') === 'false') {
+    res.status(403).json({ error: 'Local authentication is disabled' });
+    return;
+  }
+
+  // IP-based rate limiting(guards against password spraying / distributed brute force)
   const clientIp = (req.ip ?? 'unknown').replace(/^::ffff:/i, '');
   if (!checkIpRateLimit(clientIp)) {
     res.status(429).json({ error: 'Too many login attempts. Please try again later.' });
@@ -201,7 +255,7 @@ router.post('/login', async (req: Request, res: Response) => {
   const maxFailed = parseInt(getSetting('security.max_failed_logins'), 10) || 5;
   const lockoutMinutes = parseInt(getSetting('security.lockout_minutes'), 10) || 30;
 
-  const user = queryOne<UserRow>('SELECT id, username, password_hash, display_name, role, theme, failed_login_count, locked_until, mfa_enabled, mfa_secret FROM users WHERE username = ?', [username]);
+  const user = queryOne<UserRow>('SELECT id, username, password_hash, display_name, role, theme, failed_login_count, locked_until, mfa_enabled, mfa_secret FROM users WHERE username = ? AND auth_provider = \'local\'', [username]);
 
   if (!user) {
     // Apply lockout to unknown usernames too (in-memory, resets on restart)
@@ -422,6 +476,148 @@ router.get('/me', (req: Request, res: Response) => {
     });
   } catch {
     res.status(401).json({ error: 'Invalid token' });
+  }
+});
+
+// POST /login/ldap — authenticate via LDAP/Active Directory
+router.post('/login/ldap', async (req: Request, res: Response) => {
+  if (getSetting('auth.ldap_enabled') !== 'true') {
+    res.status(400).json({ error: 'LDAP authentication is not enabled' });
+    return;
+  }
+
+  const { username, password } = req.body as { username?: string; password?: string };
+  if (!username || !password) {
+    res.status(400).json({ error: 'Username and password are required' });
+    return;
+  }
+
+  const clientIp = (req.ip ?? 'unknown').replace(/^::ffff:/i, '');
+  if (!checkIpRateLimit(clientIp)) {
+    res.status(429).json({ error: 'Too many login attempts. Please try again later.' });
+    return;
+  }
+
+  const ldapUser = await authenticateLdap(username, password);
+  if (!ldapUser) {
+    logAudit({
+      eventType: 'auth.login_failed',
+      target: username,
+      details: { reason: 'ldap_auth_failed', provider: 'ldap' },
+      ipAddress: req.ip,
+    });
+    res.status(401).json({ error: 'Invalid username or password' });
+    return;
+  }
+
+  const user = await findOrCreateProviderUser(
+    'ldap',
+    ldapUser.dn,
+    ldapUser.username,
+    ldapUser.email,
+    ldapUser.displayName,
+    ldapUser.isAdmin,
+  );
+
+  const maxSessionMinutes = parseInt(getSetting('security.max_session_minutes') ?? '0', 10);
+  const token = signToken({ userId: user.id, username: user.username, role: user.role }, maxSessionMinutes || undefined);
+  createLoginSession(req, user.id, token);
+  setAuthCookie(res, token, maxSessionMinutes || undefined);
+
+  logAudit({
+    userId: user.id,
+    eventType: 'auth.login_success',
+    target: user.username,
+    details: { provider: 'ldap' },
+    ipAddress: req.ip,
+  });
+
+  res.json({
+    token,
+    user: { id: user.id, username: user.username, displayName: user.display_name, role: user.role, theme: null },
+  });
+});
+
+// GET /oidc/authorize — redirect the browser to the OIDC provider
+router.get('/oidc/authorize', async (_req: Request, res: Response) => {
+  if (!isOidcEnabled()) {
+    res.status(400).json({ error: 'OIDC authentication is not enabled' });
+    return;
+  }
+
+  const result = await buildOidcAuthUrl();
+  if (!result) {
+    res.status(500).json({ error: 'Failed to build OIDC authorization URL. Check OIDC configuration.' });
+    return;
+  }
+
+  res.json({ url: result.url });
+});
+
+// GET /oidc/callback — OIDC provider redirects back here after authentication
+router.get('/oidc/callback', async (req: Request, res: Response) => {
+  const { code, state, error, error_description } = req.query as Record<string, string>;
+
+  if (error) {
+    const msg = encodeURIComponent(error_description ?? error ?? 'OIDC error');
+    res.redirect(`/?sso_error=${msg}`);
+    return;
+  }
+
+  if (!code || !state) {
+    res.redirect('/?sso_error=missing_params');
+    return;
+  }
+
+  const oidcUser = await handleOidcCallback(code, state);
+  if (!oidcUser) {
+    res.redirect('/?sso_error=auth_failed');
+    return;
+  }
+
+  const user = await findOrCreateProviderUser(
+    'oidc',
+    oidcUser.sub,
+    oidcUser.username,
+    oidcUser.email,
+    oidcUser.displayName,
+    oidcUser.isAdmin,
+  );
+
+  const maxSessionMinutes = parseInt(getSetting('security.max_session_minutes') ?? '0', 10);
+  const token = signToken({ userId: user.id, username: user.username, role: user.role }, maxSessionMinutes || undefined);
+  createLoginSession(req, user.id, token);
+  setAuthCookie(res, token, maxSessionMinutes || undefined);
+
+  logAudit({
+    userId: user.id,
+    eventType: 'auth.login_success',
+    target: user.username,
+    details: { provider: 'oidc' },
+    ipAddress: req.ip,
+  });
+
+  res.redirect('/?sso=success');
+});
+
+// POST /ldap/test — admin-only endpoint to verify LDAP connectivity
+router.post('/ldap/test', adminRequired, async (req: Request, res: Response) => {
+  const { url, bindDn, bindPassword, searchBase } = req.body as {
+    url?: string; bindDn?: string; bindPassword?: string; searchBase?: string;
+  };
+  if (!url || !searchBase) {
+    res.status(400).json({ success: false, error: 'url and searchBase are required' });
+    return;
+  }
+  try {
+    const { Client: LdapClient } = await import('ldapts');
+    const client = new LdapClient({ url, connectTimeout: 5000 });
+    if (bindDn && bindPassword) await client.bind(bindDn, bindPassword);
+    await client.search(searchBase, { scope: 'base', filter: '(objectClass=*)', sizeLimit: 1 });
+    await client.unbind();
+    res.json({ success: true });
+  } catch (err) {
+    res.json({ success: false, error: err instanceof Error ? err.message : 'Connection failed' });
   }
 });
 
