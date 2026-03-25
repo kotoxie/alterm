@@ -43,6 +43,11 @@ export async function initDb(): Promise<Database> {
   db.run('PRAGMA foreign_keys = ON');
 
   runMigrations();
+
+  // Close any sessions that were left open from a previous crash or restart.
+  // These will never get their ended_at set by the normal WS close path.
+  db.run("UPDATE sessions SET ended_at = datetime('now') WHERE ended_at IS NULL");
+
   saveDb();
   startAutoSave();
 
