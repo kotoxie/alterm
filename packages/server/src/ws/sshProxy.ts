@@ -10,7 +10,7 @@ import { hashToken, isSessionRevoked } from '../services/loginSession.js';
 import { registerWs, unregisterWs } from './wsRegistry.js';
 import { queryOne, execute } from '../db/helpers.js';
 import { redeemWsTicket } from '../services/wsTicket.js';
-import { decrypt } from '../services/encryption.js';
+import { decrypt, encryptRecordingStream } from '../services/encryption.js';
 import { logAudit } from '../services/audit.js';
 import { resolveClientIp } from '../services/ip.js';
 import { config } from '../config.js';
@@ -159,7 +159,7 @@ export function setupSshProxy(server: https.Server): void {
       target: `${conn.host}:${conn.port}`,
       details: { connectionId, sessionId: sessionDbId, connectionName: conn.name }, ipAddress: clientIp,
     });
-    let castFile: fs.WriteStream | null = null;
+    let castFile: import('stream').Writable | null = null;
     let castStart = 0;
 
     const ssh = new SshClient();
@@ -189,7 +189,10 @@ export function setupSshProxy(server: https.Server): void {
         fs.mkdirSync(recordingsDir, { recursive: true });
         const castPath = path.join(recordingsDir, `${sessionDbId}.cast`);
         castStart = Date.now();
-        castFile = fs.createWriteStream(castPath, { encoding: 'utf8' });
+        const fileStream = fs.createWriteStream(castPath);
+        const cipherStream = encryptRecordingStream();
+        cipherStream.pipe(fileStream);
+        castFile = cipherStream;
         const header = JSON.stringify({ version: 2, width: cols, height: rows, timestamp: Math.floor(castStart / 1000), title: conn.name });
         castFile.write(header + '\n');
         execute("UPDATE sessions SET recording_path = ? WHERE id = ?", [castPath, sessionDbId]);
