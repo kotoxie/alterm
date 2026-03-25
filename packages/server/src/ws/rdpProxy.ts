@@ -6,7 +6,7 @@ import type https from 'https';
 import { isSessionRevoked } from '../services/loginSession.js';
 import { registerWs, unregisterWs } from './wsRegistry.js';
 import { redeemWsTicket } from '../services/wsTicket.js';
-import { queryOne } from '../db/helpers.js';
+import { queryOne, execute } from '../db/helpers.js';
 import { decrypt } from '../services/encryption.js';
 import { logAudit } from '../services/audit.js';
 import { resolveClientIp } from '../services/ip.js';
@@ -261,6 +261,9 @@ export function setupRdpProxy(server: https.Server): void {
 
     ws.on('close', () => {
       cleanup();
+      // Mark the session as ended in the DB — covers the case where the browser
+      // closes/crashes before the client can call /recording/finalize.
+      execute("UPDATE sessions SET ended_at = COALESCE(ended_at, datetime('now')) WHERE id = ?", [sessionId]);
       logAudit({ userId, eventType: 'session.rdp.disconnect',
         target: `${conn.host}:${conn.port}`,
         details: { connectionId, sessionId }, ipAddress: clientIp });
