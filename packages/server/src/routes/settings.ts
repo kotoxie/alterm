@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { authRequired } from '../middleware/auth.js';
 import { logAudit } from '../services/audit.js';
 import { getAllSettings, getSetting, setSettings } from '../services/settings.js';
+import { encrypt } from '../services/encryption.js';
 
 const router = Router();
 router.use(authRequired);
@@ -28,6 +29,10 @@ router.get('/public', (_req: Request, res: Response) => {
     'ssh.cursor_blink',
     'ssh.theme',
     'ssh.scrollback',
+    'auth.oidc_enabled',
+    'auth.oidc_button_label',
+    'auth.ldap_enabled',
+    'auth.local_enabled',
   ];
   const settings: Record<string, string> = {};
   for (const key of PUBLIC_KEYS) {
@@ -49,16 +54,30 @@ router.put('/', (req: Request, res: Response) => {
     return;
   }
 
+  // Fields that must be encrypted before storage
+  const ENCRYPTED_FIELDS = ['auth.ldap_bind_password', 'auth.oidc_client_secret'];
+  const UNCHANGED_SENTINEL = '__unchanged__';
+
   // Capture before values for audit diff
   const before: Record<string, string> = {};
   for (const key of Object.keys(updates)) before[key] = getSetting(key);
 
-  setSettings(updates);
+  const processedUpdates: Record<string, string> = {};
+  for (const [key, value] of Object.entries(updates)) {
+    if (value === UNCHANGED_SENTINEL) continue;
+    if (ENCRYPTED_FIELDS.includes(key) && value) {
+      processedUpdates[key] = encrypt(value);
+    } else {
+      processedUpdates[key] = value;
+    }
+  }
+
+  setSettings(processedUpdates);
 
   logAudit({
     userId: req.user!.userId,
     eventType: 'settings.updated',
-    details: { before, after: updates },
+    details: { before, after: processedUpdates },
     ipAddress: req.ip,
   });
 
