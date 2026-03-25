@@ -14,7 +14,6 @@ export function SecuritySettings() {
   // Session timeout state
   const [idleTimeout, setIdleTimeout] = useState('0');
   const [maxSessionMinutes, setMaxSessionMinutes] = useState('0');
-  const [maxConcurrent, setMaxConcurrent] = useState('0');
   const [sessionMsg, setSessionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [savingSession, setSavingSession] = useState(false);
 
@@ -42,7 +41,6 @@ export function SecuritySettings() {
   useEffect(() => {
     setIdleTimeout(settings['security.idle_timeout_minutes'] ?? '0');
     setMaxSessionMinutes(settings['security.max_session_minutes'] ?? '0');
-    setMaxConcurrent(settings['session.max_concurrent'] ?? '0');
     setMaxFailed(settings['security.max_failed_logins'] ?? '5');
     setLockoutMinutes(settings['security.lockout_minutes'] ?? '30');
     setIpRulesEnabled(settings['security.ip_rules_enabled'] === 'true');
@@ -83,7 +81,6 @@ export function SecuritySettings() {
         {
           'security.idle_timeout_minutes': idleTimeout,
           'security.max_session_minutes': maxSessionMinutes,
-          'session.max_concurrent': maxConcurrent,
         },
         () => setSessionMsg({ type: 'success', text: 'Saved.' }),
         (msg) => setSessionMsg({ type: 'error', text: msg }),
@@ -200,19 +197,6 @@ export function SecuritySettings() {
               min="0"
               value={maxSessionMinutes}
               onChange={(e) => setMaxSessionMinutes(e.target.value)}
-              className="w-40 px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1">
-              Max concurrent connections <span className="font-normal">— 0 = unlimited</span>
-            </label>
-            <p className="text-xs text-text-secondary mb-1">Limit the total number of active remote connections across all users.</p>
-            <input
-              type="number"
-              min="0"
-              value={maxConcurrent}
-              onChange={(e) => setMaxConcurrent(e.target.value)}
               className="w-40 px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
             />
           </div>

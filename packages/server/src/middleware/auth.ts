@@ -26,7 +26,8 @@ export function authRequired(req: Request, res: Response, next: NextFunction): v
     const payload = verifyToken(token);
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
 
-    const sessionStatus = checkAndTouchSession(tokenHash);
+    const isHeartbeat = req.query['heartbeat'] === '1';
+    const sessionStatus = checkAndTouchSession(tokenHash, isHeartbeat);
     if (sessionStatus === 'revoked') {
       res.status(401).json({ error: 'Session has been revoked' });
       return;
