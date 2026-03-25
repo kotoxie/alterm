@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { authRequired } from '../middleware/auth.js';
 import { logAudit } from '../services/audit.js';
 import { getAllSettings, getSetting, setSettings } from '../services/settings.js';
-import { encrypt } from '../services/encryption.js';
+import { encrypt, usingFileKey } from '../services/encryption.js';
 
 const router = Router();
 router.use(authRequired);
@@ -39,6 +39,7 @@ router.get('/public', (_req: Request, res: Response) => {
   for (const key of PUBLIC_KEYS) {
     settings[key] = getSetting(key);
   }
+  settings['system.insecure_key'] = String(usingFileKey);
   res.json({ settings });
 });
 

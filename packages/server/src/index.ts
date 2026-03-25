@@ -23,6 +23,7 @@ import usersRoutes from './routes/users.js';
 import auditRoutes from './routes/audit.js';
 import versionRoutes from './routes/version.js';
 import sessionsRoutes from './routes/sessions.js';
+import backupRoutes from './routes/backup.js';
 import smbRoutes from './routes/smb.js';
 import sftpRoutes from './routes/sftp.js';
 import ftpRoutes from './routes/ftp.js';
@@ -39,6 +40,19 @@ async function main() {
   await initDb();
   initJwt();
   initEncryption();
+
+  // Encrypt any plaintext recording files left from crashed sessions
+  if (fs.existsSync(config.recordingsDir)) {
+    const { encryptRecordingFileInPlace, isEncryptedRecording } = await import('./services/encryption.js');
+    for (const fname of fs.readdirSync(config.recordingsDir)) {
+      if (!fname.endsWith('.webm') && !fname.endsWith('.cast')) continue;
+      const fp = path.join(config.recordingsDir, fname);
+      try {
+        const buf = fs.readFileSync(fp);
+        if (!isEncryptedRecording(buf)) encryptRecordingFileInPlace(fp);
+      } catch { /* skip */ }
+    }
+  }
 
   const { cert, key } = ensureTlsCerts();
 
@@ -89,6 +103,7 @@ async function main() {
   app.use('/api/v1/sftp/:connectionId/upload', express.raw({ limit: '100mb', type: '*/*' }));
   app.use('/api/v1/ftp/:connectionId/upload', express.raw({ limit: '100mb', type: '*/*' }));
   app.use('/api/v1/sessions/:id/recording/chunk', express.raw({ limit: '100mb', type: '*/*' }));
+  app.use('/api/v1/backup/import', express.raw({ limit: '4gb', type: 'application/octet-stream' }));
   app.use(express.json({ limit: '6mb' })); // allow base64-encoded logos (~4 MB image → ~5.4 MB base64)
   app.use(cookieParser());
 
@@ -103,6 +118,7 @@ async function main() {
   app.use('/api/v1/audit', auditRoutes);
   app.use('/api/v1/version', versionRoutes);
   app.use('/api/v1/sessions', sessionsRoutes);
+  app.use('/api/v1/backup', backupRoutes);
   app.use('/api/v1/smb', smbRoutes);
   app.use('/api/v1/sftp', sftpRoutes);
   app.use('/api/v1/ftp', ftpRoutes);

@@ -8,6 +8,7 @@ import { AuditTrail } from './AuditTrail';
 import { GlobalSettings } from './GlobalSettings';
 import { SessionsHistory } from './SessionsHistory';
 import { AuthProvidersSettings } from './AuthProvidersSettings';
+import { BackupSettings } from './BackupSettings';
 
 interface SettingsPanelProps {
   isOpen: boolean;
@@ -15,7 +16,7 @@ interface SettingsPanelProps {
   initialSection?: string;
 }
 
-type Section = 'profile' | 'ssh-prefs' | 'security' | 'users' | 'audit' | 'global' | 'sessions' | 'authentication';
+type Section = 'profile' | 'ssh-prefs' | 'security' | 'users' | 'audit' | 'global' | 'sessions' | 'authentication' | 'backup';
 
 interface NavItem {
   id: Section;
@@ -119,6 +120,16 @@ function KeyIcon() {
   );
 }
 
+function ArchiveIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <polyline points="21 8 21 21 3 21 3 8" />
+      <rect x="1" y="3" width="22" height="5" />
+      <line x1="10" y1="12" x2="14" y2="12" />
+    </svg>
+  );
+}
+
 const MY_SETTINGS_NAV: NavItem[] = [
   { id: 'profile', label: 'Profile', icon: <UserIcon /> },
   { id: 'ssh-prefs', label: 'SSH Terminal', icon: <TerminalIcon /> },
@@ -131,6 +142,7 @@ const ADMIN_NAV: NavItem[] = [
   { id: 'sessions', label: 'Recordings', icon: <HistoryIcon />, adminOnly: true },
   { id: 'audit', label: 'Audit', icon: <ListIcon />, adminOnly: true },
   { id: 'users', label: 'Users', icon: <UsersIcon />, adminOnly: true },
+  { id: 'backup', label: 'Backup & Restore', icon: <ArchiveIcon />, adminOnly: true },
 ];
 
 // Combine for validation
@@ -145,6 +157,7 @@ const NAV_LABEL_MAP: Record<Section, string> = {
   'global': 'General',
   'sessions': 'Session Recordings',
   'authentication': 'Authentication',
+  'backup': 'Backup & Restore',
 };
 
 export function SettingsPanel({ isOpen, onClose, initialSection }: SettingsPanelProps) {
@@ -275,6 +288,7 @@ export function SettingsPanel({ isOpen, onClose, initialSection }: SettingsPanel
             {activeSection === 'audit' && isAdmin && <AuditTrail />}
             {activeSection === 'global' && isAdmin && <GlobalSettings />}
             {activeSection === 'sessions' && isAdmin && <SessionsHistory />}
+            {activeSection === 'backup' && isAdmin && <BackupSettings />}
           </div>
         </div>
       </div>
