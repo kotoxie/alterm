@@ -404,8 +404,10 @@ router.get('/:id/session', (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const id = req.params.id as string;
 
+  // Credentials must only be returned to the connection owner — never to users
+  // accessing via a shared connection (they could extract the decrypted password).
   const conn = queryOne<ConnectionRow>(
-    'SELECT * FROM connections WHERE id = ? AND (user_id = ? OR shared = 1)',
+    'SELECT * FROM connections WHERE id = ? AND user_id = ?',
     [id, userId],
   );
 

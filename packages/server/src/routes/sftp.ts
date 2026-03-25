@@ -1,7 +1,8 @@
 import { Router, type Request, type Response } from 'express';
 import { Client as SshClient } from 'ssh2';
 import type { SFTPWrapper } from 'ssh2';
-import { queryOne } from '../db/helpers.js';
+import crypto from 'crypto';
+import { queryOne, execute } from '../db/helpers.js';
 import { authRequired } from '../middleware/auth.js';
 import { decrypt } from '../services/encryption.js';
 import { logAudit } from '../services/audit.js';
@@ -19,11 +20,12 @@ interface ConnRow {
   private_key: string | null;
   user_id: string;
   shared: number;
+  host_fingerprint: string | null;
 }
 
 function getConn(connectionId: string, userId: string): ConnRow | null {
   return queryOne<ConnRow>(
-    `SELECT id, host, port, username, encrypted_password, private_key, user_id, shared
+    `SELECT id, host, port, username, encrypted_password, private_key, user_id, shared, host_fingerprint
      FROM connections
      WHERE id = ? AND (user_id = ? OR shared = 1) AND protocol IN ('sftp', 'ssh')`,
     [connectionId, userId],
@@ -55,7 +57,14 @@ function connectSftp(conn: ConnRow): Promise<{ ssh: SshClient; sftp: SFTPWrapper
       username: conn.username || 'root',
       ...(privateKey ? { privateKey } : { password }),
       readyTimeout: 10000,
-      hostVerifier: () => true,
+      hostVerifier: (key: Buffer) => {
+        const fingerprint = crypto.createHash('sha256').update(key).digest('hex');
+        if (conn.host_fingerprint) {
+          return conn.host_fingerprint === fingerprint;
+        }
+        execute('UPDATE connections SET host_fingerprint = ? WHERE id = ?', [fingerprint, conn.id]);
+        return true;
+      },
     });
   });
 }
@@ -102,7 +111,7 @@ router.post('/:connectionId/list', async (req: Request, res: Response) => {
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'SFTP error';
     console.error('[sftp] list error:', msg);
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Operation failed' });
   } finally {
     ssh?.end();
   }
@@ -117,7 +126,9 @@ router.get('/:connectionId/download', async (req: Request, res: Response) => {
   const filePath = req.query.path as string;
   if (!filePath) { res.status(400).json({ error: 'path required' }); return; }
 
-  const fileName = filePath.split('/').pop() || 'download';
+  const rawName = filePath.split('/').pop() || 'download';
+  // Encode filename per RFC 5987 to prevent header injection
+  const safeFileName = encodeURIComponent(rawName).replace(/['()]/g, encodeURIComponent);
   let ssh: SshClient | null = null;
 
   try {
@@ -126,7 +137,7 @@ router.get('/:connectionId/download', async (req: Request, res: Response) => {
     const { sftp } = result;
 
     const stream = sftp.createReadStream(filePath);
-    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${safeFileName}`);
     res.setHeader('Content-Type', 'application/octet-stream');
     stream.pipe(res);
 
@@ -139,7 +150,7 @@ router.get('/:connectionId/download', async (req: Request, res: Response) => {
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'SFTP error';
     console.error('[sftp] download error:', msg);
-    if (!res.headersSent) res.status(500).json({ error: msg });
+    if (!res.headersSent) res.status(500).json({ error: 'Operation failed' });
   } finally {
     ssh?.end();
   }
@@ -173,7 +184,7 @@ router.post('/:connectionId/upload', async (req: Request, res: Response) => {
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'SFTP error';
     console.error('[sftp] upload error:', msg);
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Operation failed' });
   } finally {
     ssh?.end();
   }
@@ -206,7 +217,7 @@ router.post('/:connectionId/mkdir', async (req: Request, res: Response) => {
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'SFTP error';
     console.error('[sftp] mkdir error:', msg);
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Operation failed' });
   } finally {
     ssh?.end();
   }
@@ -239,7 +250,7 @@ router.delete('/:connectionId/file', async (req: Request, res: Response) => {
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'SFTP error';
     console.error('[sftp] delete error:', msg);
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Operation failed' });
   } finally {
     ssh?.end();
   }

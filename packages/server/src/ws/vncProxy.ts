@@ -2,9 +2,9 @@ import net from 'net';
 import type { Server } from 'https';
 import { WebSocketServer } from 'ws';
 import { queryOne } from '../db/helpers.js';
-import { verifyToken } from '../services/jwt.js';
-import { hashToken, isSessionRevoked } from '../services/loginSession.js';
+import { isSessionRevoked } from '../services/loginSession.js';
 import { registerWs, unregisterWs } from './wsRegistry.js';
+import { redeemWsTicket } from '../services/wsTicket.js';
 import { logAudit } from '../services/audit.js';
 import { resolveClientIp } from '../services/ip.js';
 import { v4 as uuid } from 'uuid';
@@ -16,23 +16,17 @@ export function setupVncProxy(server: Server): void {
     const url = req.url ?? '';
     if (!url.startsWith('/ws/vnc/')) return;
 
-    // URL format: /ws/vnc/{connectionId}?token={jwt}
+    // URL format: /ws/vnc/{connectionId}?ticket={ws-ticket}
     const [pathname, qs] = url.split('?');
     const connectionId = pathname.slice('/ws/vnc/'.length);
-    const token = new URLSearchParams(qs).get('token');
+    const ticketId = new URLSearchParams(qs).get('ticket');
 
-    if (!token) { socket.destroy(); return; }
+    if (!ticketId) { socket.destroy(); return; }
 
-    let userId: string;
-    try {
-      const payload = verifyToken(token);
-      userId = payload.userId;
-    } catch {
-      socket.destroy();
-      return;
-    }
+    const ticketData = redeemWsTicket(ticketId);
+    if (!ticketData) { socket.destroy(); return; }
+    const { userId, tokenHash: vncTokenHash } = ticketData;
 
-    const vncTokenHash = hashToken(token);
     if (isSessionRevoked(vncTokenHash)) { socket.destroy(); return; }
 
     const conn = queryOne<{ host: string; port: number; user_id: string; shared: number }>(

@@ -108,7 +108,7 @@ router.post('/:connectionId/list', async (req: Request, res: Response) => {
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'SMB error';
     console.error('[smb] list error:', msg);
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Operation failed' });
   } finally {
     smb?.disconnect();
   }
@@ -123,13 +123,14 @@ router.get('/:connectionId/download', async (req: Request, res: Response) => {
   const filePath = req.query.path as string;
   if (!filePath) { res.status(400).json({ error: 'path required' }); return; }
 
-  const fileName = filePath.split(/[/\\]/).pop() || 'download';
+  const rawName = filePath.split(/[/\\]/).pop() || 'download';
+  const safeFileName = encodeURIComponent(rawName).replace(/['()]/g, encodeURIComponent);
   let smb: SMB2 | null = null;
 
   try {
     smb = makeSmbClient(conn);
     const stream = await smbOp(() => smb!.createReadStream(filePath));
-    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${safeFileName}`);
     res.setHeader('Content-Type', 'application/octet-stream');
     stream.pipe(res);
     await new Promise<void>((resolve, reject) => {
@@ -141,7 +142,7 @@ router.get('/:connectionId/download', async (req: Request, res: Response) => {
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'SMB error';
     console.error('[smb] download error:', msg);
-    if (!res.headersSent) res.status(500).json({ error: msg });
+    if (!res.headersSent) res.status(500).json({ error: 'Operation failed' });
   } finally {
     smb?.disconnect();
   }
@@ -171,7 +172,7 @@ router.post('/:connectionId/upload', async (req: Request, res: Response) => {
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'SMB error';
     console.error('[smb] upload error:', msg);
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Operation failed' });
   } finally {
     smb?.disconnect();
   }
@@ -195,7 +196,7 @@ router.post('/:connectionId/mkdir', async (req: Request, res: Response) => {
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'SMB error';
     console.error('[smb] mkdir error:', msg);
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Operation failed' });
   } finally {
     smb?.disconnect();
   }
@@ -219,7 +220,7 @@ router.delete('/:connectionId/file', async (req: Request, res: Response) => {
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'SMB error';
     console.error('[smb] delete error:', msg);
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Operation failed' });
   } finally {
     smb?.disconnect();
   }
