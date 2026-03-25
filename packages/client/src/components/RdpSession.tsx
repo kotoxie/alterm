@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { Tab } from '../pages/MainLayout';
-import { useAuth } from '../hooks/useAuth';
 import { getWsTicket } from '../lib/wsTicket';
 import { DisconnectOverlay } from './DisconnectOverlay';
 
@@ -80,7 +79,6 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
   const sessionRef = useRef<any>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const rdpSessionIdRef = useRef<string | null>(null);
-  const { token } = useAuth();
   const [status, setStatus] = useState<string>('Initializing...');
   const [disconnected, setDisconnected] = useState(false);
   const [disconnectMessage, setDisconnectMessage] = useState('');
@@ -170,7 +168,7 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
     };
 
     const run = async () => {
-      if (!token || !containerRef.current) return;
+      if (!containerRef.current) return;
 
       try {
         setStatus('Loading RDP module...');
@@ -179,7 +177,7 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
 
         setStatus('Fetching connection info...');
         const sessionRes = await fetch(`/api/v1/connections/${tab.connectionId}/session`, {
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: 'include',
         });
         if (!sessionRes.ok) throw new Error('Failed to fetch connection credentials');
         const sessionInfo: { host: string; port: number; username: string; password: string } =
@@ -237,7 +235,7 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
         });
         canvasStyleGuard.observe(canvas, { attributes: true, attributeFilter: ['style'] });
 
-        const ticket = await getWsTicket(token);
+        const ticket = await getWsTicket();
         if (cancelled) return;
 
         const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -322,7 +320,6 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
           .password(sessionInfo.password)
           .destination(`${sessionInfo.host}:${sessionInfo.port}`)
           .proxyAddress(wsUrl)
-          .authToken(token)
           .desktopSize(new DesktopSize(canvas.width, canvas.height))
           .renderCanvas(canvas)
           .setCursorStyleCallbackContext(null)
@@ -382,7 +379,8 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
         try {
           const recRes = await fetch('/api/v1/sessions/rdp-session', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
             body: JSON.stringify({ connectionId: tab.connectionId }),
           });
           if (recRes.ok) {
@@ -425,7 +423,8 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
                   e.data.arrayBuffer().then((buf) => {
                     fetch(`/api/v1/sessions/${rdpSessionIdRef.current}/recording/chunk`, {
                       method: 'POST',
-                      headers: { 'Content-Type': 'application/octet-stream', Authorization: `Bearer ${token}` },
+                      headers: { 'Content-Type': 'application/octet-stream' },
+                      credentials: 'include',
                       body: buf,
                     }).catch(() => {});
                   }).catch(() => {});
@@ -623,7 +622,7 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
       if (rdpSessionIdRef.current) {
         fetch(`/api/v1/sessions/${rdpSessionIdRef.current}/recording/finalize`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token ?? ''}` },
+          credentials: 'include',
         }).catch(() => {});
         rdpSessionIdRef.current = null;
       }
@@ -634,7 +633,7 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
     };
     // reconnectCount is intentionally included: incrementing it re-runs this effect
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab.id, tab.connectionId, token, onStatusChange, reconnectCount]);
+  }, [tab.id, tab.connectionId, onStatusChange, reconnectCount]);
 
   return (
     <div ref={outerRef} className="absolute inset-0 flex flex-col bg-black overflow-hidden">

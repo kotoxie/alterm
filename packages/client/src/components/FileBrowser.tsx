@@ -1,6 +1,4 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useAuth } from '../hooks/useAuth';
-
 interface FileEntry {
   filename: string;
   fileAttributes: number;
@@ -85,7 +83,6 @@ export function FileBrowser({
   apiBase,
   pathSep = '/',
 }: FileBrowserProps) {
-  const { token } = useAuth();
   const [path, setPath] = useState('');
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -121,7 +118,6 @@ export function FileBrowser({
   const joinPath = (base: string, name: string) => base ? `${base}${pathSep}${name}` : name;
 
   const listDir = useCallback(async (dirPath: string) => {
-    if (!token) return;
     setLoading(true);
     setError('');
     setContextMenu(null);
@@ -129,7 +125,8 @@ export function FileBrowser({
     try {
       const res = await fetch(`${apiBase}/${connectionId}/list`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ path: dirPath }),
       });
       let d: { files?: FileEntry[]; error?: string };
@@ -146,7 +143,7 @@ export function FileBrowser({
     } finally {
       setLoading(false);
     }
-  }, [token, connectionId, apiBase, pathSep, onStatusChange]);
+  }, [connectionId, apiBase, pathSep, onStatusChange]);
 
   useEffect(() => {
     if (isActive) listDir('');
@@ -164,10 +161,9 @@ export function FileBrowser({
   }
 
   async function downloadFile(name: string) {
-    if (!token) return;
     const filePath = joinPath(path, name);
     const res = await fetch(`${apiBase}/${connectionId}/download?path=${encodeURIComponent(filePath)}`, {
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: 'include',
     });
     if (!res.ok) { setError('Download failed'); return; }
     const blob = await res.blob();
@@ -178,22 +174,23 @@ export function FileBrowser({
   }
 
   async function deleteFile(name: string) {
-    if (!token || !window.confirm(`Delete "${name}"?`)) return;
+    if (!window.confirm(`Delete "${name}"?`)) return;
     const filePath = joinPath(path, name);
     const res = await fetch(`${apiBase}/${connectionId}/file?path=${encodeURIComponent(filePath)}`, {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: 'include',
     });
     if (res.ok) listDir(path);
     else { const d = await res.json(); setError(d.error || 'Delete failed'); }
   }
 
   async function createFolder() {
-    if (!token || !newFolderName.trim()) return;
+    if (!newFolderName.trim()) return;
     const dirPath = joinPath(path, newFolderName.trim());
     const res = await fetch(`${apiBase}/${connectionId}/mkdir`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ path: dirPath }),
     });
     if (res.ok) { setNewFolderMode(false); setNewFolderName(''); listDir(path); }
@@ -202,13 +199,14 @@ export function FileBrowser({
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file || !token) return;
+    if (!file) return;
     const filePath = joinPath(path, file.name);
     setUploadProgress(`Uploading ${file.name}...`);
     try {
       const res = await fetch(`${apiBase}/${connectionId}/upload?path=${encodeURIComponent(filePath)}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/octet-stream', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/octet-stream' },
+        credentials: 'include',
         body: file,
       });
       if (res.ok) listDir(path);
@@ -231,7 +229,7 @@ export function FileBrowser({
       const filePath = joinPath(path, name);
       await fetch(`${apiBase}/${connectionId}/file?path=${encodeURIComponent(filePath)}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
     }
     setSelectedFiles(new Set());

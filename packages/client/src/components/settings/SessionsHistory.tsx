@@ -1,5 +1,4 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
-import { useAuth } from '../../hooks/useAuth';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate as formatDateTz } from '../../utils/formatDate';
 import { Terminal } from '@xterm/xterm';
@@ -57,8 +56,8 @@ function parseCast(text: string): { header: CastHeader; events: CastEvent[] } {
 }
 
 function VideoPlayer({
-  sessionId, token, onClose,
-}: { sessionId: string; token: string; onClose: () => void }) {
+  sessionId, onClose,
+}: { sessionId: string; onClose: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -78,7 +77,7 @@ function VideoPlayer({
     async function load() {
       try {
         const res = await fetch(`/api/v1/sessions/${sessionId}/recording`, {
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: 'include',
         });
         if (!res.ok) throw new Error('Recording not found');
         const blob = await res.blob();
@@ -93,7 +92,7 @@ function VideoPlayer({
     }
     load();
     return () => { if (url) URL.revokeObjectURL(url); };
-  }, [sessionId, token]);
+  }, [sessionId]);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -106,7 +105,7 @@ function VideoPlayer({
     setDownloading(true);
     try {
       const res = await fetch(`/api/v1/sessions/${sessionId}/recording`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
       if (!res.ok) throw new Error();
       const blob = await res.blob();
@@ -305,8 +304,8 @@ function VideoPlayer({
 }
 
 function RecordingPlayer({
-  sessionId, token, onClose,
-}: { sessionId: string; token: string; onClose: () => void }) {const containerRef = useRef<HTMLDivElement>(null);
+  sessionId, onClose,
+}: { sessionId: string; onClose: () => void }) {const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
 
@@ -330,7 +329,7 @@ function RecordingPlayer({
     setDownloading(true);
     try {
       const res = await fetch(`/api/v1/sessions/${sessionId}/recording`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
       if (!res.ok) throw new Error();
       const blob = await res.blob();
@@ -410,7 +409,7 @@ function RecordingPlayer({
     async function load() {
       try {
         const res = await fetch(`/api/v1/sessions/${sessionId}/recording`, {
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: 'include',
         });
         if (!res.ok) throw new Error('Recording not found or unavailable');
         const text = await res.text();
@@ -431,7 +430,7 @@ function RecordingPlayer({
     observer.observe(containerRef.current);
     return () => observer.disconnect();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, token]);
+  }, [sessionId]);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -597,7 +596,6 @@ function FilterBar({
 }
 
 export function SessionsHistory() {
-  const { token } = useAuth();
   const timezone = useTimezone();
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -613,10 +611,9 @@ export function SessionsHistory() {
   const [dateTo, setDateTo] = useState('');
 
   async function loadSessions() {
-    if (!token) return;
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/sessions?limit=2000', { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch('/api/v1/sessions?limit=2000', { credentials: 'include' });
       if (res.ok) {
         const d = await res.json() as { sessions: SessionRow[] };
         // Only keep sessions that have a recording
@@ -627,11 +624,11 @@ export function SessionsHistory() {
   }
 
   async function downloadRecording(s: SessionRow) {
-    if (!token || downloadingId) return;
+    if (downloadingId) return;
     setDownloadingId(s.id);
     try {
       const res = await fetch(`/api/v1/sessions/${s.id}/recording`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
       if (!res.ok) throw new Error('Download failed');
       const blob = await res.blob();
@@ -647,7 +644,7 @@ export function SessionsHistory() {
     setDownloadingId(null);
   }
 
-  useEffect(() => { void loadSessions(); }, [token]);
+  useEffect(() => { void loadSessions(); }, []);
 
   // Distinct user list for filter dropdown
   const userOptions = useMemo(() => {
@@ -774,11 +771,11 @@ export function SessionsHistory() {
         </div>
       )}
 
-      {playingId && token && playingProtocol === 'rdp' && (
-        <VideoPlayer sessionId={playingId} token={token} onClose={() => setPlayingId(null)} />
+      {playingId && playingProtocol === 'rdp' && (
+        <VideoPlayer sessionId={playingId} onClose={() => setPlayingId(null)} />
       )}
-      {playingId && token && playingProtocol !== 'rdp' && (
-        <RecordingPlayer sessionId={playingId} token={token} onClose={() => setPlayingId(null)} />
+      {playingId && playingProtocol !== 'rdp' && (
+        <RecordingPlayer sessionId={playingId} onClose={() => setPlayingId(null)} />
       )}
     </div>
   );

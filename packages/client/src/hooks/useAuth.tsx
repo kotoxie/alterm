@@ -28,6 +28,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 async function apiFetch(path: string, options?: RequestInit) {
   const res = await fetch(`/api/v1${path}`, {
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     ...options,
   });
@@ -38,7 +39,7 @@ async function apiFetch(path: string, options?: RequestInit) {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem('alterm-token'));
+  const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
 
@@ -47,23 +48,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const { needsSetup: ns } = await apiFetch('/auth/status');
         setNeedsSetup(ns);
-        if (!ns && token) {
-          const { user: u } = await apiFetch('/auth/me', {
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-          });
-          setUser(u);
+        if (!ns) {
+          try {
+            const { user: u } = await apiFetch('/auth/me');
+            setUser(u);
+            setToken('cookie');
+          } catch {
+            // Not authenticated — that's fine
+          }
         }
       } catch {
         setToken(null);
-        localStorage.removeItem('alterm-token');
       } finally {
         setLoading(false);
       }
     })();
-  }, [token]);
+  }, []);
 
   const login = useCallback(async (username: string, password: string): Promise<LoginResult> => {
     const data = await apiFetch('/auth/login', {
@@ -75,48 +75,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { mfaRequired: true, mfaToken: data.mfaToken };
     }
 
-    const t = data.token!;
     const u = data.user!;
-    localStorage.setItem('alterm-token', t);
-    setToken(t);
+    setToken('cookie');
     setUser(u);
     setNeedsSetup(false);
     return {};
   }, []);
 
   const completeMfaLogin = useCallback(async (mfaToken: string, code: string, trustDevice?: boolean) => {
-    const { token: t, user: u } = await apiFetch('/auth/login/mfa', {
+    const { user: u } = await apiFetch('/auth/login/mfa', {
       method: 'POST',
       body: JSON.stringify({ mfaToken, code, trustDevice: !!trustDevice }),
     }) as { token: string; user: User };
-    localStorage.setItem('alterm-token', t);
-    setToken(t);
+    setToken('cookie');
     setUser(u);
     setNeedsSetup(false);
   }, []);
 
   const logout = useCallback(() => {
-    const t = localStorage.getItem('alterm-token');
     localStorage.removeItem('alterm-token');
-    // Clear persisted sessions so they don't reopen on next login
     localStorage.removeItem('alterm-sessions');
     setToken(null);
     setUser(null);
     // Revoke the session on the server (fire-and-forget — UI clears immediately)
-    if (t) {
-      fetch('/api/v1/auth/logout', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${t}` },
-      }).catch(() => { /* ignore network errors on logout */ });
-    }
+    fetch('/api/v1/auth/logout', {
+      method: 'POST',
+      credentials: 'include',
+    }).catch(() => { /* ignore network errors on logout */ });
   }, []);
 
   // Kick the user out when any fetch returns 401 (e.g. session revoked remotely)
   useEffect(() => {
     if (!token) return;
     const handler = () => {
-      // Only act if we still have a stored token (avoid double-logout)
-      if (localStorage.getItem('alterm-token')) logout();
+      // Only act if we still have a token (avoid double-logout)
+      if (token) logout();
     };
     window.addEventListener('alterm:unauthorized', handler);
     return () => window.removeEventListener('alterm:unauthorized', handler);
@@ -127,9 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!token) return;
     const check = async () => {
       try {
-        await fetch('/api/v1/auth/me', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        await fetch('/api/v1/auth/me', { credentials: 'include' });
         // 401 is handled by the global fetch interceptor above
       } catch { /* network error — ignore, don't log out */ }
     };
@@ -138,12 +129,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [token]);
 
   const setup = useCallback(async (username: string, password: string, displayName: string) => {
-    const { token: t, user: u } = await apiFetch('/auth/setup', {
+    const { user: u } = await apiFetch('/auth/setup', {
       method: 'POST',
       body: JSON.stringify({ username, password, displayName }),
     });
-    localStorage.setItem('alterm-token', t);
-    setToken(t);
+    setToken('cookie');
     setUser(u);
     setNeedsSetup(false);
   }, []);

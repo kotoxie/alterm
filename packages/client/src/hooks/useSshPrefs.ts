@@ -31,9 +31,7 @@ export function useSshPrefs(): SshPrefs {
 
   useEffect(() => {
     if (!token) return;
-    fetch('/api/v1/profile/ssh-prefs', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    fetch('/api/v1/profile/ssh-prefs', { credentials: 'include' })
       .then((r) => (r.ok ? r.json() : null))
       .then((data: Record<string, unknown> | null) => {
         if (!data) return;
