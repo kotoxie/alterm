@@ -256,6 +256,33 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
         let recMouseY = 0;
         let recCursorVisible = true;
 
+        // Pre-draw a fallback arrow cursor for when IronRDP reports kind='default'.
+        // Without this, the cursor disappears whenever the remote desktop switches
+        // to a system cursor (text, resize handles, etc.) — the CSS cursor shows
+        // the OS arrow but the compositor sees null and draws nothing.
+        const defaultArrowImg = (() => {
+          const c = document.createElement('canvas');
+          c.width = 14; c.height = 20;
+          const cx = c.getContext('2d')!;
+          cx.strokeStyle = '#000';
+          cx.fillStyle = '#fff';
+          cx.lineWidth = 1.5;
+          cx.beginPath();
+          cx.moveTo(1, 1);
+          cx.lineTo(1, 15);
+          cx.lineTo(4, 12);
+          cx.lineTo(6.5, 18);
+          cx.lineTo(8.5, 17);
+          cx.lineTo(6, 11);
+          cx.lineTo(10, 11);
+          cx.closePath();
+          cx.fill();
+          cx.stroke();
+          const img = new Image();
+          img.src = c.toDataURL();
+          return img;
+        })();
+
         const onRecMouseMove = (e: MouseEvent) => {
           const rect = canvas.getBoundingClientRect();
           const scaleX = canvas.width / rect.width;
@@ -308,7 +335,9 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
               } else {
                 canvas.style.cursor = 'default';
                 recCursorVisible = true;
-                recCursorImg = null;
+                recCursorHX = 0;
+                recCursorHY = 0;
+                recCursorImg = defaultArrowImg;
               }
             },
           )
