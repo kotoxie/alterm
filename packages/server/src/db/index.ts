@@ -285,6 +285,12 @@ function runMigrations() {
         CREATE INDEX IF NOT EXISTS idx_trusted_devices_hash ON trusted_devices(token_hash);
       `,
     },
+    {
+      version: 11,
+      sql: `
+        ALTER TABLE connections ADD COLUMN host_fingerprint TEXT;
+      `,
+    },
   ];
 
   for (const migration of migrations) {
