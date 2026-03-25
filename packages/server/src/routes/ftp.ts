@@ -77,7 +77,7 @@ router.post('/:connectionId/list', async (req: Request, res: Response) => {
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'FTP error';
     console.error('[ftp] list error:', msg);
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Operation failed' });
   } finally {
     client?.close();
   }
@@ -92,20 +92,21 @@ router.get('/:connectionId/download', async (req: Request, res: Response) => {
   const filePath = req.query.path as string;
   if (!filePath) { res.status(400).json({ error: 'path required' }); return; }
 
-  const fileName = filePath.split('/').pop() || 'download';
+  const rawName = filePath.split('/').pop() || 'download';
+  const safeFileName = encodeURIComponent(rawName).replace(/['()]/g, encodeURIComponent);
   let client: ftp.Client | null = null;
 
   try {
     client = await makeFtpClient(conn);
     const pass = new PassThrough();
-    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${safeFileName}`);
     res.setHeader('Content-Type', 'application/octet-stream');
     pass.pipe(res);
     await client.downloadTo(pass, filePath);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'FTP error';
     console.error('[ftp] download error:', msg);
-    if (!res.headersSent) res.status(500).json({ error: msg });
+    if (!res.headersSent) res.status(500).json({ error: 'Operation failed' });
   } finally {
     client?.close();
   }
@@ -129,7 +130,7 @@ router.post('/:connectionId/upload', async (req: Request, res: Response) => {
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'FTP error';
     console.error('[ftp] upload error:', msg);
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Operation failed' });
   } finally {
     client?.close();
   }
@@ -155,7 +156,7 @@ router.post('/:connectionId/mkdir', async (req: Request, res: Response) => {
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'FTP error';
     console.error('[ftp] mkdir error:', msg);
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Operation failed' });
   } finally {
     client?.close();
   }
@@ -184,7 +185,7 @@ router.delete('/:connectionId/file', async (req: Request, res: Response) => {
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'FTP error';
     console.error('[ftp] delete error:', msg);
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Operation failed' });
   } finally {
     client?.close();
   }

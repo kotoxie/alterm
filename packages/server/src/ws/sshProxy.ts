@@ -5,10 +5,12 @@ import { Client as SshClient, type ClientChannel } from 'ssh2';
 import net from 'net';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { verifyToken } from '../services/jwt.js';
 import { hashToken, isSessionRevoked } from '../services/loginSession.js';
 import { registerWs, unregisterWs } from './wsRegistry.js';
 import { queryOne, execute } from '../db/helpers.js';
+import { redeemWsTicket } from '../services/wsTicket.js';
 import { decrypt } from '../services/encryption.js';
 import { logAudit } from '../services/audit.js';
 import { resolveClientIp } from '../services/ip.js';
@@ -31,6 +33,7 @@ interface ConnectionRow {
   private_key: string | null; name: string;
   recording_enabled: number;
   tunnels_json: string | null;
+  host_fingerprint: string | null;
 }
 
 interface TunnelConfig { localPort: number; remoteHost: string; remotePort: number; }
@@ -106,18 +109,17 @@ export function setupSshProxy(server: https.Server): void {
 
   wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
     const url = new URL(req.url || '', `https://${req.headers.host}`);
-    const token = url.searchParams.get('token');
+    const ticketId = url.searchParams.get('ticket');
     const connectionId = url.searchParams.get('connectionId');
     const clientSessionId = url.searchParams.get('sessionId') || uuid();
     const clientIp = resolveClientIp(req);
 
-    if (!token || !connectionId) { ws.close(4001, 'Missing params'); return; }
+    if (!ticketId || !connectionId) { ws.close(4001, 'Missing params'); return; }
 
-    let userId: string;
-    try { userId = verifyToken(token).userId; }
-    catch { ws.close(4001, 'Invalid token'); return; }
+    const ticketData = redeemWsTicket(ticketId);
+    if (!ticketData) { ws.close(4001, 'Invalid or expired ticket'); return; }
+    const { userId, tokenHash } = ticketData;
 
-    const tokenHash = hashToken(token);
     if (isSessionRevoked(tokenHash)) { ws.close(4001, 'Session revoked'); return; }
     registerWs(tokenHash, ws);
     ws.once('close', () => unregisterWs(tokenHash, ws));
@@ -213,7 +215,7 @@ export function setupSshProxy(server: https.Server): void {
             localSocket.on('error', () => stream.destroy());
           });
         });
-        srv.listen(tunnel.localPort, '0.0.0.0');
+        srv.listen(tunnel.localPort, '127.0.0.1');
         srv.on('error', () => { /* port in use */ });
         tunnelServers.push(srv);
       }
@@ -284,7 +286,16 @@ export function setupSshProxy(server: https.Server): void {
       username: conn.username || '',
       ...(privateKey ? { privateKey } : { password }),
       readyTimeout: 15000,
-      hostVerifier: () => true,
+      hostVerifier: (key: Buffer) => {
+        const fingerprint = crypto.createHash('sha256').update(key).digest('hex');
+        if (conn.host_fingerprint) {
+          // Verify stored fingerprint matches (prevent MITM after first connect)
+          return conn.host_fingerprint === fingerprint;
+        }
+        // Trust On First Use: store fingerprint for future verification
+        execute('UPDATE connections SET host_fingerprint = ? WHERE id = ?', [fingerprint, conn.id]);
+        return true;
+      },
     });
   });
 }
