@@ -180,47 +180,47 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
       onMouseUp={(e) => { if (backdropMouseDownRef.current && e.target === e.currentTarget) onClose(); backdropMouseDownRef.current = false; }}
     >
       <div
-        className="bg-surface-alt border border-border rounded-lg shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto"
+        className="bg-surface-alt border border-border rounded-lg shadow-xl w-full max-w-md p-5 max-h-[90vh] overflow-y-auto"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <h2 className="text-lg font-bold text-text-primary mb-4">{title}</h2>
-        <form onSubmit={handleSubmit} className="space-y-3">
+        <h2 className="text-base font-bold text-text-primary mb-3">{title}</h2>
+        <form onSubmit={handleSubmit} className="space-y-2.5">
           <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1">Name</label>
+            <label className="block text-xs font-medium text-text-secondary mb-1">Name</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
               placeholder="My Server"
-              className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1">Protocol</label>
-            <div className="flex flex-wrap gap-2 w-full">
+            <label className="block text-xs font-medium text-text-secondary mb-1">Protocol</label>
+            <div className="flex flex-wrap gap-1.5 w-full">
               {([
                 { id: 'rdp', label: 'RDP', icon: (
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
                     <rect x="2" y="3" width="20" height="14" rx="2" />
                     <line x1="8" y1="21" x2="16" y2="21" />
                     <line x1="12" y1="17" x2="12" y2="21" />
                   </svg>
                 )},
                 { id: 'ssh', label: 'SSH', icon: (
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
                     <polyline points="4 17 10 11 4 5" />
                     <line x1="12" y1="19" x2="20" y2="19" />
                   </svg>
                 )},
                 { id: 'smb', label: 'SMB', icon: (
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
                     <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
                   </svg>
                 )},
                 { id: 'vnc', label: 'VNC', icon: (
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
                     <rect x="2" y="3" width="20" height="14" rx="2" />
                     <circle cx="12" cy="10" r="3" />
                     <line x1="8" y1="21" x2="16" y2="21" />
@@ -228,7 +228,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
                   </svg>
                 )},
                 { id: 'ftp', label: 'FTP', icon: (
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                     <polyline points="14 2 14 8 20 8" />
                     <line x1="12" y1="12" x2="12" y2="18" />
@@ -240,7 +240,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
                   key={p}
                   type="button"
                   onClick={() => handleProtocolChange(p)}
-                  className={`flex flex-col items-center gap-1 px-4 py-2.5 rounded text-sm font-medium border min-w-[64px] ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border ${
                     protocol === p
                       ? 'bg-accent text-white border-accent'
                       : 'bg-surface border-border text-text-secondary hover:bg-surface-hover'
@@ -253,82 +253,82 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
             </div>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex gap-2">
             <div className="flex-1">
-              <label className="block text-sm font-medium text-text-secondary mb-1">Host</label>
+              <label className="block text-xs font-medium text-text-secondary mb-1">Host</label>
               <input
                 type="text"
                 value={host}
                 onChange={(e) => setHost(e.target.value)}
                 required
                 placeholder="192.168.1.100"
-                className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
               />
             </div>
-            <div className="w-24">
-              <label className="block text-sm font-medium text-text-secondary mb-1">Port</label>
+            <div className="w-20">
+              <label className="block text-xs font-medium text-text-secondary mb-1">Port</label>
               <input
                 type="number"
                 value={port}
                 onChange={(e) => setPort(Number(e.target.value))}
                 required
-                className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
               />
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1">Username</label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="user"
-              className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder={connection ? '(unchanged)' : ''}
-              className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-            />
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-text-secondary mb-1">Username</label>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="user"
+                className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-text-secondary mb-1">Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={connection ? '(unchanged)' : ''}
+                className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+              />
+            </div>
           </div>
 
           {protocol === 'ssh' && (
             <div>
-              <label className="block text-sm font-medium text-text-secondary mb-1">
+              <label className="block text-xs font-medium text-text-secondary mb-1">
                 Private Key <span className="font-normal">(optional, overrides password)</span>
               </label>
               <textarea
                 value={privateKey}
                 onChange={(e) => setPrivateKey(e.target.value)}
-                rows={4}
+                rows={3}
                 placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
-                className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent font-mono text-xs resize-none"
+                className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent font-mono text-xs resize-none"
               />
             </div>
           )}
 
           {protocol === 'ssh' && (
             <div>
-              <label className="block text-sm font-medium text-text-secondary mb-2">
-                Port Forwards
-                <span className="font-normal ml-1 text-xs">(local→remote, active while connected)</span>
+              <label className="block text-xs font-medium text-text-secondary mb-1">
+                Port Forwards <span className="font-normal">(local→remote)</span>
               </label>
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 {tunnels.map((t) => (
                   <div key={t.id} className="flex gap-1 items-center">
                     <input
                       type="number"
-                      placeholder="Local port"
+                      placeholder="Local"
                       value={t.localPort}
                       onChange={(e) => setTunnels((prev) => prev.map((x) => x.id === t.id ? { ...x, localPort: e.target.value } : x))}
-                      className="w-20 px-2 py-1.5 bg-surface border border-border rounded text-text-primary text-xs focus:outline-none focus:ring-1 focus:ring-accent"
+                      className="w-16 px-2 py-1 bg-surface border border-border rounded text-text-primary text-xs focus:outline-none focus:ring-1 focus:ring-accent"
                     />
                     <span className="text-text-secondary text-xs">→</span>
                     <input
@@ -336,7 +336,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
                       placeholder="Remote host"
                       value={t.remoteHost}
                       onChange={(e) => setTunnels((prev) => prev.map((x) => x.id === t.id ? { ...x, remoteHost: e.target.value } : x))}
-                      className="flex-1 px-2 py-1.5 bg-surface border border-border rounded text-text-primary text-xs focus:outline-none focus:ring-1 focus:ring-accent"
+                      className="flex-1 px-2 py-1 bg-surface border border-border rounded text-text-primary text-xs focus:outline-none focus:ring-1 focus:ring-accent"
                     />
                     <span className="text-text-secondary text-xs">:</span>
                     <input
@@ -344,7 +344,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
                       placeholder="Port"
                       value={t.remotePort}
                       onChange={(e) => setTunnels((prev) => prev.map((x) => x.id === t.id ? { ...x, remotePort: e.target.value } : x))}
-                      className="w-16 px-2 py-1.5 bg-surface border border-border rounded text-text-primary text-xs focus:outline-none focus:ring-1 focus:ring-accent"
+                      className="w-14 px-2 py-1 bg-surface border border-border rounded text-text-primary text-xs focus:outline-none focus:ring-1 focus:ring-accent"
                     />
                     <button
                       type="button"
@@ -370,11 +370,11 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
 
           {/* Folder selector */}
           <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1">Folder</label>
+            <label className="block text-xs font-medium text-text-secondary mb-1">Folder</label>
             <select
               value={groupId}
               onChange={(e) => setGroupId(e.target.value)}
-              className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
             >
               <option value="">No Folder</option>
               {localGroups.map((g) => (
@@ -383,7 +383,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
             </select>
 
             {showNewFolder ? (
-              <div className="flex gap-1 mt-1.5">
+              <div className="flex gap-1 mt-1">
                 <input
                   ref={newFolderInputRef}
                   autoFocus
@@ -394,7 +394,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
                     if (e.key === 'Escape') { setShowNewFolder(false); setNewFolderName(''); }
                   }}
                   placeholder="Folder name"
-                  className="flex-1 min-w-0 px-2 py-1.5 text-sm bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+                  className="flex-1 min-w-0 px-2 py-1 text-sm bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
                 />
                 <button
                   type="button"
@@ -415,7 +415,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
               <button
                 type="button"
                 onClick={() => setShowNewFolder(true)}
-                className="mt-1.5 text-xs text-accent hover:text-accent-hover"
+                className="mt-1 text-xs text-accent hover:text-accent-hover"
               >
                 + Create new folder
               </button>
@@ -423,10 +423,10 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
           </div>
 
           {protocol === 'smb' && (
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-text-secondary mb-1">
-                  Share name <span className="font-normal text-xs">(e.g. <code className="font-mono">Documents</code> for \\host\Documents)</span>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <label className="block text-xs font-medium text-text-secondary mb-1">
+                  Share <span className="font-normal text-xs">(e.g. <code className="font-mono">Documents</code>)</span>
                 </label>
                 <input
                   type="text"
@@ -434,25 +434,25 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
                   onChange={(e) => setSmbShare(e.target.value)}
                   placeholder="share"
                   required
-                  className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent font-mono"
+                  className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent font-mono"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-text-secondary mb-1">
-                  Domain <span className="font-normal text-xs">(optional — for AD or workgroup auth)</span>
+              <div className="flex-1">
+                <label className="block text-xs font-medium text-text-secondary mb-1">
+                  Domain <span className="font-normal text-xs">(optional)</span>
                 </label>
                 <input
                   type="text"
                   value={smbDomain}
                   onChange={(e) => setSmbDomain(e.target.value)}
                   placeholder="WORKGROUP"
-                  className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent font-mono"
+                  className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent font-mono"
                 />
               </div>
             </div>
           )}
 
-          <div className="flex items-center gap-3 pt-1">
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => setShared((v) => !v)}
@@ -462,23 +462,23 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
             >
               <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${shared ? 'translate-x-4' : 'translate-x-0.5'}`} />
             </button>
-            <span className="text-sm text-text-secondary">Share with all users</span>
+            <span className="text-xs text-text-secondary">Share with all users</span>
           </div>
 
-          {error && <p className="text-red-500 text-sm">{error}</p>}
+          {error && <p className="text-red-500 text-xs">{error}</p>}
 
-          <div className="flex gap-3 pt-2">
+          <div className="flex gap-2 pt-1">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-2 border border-border rounded text-text-secondary hover:bg-surface-hover"
+              className="flex-1 py-1.5 text-sm border border-border rounded text-text-secondary hover:bg-surface-hover"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={saving}
-              className="flex-1 py-2 bg-accent text-white rounded hover:bg-accent-hover disabled:opacity-50 font-medium"
+              className="flex-1 py-1.5 text-sm bg-accent text-white rounded hover:bg-accent-hover disabled:opacity-50 font-medium"
             >
               {saving ? 'Saving...' : connection ? 'Update' : 'Create'}
             </button>
