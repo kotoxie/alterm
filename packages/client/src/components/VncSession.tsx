@@ -1,25 +1,33 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { getWsTicket } from '../lib/wsTicket';
+import { DisconnectOverlay } from './DisconnectOverlay';
 
 interface VncSessionProps {
   connectionId: string;
   connectionName: string;
   isActive: boolean;
   onStatusChange?: (status: 'connecting' | 'connected' | 'disconnected') => void;
+  onClose?: (connectionId: string) => void;
 }
 
-export function VncSession({ connectionId, connectionName, isActive, onStatusChange }: VncSessionProps) {
+export function VncSession({ connectionId, connectionName, isActive, onStatusChange, onClose }: VncSessionProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rfbRef = useRef<import('@novnc/novnc/lib/rfb.js').default | null>(null);
   const { token } = useAuth();
   const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
   const [errorMsg, setErrorMsg] = useState('');
+  const [reconnectCount, setReconnectCount] = useState(0);
 
   function setAndNotify(s: 'connecting' | 'connected' | 'disconnected') {
     setStatus(s);
     onStatusChange?.(s);
   }
+
+  const handleReconnect = useCallback(() => {
+    setErrorMsg('');
+    setReconnectCount((n) => n + 1);
+  }, []);
 
   useEffect(() => {
     if (!isActive) return;
@@ -113,7 +121,7 @@ export function VncSession({ connectionId, connectionName, isActive, onStatusCha
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connectionId, token, isActive]);
+  }, [connectionId, token, isActive, reconnectCount]);
 
   return (
     <div className="absolute inset-0 bg-black flex flex-col">
@@ -135,25 +143,12 @@ export function VncSession({ connectionId, connectionName, isActive, onStatusCha
 
       <div ref={containerRef} className="flex-1 overflow-hidden" style={{ background: '#000' }} />
 
-      {status === 'disconnected' && (
-        <div className="absolute inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-20">
-          <div className="bg-surface border border-border rounded-xl p-6 shadow-2xl flex flex-col items-center gap-4 w-72">
-            <div className="w-12 h-12 rounded-full bg-red-500/15 flex items-center justify-center">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-red-400">
-                <circle cx="12" cy="12" r="10" />
-                <line x1="12" y1="8" x2="12" y2="12" />
-                <circle cx="12" cy="16" r="0.5" fill="currentColor" />
-              </svg>
-            </div>
-            <div className="text-center">
-              <h3 className="text-text-primary font-semibold">VNC Disconnected</h3>
-              {errorMsg && (
-                <p className="text-text-secondary text-xs mt-1 break-words max-w-xs">{errorMsg}</p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <DisconnectOverlay
+        show={status === 'disconnected'}
+        message={errorMsg}
+        onExit={() => onClose?.(connectionId)}
+        onReconnect={handleReconnect}
+      />
     </div>
   );
 }

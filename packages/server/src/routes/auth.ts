@@ -6,7 +6,7 @@ import { queryOne, execute } from '../db/helpers.js';
 import { signToken, verifyToken, signMfaToken, verifyMfaToken } from '../services/jwt.js';
 import { logAudit } from '../services/audit.js';
 import { getSetting } from '../services/settings.js';
-import { createLoginSession } from '../services/loginSession.js';
+import { createLoginSession, hashToken } from '../services/loginSession.js';
 import { authRequired } from '../middleware/auth.js';
 import { authenticator } from 'otplib';
 import { parseUA } from '../services/ua.js';
@@ -38,10 +38,6 @@ setInterval(() => {
 
 const TRUSTED_DEVICE_COOKIE = 'alterm_trusted_device';
 const TRUSTED_DEVICE_DAYS = 30;
-
-function hashToken(token: string): string {
-  return crypto.createHash('sha256').update(token).digest('hex');
-}
 
 function isTrustedDevice(req: Request, userId: string): boolean {
   const cookieVal: string | undefined = req.cookies?.[TRUSTED_DEVICE_COOKIE];
