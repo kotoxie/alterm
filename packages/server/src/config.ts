@@ -10,8 +10,6 @@ export const config = {
   tlsKeyPath: process.env.TLS_KEY_PATH || '',
   jwtSecret: process.env.JWT_SECRET || '',
   sessionTimeout: process.env.SESSION_TIMEOUT || '24h',
-  adminPassword: process.env.ADMIN_PASSWORD || '',
-  recording: process.env.RECORDING !== 'false',
 
   get dbPath() {
     return path.join(this.dataDir, 'alterm.db');
