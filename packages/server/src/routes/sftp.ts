@@ -16,13 +16,14 @@ interface ConnRow {
   port: number;
   username: string | null;
   encrypted_password: string | null;
+  private_key: string | null;
   user_id: string;
   shared: number;
 }
 
 function getConn(connectionId: string, userId: string): ConnRow | null {
   return queryOne<ConnRow>(
-    `SELECT id, host, port, username, encrypted_password, user_id, shared
+    `SELECT id, host, port, username, encrypted_password, private_key, user_id, shared
      FROM connections
      WHERE id = ? AND (user_id = ? OR shared = 1) AND protocol IN ('sftp', 'ssh')`,
     [connectionId, userId],
@@ -33,8 +34,11 @@ function connectSftp(conn: ConnRow): Promise<{ ssh: SshClient; sftp: SFTPWrapper
   return new Promise((resolve, reject) => {
     const ssh = new SshClient();
     const password = conn.encrypted_password
-      ? (() => { try { return decrypt(conn.encrypted_password!); } catch { return ''; } })()
-      : '';
+      ? (() => { try { return decrypt(conn.encrypted_password!); } catch { return undefined; } })()
+      : undefined;
+    const privateKey = conn.private_key
+      ? (() => { try { return decrypt(conn.private_key!); } catch { return undefined; } })()
+      : undefined;
 
     ssh.on('ready', () => {
       ssh.sftp((err, sftp) => {
@@ -49,7 +53,7 @@ function connectSftp(conn: ConnRow): Promise<{ ssh: SshClient; sftp: SFTPWrapper
       host: conn.host,
       port: conn.port || 22,
       username: conn.username || 'root',
-      password,
+      ...(privateKey ? { privateKey } : { password }),
       readyTimeout: 10000,
       hostVerifier: () => true,
     });
