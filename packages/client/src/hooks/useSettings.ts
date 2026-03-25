@@ -21,16 +21,16 @@ export function invalidateSettings() {
 }
 
 export function useSettings() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [settings, setSettings] = useState<Settings>(cache ?? DEFAULTS);
   const [loading, setLoading] = useState(!cache);
 
   const fetch_ = useCallback(async () => {
     if (!token) return;
     try {
-      const res = await fetch('/api/v1/settings', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      // Admins get full settings; all others use the public endpoint
+      const endpoint = user?.role === 'admin' ? '/api/v1/settings' : '/api/v1/settings/public';
+      const res = await fetch(endpoint, { credentials: 'include' });
       if (res.ok) {
         const d = await res.json();
         cache = d.settings;
@@ -39,7 +39,7 @@ export function useSettings() {
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, user?.role]);
 
   useEffect(() => {
     if (!cache) fetch_();

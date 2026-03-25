@@ -86,7 +86,7 @@ interface LoginSession {
 }
 
 export function ProfileSettings() {
-  const { token, user } = useAuth();
+  const { user } = useAuth();
   const timezone = useTimezone();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [displayName, setDisplayName] = useState('');
@@ -114,10 +114,9 @@ export function ProfileSettings() {
   const [mfaLoading, setMfaLoading] = useState(false);
 
   async function loadSessions() {
-    if (!token) return;
     try {
       const res = await fetch('/api/v1/profile/login-sessions', {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
       if (res.ok) {
         const d = await res.json() as { sessions: LoginSession[] };
@@ -129,8 +128,7 @@ export function ProfileSettings() {
   }
 
   useEffect(() => {
-    if (!token) return;
-    fetch('/api/v1/profile', { headers: { Authorization: `Bearer ${token}` } })
+    fetch('/api/v1/profile', { credentials: 'include' })
       .then((r) => r.json())
       .then((d: ProfileData) => {
         setProfile(d);
@@ -141,12 +139,12 @@ export function ProfileSettings() {
       .catch(() => {});
     loadSessions();
     // Load MFA status
-    fetch('/api/v1/profile/mfa/status', { headers: { Authorization: `Bearer ${token}` } })
+    fetch('/api/v1/profile/mfa/status', { credentials: 'include' })
       .then((r) => r.json())
       .then((d: { enabled: boolean }) => setMfaEnabled(d.enabled))
       .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, []);
 
   const username = profile?.username ?? user?.username ?? '';
   const initials = avatarText || autoInitials(displayName || username);
@@ -154,13 +152,13 @@ export function ProfileSettings() {
 
   async function handleProfileSave(e: FormEvent) {
     e.preventDefault();
-    if (!token) return;
     setSaving(true);
     setProfileMsg(null);
     try {
       const res = await fetch('/api/v1/profile', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ displayName, email: email || null, avatarText: avatarText || null }),
       });
       if (res.ok) {
@@ -178,7 +176,6 @@ export function ProfileSettings() {
 
   async function handlePasswordSave(e: FormEvent) {
     e.preventDefault();
-    if (!token) return;
     if (newPassword !== confirmPassword) {
       setPwMsg({ type: 'error', text: 'Passwords do not match.' });
       return;
@@ -192,7 +189,8 @@ export function ProfileSettings() {
     try {
       const res = await fetch('/api/v1/profile/password', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ currentPassword, newPassword }),
       });
       if (res.ok) {
@@ -214,11 +212,10 @@ export function ProfileSettings() {
   }
 
   async function handleRevoke(id: string) {
-    if (!token) return;
     try {
       await fetch(`/api/v1/profile/login-sessions/${id}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
       await loadSessions();
     } catch {
@@ -227,13 +224,12 @@ export function ProfileSettings() {
   }
 
   async function handleMfaSetup() {
-    if (!token) return;
     setMfaLoading(true);
     setMfaMsg(null);
     try {
       const res = await fetch('/api/v1/profile/mfa/setup', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
       if (res.ok) {
         const d = await res.json() as MfaSetupData;
@@ -252,13 +248,13 @@ export function ProfileSettings() {
 
   async function handleMfaVerify(e: FormEvent) {
     e.preventDefault();
-    if (!token) return;
     setMfaLoading(true);
     setMfaMsg(null);
     try {
       const res = await fetch('/api/v1/profile/mfa/verify', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ token: mfaVerifyCode }),
       });
       if (res.ok) {
@@ -279,13 +275,13 @@ export function ProfileSettings() {
 
   async function handleMfaDisable(e: FormEvent) {
     e.preventDefault();
-    if (!token) return;
     setMfaLoading(true);
     setMfaMsg(null);
     try {
       const res = await fetch('/api/v1/profile/mfa/disable', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ password: mfaDisableCode }),
       });
       if (res.ok) {
@@ -305,11 +301,10 @@ export function ProfileSettings() {
   }
 
   async function handleRevokeAll() {
-    if (!token) return;
     try {
       await fetch('/api/v1/profile/login-sessions', {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
       await loadSessions();
     } catch {

@@ -26,6 +26,7 @@ import sessionsRoutes from './routes/sessions.js';
 import smbRoutes from './routes/smb.js';
 import sftpRoutes from './routes/sftp.js';
 import ftpRoutes from './routes/ftp.js';
+import { ipRulesMiddleware } from './middleware/ipRules.js';
 
 async function main() {
   // Ensure data directories
@@ -93,6 +94,7 @@ async function main() {
 
   // API routes
   app.use('/api/v1/auth', authRoutes);
+  app.use('/api/v1', ipRulesMiddleware);
   app.use('/api/v1/connections', connectionRoutes);
   app.use('/api/v1/settings', settingsRoutes);
   app.use('/api/v1/profile/login-sessions', loginSessionsRoutes);
@@ -111,7 +113,7 @@ async function main() {
   app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     console.error('[Alterm] Unhandled error:', err.message);
     if (!res.headersSent) {
-      res.status(500).json({ error: err.message || 'Internal server error' });
+      res.status(500).json({ error: 'Internal server error' });
     }
   });
 

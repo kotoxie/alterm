@@ -93,7 +93,7 @@ function DetailsView({ details }: { details: unknown }) {
 }
 
 export function AuditTrail() {
-  const { token, user } = useAuth();
+  const { user } = useAuth();
   const timezone = useTimezone();
   const isAdmin = user?.role === 'admin';
 
@@ -137,11 +137,10 @@ export function AuditTrail() {
   }, [debouncedSearch, eventTypeFilter, userFilter, fromDate, toDate, page]);
 
   const loadEntries = useCallback(async (overridePage?: number) => {
-    if (!token) return;
     setLoading(true);
     try {
       const res = await fetch(`/api/v1/audit?${buildParams(overridePage)}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
       if (res.ok) {
         const d = await res.json();
@@ -151,30 +150,28 @@ export function AuditTrail() {
     } finally {
       setLoading(false);
     }
-  }, [token, buildParams]);
+  }, [buildParams]);
 
   useEffect(() => { loadEntries(); }, [loadEntries]);
 
   useEffect(() => {
-    if (!token) return;
-    fetch('/api/v1/audit/event-types', { headers: { Authorization: `Bearer ${token}` } })
+    fetch('/api/v1/audit/event-types', { credentials: 'include' })
       .then((r) => r.json())
       .then((d) => setEventTypes(d.eventTypes ?? []))
       .catch(() => {});
 
     if (isAdmin) {
-      fetch('/api/v1/audit/users', { headers: { Authorization: `Bearer ${token}` } })
+      fetch('/api/v1/audit/users', { credentials: 'include' })
         .then((r) => r.json())
         .then((d) => setAuditUsers(d.users ?? []))
         .catch(() => {});
     }
-  }, [token, isAdmin]);
+  }, [isAdmin]);
 
   async function exportData(format: 'csv' | 'json') {
-    if (!token) return;
     const p = buildParams(1);
     p.set('limit', '10000');
-    const res = await fetch(`/api/v1/audit?${p}`, { headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetch(`/api/v1/audit?${p}`, { credentials: 'include' });
     if (!res.ok) return;
     const d = await res.json();
     const rows: AuditEntry[] = d.entries;

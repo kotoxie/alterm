@@ -44,7 +44,7 @@ export function VncSession({ connectionId, connectionName, isActive, onStatusCha
       try {
         // Fetch password from session endpoint
         const res = await fetch(`/api/v1/connections/${connectionId}/session`, {
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: 'include',
         });
         if (!res.ok) throw new Error('Failed to fetch connection credentials');
         const info: { password?: string } = await res.json();
@@ -53,7 +53,7 @@ export function VncSession({ connectionId, connectionName, isActive, onStatusCha
         const RFB = (await import('@novnc/novnc/lib/rfb.js')).default;
         if (cancelled) return;
 
-        const ticket = await getWsTicket(token!);
+        const ticket = await getWsTicket();
         if (cancelled) return;
 
         const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
