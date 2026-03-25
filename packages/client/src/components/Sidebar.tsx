@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent as RMouseEvent } from 'react';
 import { clsx } from 'clsx';
 import { useAuth } from '../hooks/useAuth';
+import { useSettings } from '../hooks/useSettings';
 import { ConnectionModal, type ConnectionPrefill } from './ConnectionModal';
 
 interface ConnectionGroup {
@@ -122,6 +123,8 @@ const PenIcon = () => (
 
 export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
   const { token } = useAuth();
+  const { settings } = useSettings();
+  const healthMonitorEnabled = settings['health_monitor.enabled'] !== 'false';
   const [groups, setGroups] = useState<ConnectionGroup[]>([]);
   const [ungrouped, setUngrouped] = useState<Connection[]>([]);
   const [sharedConnections, setSharedConnections] = useState<Connection[]>([]);
@@ -177,7 +180,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
   const flatGroups = flattenGroups(groups);
 
   const checkHealth = useCallback(async () => {
-    if (!token) return;
+    if (!token || !healthMonitorEnabled) return;
     const allConns: { id: string; host: string; port: number }[] = [];
     function collectFromGroup(g: ConnectionGroup) {
       g.connections.forEach((c) => allConns.push({ id: c.id, host: c.host, port: c.port }));
@@ -208,7 +211,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
         return next;
       });
     } catch { /* ignore */ }
-  }, [token, groups, ungrouped, sharedConnections]);
+  }, [token, groups, ungrouped, sharedConnections, healthMonitorEnabled]);
 
   const fetchConnections = useCallback(async () => {
     if (!token) return;
@@ -227,6 +230,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
   useEffect(() => { fetchConnections(); }, [fetchConnections]);
 
   useEffect(() => {
+    if (!healthMonitorEnabled) { setHealthMap({}); return; }
     if (groups.length > 0 || ungrouped.length > 0 || sharedConnections.length > 0) {
       if (skipHealthCheckRef.current) {
         skipHealthCheckRef.current = false;
@@ -234,12 +238,13 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
         checkHealth();
       }
     }
-  }, [groups, ungrouped, sharedConnections, checkHealth]);
+  }, [groups, ungrouped, sharedConnections, checkHealth, healthMonitorEnabled]);
 
   useEffect(() => {
+    if (!healthMonitorEnabled) return;
     const t = setInterval(checkHealth, 60_000);
     return () => clearInterval(t);
-  }, [checkHealth]);
+  }, [checkHealth, healthMonitorEnabled]);
 
   useEffect(() => {
     if (inlineNewGroup !== null) {
@@ -557,10 +562,9 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
           className={`w-1.5 h-1.5 rounded-full shrink-0 ${
             status === 'up' ? 'bg-green-500' :
             status === 'down' ? 'bg-red-500' :
-            status === 'checking' ? 'bg-yellow-400 animate-pulse' :
             'bg-border'
           }`}
-          title={status === 'up' ? 'Reachable' : status === 'down' ? 'Unreachable' : 'Checking...'}
+          title={status === 'up' ? 'Reachable' : status === 'down' ? 'Unreachable' : healthMonitorEnabled ? 'Checking...' : ''}
         />
         <ProtocolBadge protocol={conn.protocol} />
         <span className="truncate flex-1 text-text-primary">{conn.name}</span>
@@ -844,10 +848,9 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
                     className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                       healthMap[conn.id] === 'up' ? 'bg-green-500' :
                       healthMap[conn.id] === 'down' ? 'bg-red-500' :
-                      healthMap[conn.id] === 'checking' ? 'bg-yellow-400 animate-pulse' :
                       'bg-border'
                     }`}
-                    title={healthMap[conn.id] === 'up' ? 'Reachable' : healthMap[conn.id] === 'down' ? 'Unreachable' : 'Checking...'}
+                    title={healthMap[conn.id] === 'up' ? 'Reachable' : healthMap[conn.id] === 'down' ? 'Unreachable' : healthMonitorEnabled ? 'Checking...' : ''}
                   />
                   <ProtocolBadge protocol={conn.protocol} />
                   <span className="truncate flex-1 text-text-primary">{conn.name}</span>

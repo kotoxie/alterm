@@ -14,6 +14,7 @@ const DEFAULTS: Record<string, string> = {
   'session.recording_enabled': 'false',
   'session.recording_retention_days': '90',
   'session.max_concurrent': '0',
+  'health_monitor.enabled': 'true',
   'ssh.font_size': '14',
   'ssh.font_family': 'Cascadia Code, Fira Code, Menlo, Monaco, Courier New, monospace',
   'ssh.scrollback': '5000',
