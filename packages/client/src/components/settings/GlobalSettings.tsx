@@ -1,6 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type React from 'react';
-import { useAuth } from '../../hooks/useAuth';
 import { useSettings, invalidateSettings } from '../../hooks/useSettings';
 
 type Tab = 'general' | 'recordings';
@@ -45,7 +44,6 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
 }
 
 export function GlobalSettings() {
-  const { token } = useAuth();
   const { settings, refresh } = useSettings();
   const [activeTab, setActiveTab] = useState<Tab>('general');
 
@@ -87,18 +85,18 @@ export function GlobalSettings() {
   }, [settings]);
 
   useEffect(() => {
-    if (activeTab !== 'recordings' || !token) return;
-    fetch('/api/v1/sessions/storage', { headers: { Authorization: `Bearer ${token}` } })
+    if (activeTab !== 'recordings') return;
+    fetch('/api/v1/sessions/storage', { credentials: 'include' })
       .then((r) => r.ok ? r.json() : null)
       .then((d: { bytes: number } | null) => { if (d) setStorageBytes(d.bytes); })
       .catch(() => {});
-  }, [activeTab, token]);
+  }, [activeTab]);
 
   async function saveSettings(updates: Record<string, string>): Promise<{ ok: boolean; error?: string }> {
-    if (!token) return { ok: false, error: 'Not authenticated' };
     const res = await fetch('/api/v1/settings', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify(updates),
     });
     if (res.ok) {
@@ -140,13 +138,12 @@ export function GlobalSettings() {
   }
 
   async function handlePurge() {
-    if (!token) return;
     setPurging(true);
     setPurgeMsg(null);
     try {
       const res = await fetch('/api/v1/sessions', {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
       const d = await res.json() as { ok?: boolean; deletedSessions?: number; deletedRecordings?: number; error?: string };
       if (res.ok) {

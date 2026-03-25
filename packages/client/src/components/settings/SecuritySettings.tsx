@@ -1,5 +1,4 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { useAuth } from '../../hooks/useAuth';
 import { useSettings, invalidateSettings } from '../../hooks/useSettings';
 
 interface IpRule {
@@ -10,7 +9,6 @@ interface IpRule {
 }
 
 export function SecuritySettings() {
-  const { token } = useAuth();
   const { settings, refresh } = useSettings();
 
   // Session timeout state
@@ -60,10 +58,10 @@ export function SecuritySettings() {
   }, [settings]);
 
   async function saveSetting(updates: Record<string, string>, onSuccess: () => void, onError: (msg: string) => void) {
-    if (!token) return;
     const res = await fetch('/api/v1/settings', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updates),
     });
     if (res.ok) {

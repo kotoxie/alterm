@@ -133,7 +133,7 @@ export function MainLayout() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<string | undefined>(undefined);
 
-  const { token } = useAuth();
+  const { user } = useAuth();
   const hasRestoredRef = useRef(false);
 
   const onOpenSettings = useCallback((section?: string) => {
@@ -433,7 +433,7 @@ export function MainLayout() {
 
   // Restore sessions from localStorage on first authenticated load
   useEffect(() => {
-    if (!token || hasRestoredRef.current) return;
+    if (!user || hasRestoredRef.current) return;
     hasRestoredRef.current = true;
 
     const saved = localStorage.getItem('alterm-sessions');
@@ -476,7 +476,7 @@ export function MainLayout() {
     } catch {
       localStorage.removeItem('alterm-sessions');
     }
-  }, [token]);
+  }, [user]);
 
   // Save sessions to localStorage whenever views/tabs change
   useEffect(() => {

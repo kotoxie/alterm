@@ -47,7 +47,7 @@ interface UserRow {
 }
 
 export function UsersSettings() {
-  const { token, user: currentUser } = useAuth();
+  const { user: currentUser } = useAuth();
   const timezone = useTimezone();
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -93,13 +93,14 @@ export function UsersSettings() {
 
   async function handleEditSave(e: React.FormEvent) {
     e.preventDefault();
-    if (!token || !editUser) return;
+    if (!editUser) return;
     setSaving(true);
     setEditMsg(null);
     try {
       const res = await fetch(`/api/v1/users/${editUser.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           displayName: editDisplayName.trim(),
           email: editEmail.trim() || null,
@@ -130,10 +131,9 @@ export function UsersSettings() {
   const [resettingPassword, setResettingPassword] = useState(false);
 
   async function loadUsers() {
-    if (!token) return;
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/users', { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch('/api/v1/users', { credentials: 'include' });
       if (res.ok) {
         const d = await res.json();
         setUsers(d.users);
@@ -147,7 +147,7 @@ export function UsersSettings() {
     }
   }
 
-  useEffect(() => { loadUsers(); }, [token]);
+  useEffect(() => { loadUsers(); }, []);
 
   function setRowMsg(id: string, msg: { type: 'success' | 'error'; text: string }) {
     setRowMsgs((prev) => ({ ...prev, [id]: msg }));
@@ -155,10 +155,10 @@ export function UsersSettings() {
   }
 
   async function handleRoleChange(userId: string, newRole: string) {
-    if (!token) return;
     const res = await fetch(`/api/v1/users/${userId}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ role: newRole }),
     });
     if (res.ok) {
@@ -171,10 +171,9 @@ export function UsersSettings() {
   }
 
   async function handleUnlock(userId: string) {
-    if (!token) return;
     const res = await fetch(`/api/v1/users/${userId}/unlock`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: 'include',
     });
     if (res.ok) {
       setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, lockedUntil: null, failedLoginCount: 0 } : u));
@@ -186,13 +185,13 @@ export function UsersSettings() {
   }
 
   async function confirmDelete() {
-    if (!token || !deleteTarget) return;
+    if (!deleteTarget) return;
     setDeleting(true);
     const { id: userId } = deleteTarget;
     try {
       const res = await fetch(`/api/v1/users/${userId}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
       if (res.ok) {
         setUsers((prev) => prev.filter((u) => u.id !== userId));
@@ -211,13 +210,14 @@ export function UsersSettings() {
   }
 
   async function handleResetPassword(userId: string) {
-    if (!token || !resetPasswordValue) return;
+    if (!resetPasswordValue) return;
     setResettingPassword(true);
     setResetPasswordMsg(null);
     try {
       const res = await fetch(`/api/v1/users/${userId}/reset-password`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ newPassword: resetPasswordValue }),
       });
       const d = await res.json();
@@ -236,13 +236,13 @@ export function UsersSettings() {
 
   async function handleCreateUser(e: FormEvent) {
     e.preventDefault();
-    if (!token) return;
     setCreating(true);
     setCreateMsg(null);
     try {
       const res = await fetch('/api/v1/users', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           username: createUsername,
           password: createPassword,

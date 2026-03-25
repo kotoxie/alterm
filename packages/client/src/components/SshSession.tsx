@@ -134,7 +134,7 @@ export function SshSession({ tab, isActive, paneWidth, paneHeight, onStatusChang
     (async () => {
       let ticket: string;
       try {
-        ticket = await getWsTicket(token);
+        ticket = await getWsTicket();
         if (cancelled) return;
       } catch {
         if (!cancelled) term.write('\r\nFailed to obtain session ticket.\r\n');

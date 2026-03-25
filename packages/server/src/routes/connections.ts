@@ -96,13 +96,42 @@ router.get('/', (req: Request, res: Response) => {
   res.json({ groups: rootGroups, ungrouped, sharedConnections: sharedMapped });
 });
 
+// Helper: check if IP is in a private/loopback/link-local range
+function isPrivateIp(host: string): boolean {
+  const privatePatterns = [
+    /^127\./,
+    /^10\./,
+    /^172\.(1[6-9]|2\d|3[01])\./,
+    /^192\.168\./,
+    /^169\.254\./,
+    /^::1$/,
+    /^fc/i,
+    /^fd/i,
+    /^localhost$/i,
+  ];
+  return privatePatterns.some((p) => p.test(host));
+}
+
 // POST /health-check — TCP reachability for multiple connections
 router.post('/health-check', async (req: Request, res: Response) => {
+  const userId = req.user!.userId;
   const { checks } = req.body as { checks: { id: string; host: string; port: number }[] };
   if (!Array.isArray(checks)) { res.status(400).json({ error: 'checks array required' }); return; }
 
+  // Resolve and validate each check against stored connections
+  const validatedChecks: { id: string; host: string; port: number }[] = [];
+  for (const { id } of checks) {
+    const conn = queryOne<{ host: string; port: number }>(
+      'SELECT host, port FROM connections WHERE id = ? AND (user_id = ? OR shared = 1)',
+      [id, userId],
+    );
+    if (!conn) continue;
+    if (isPrivateIp(conn.host)) continue;
+    validatedChecks.push({ id, host: conn.host, port: conn.port });
+  }
+
   const results = await Promise.all(
-    checks.map(({ id, host, port }) =>
+    validatedChecks.map(({ id, host, port }) =>
       new Promise<{ id: string; reachable: boolean; latencyMs: number | null }>((resolve) => {
         const start = Date.now();
         const socket = net.createConnection({ host, port, timeout: 3000 });
@@ -116,7 +145,15 @@ router.post('/health-check', async (req: Request, res: Response) => {
       }),
     ),
   );
-  res.json({ results });
+
+  // For connections that were filtered out (invalid/private), return reachable: false
+  const allChecks = (req.body as { checks: { id: string }[] }).checks;
+  const resultMap = new Map(results.map((r) => [r.id, r]));
+  const finalResults = allChecks.map(({ id }) =>
+    resultMap.get(id) ?? { id, reachable: false, latencyMs: null },
+  );
+
+  res.json({ results: finalResults });
 });
 
 // GET /export — export all connections and groups as JSON (no passwords)

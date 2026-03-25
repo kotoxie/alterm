@@ -18,11 +18,12 @@ interface ConnRow {
   encrypted_password: string | null;
   user_id: string;
   shared: number;
+  extra_config_json: string | null;
 }
 
 function getConn(connectionId: string, userId: string): ConnRow | null {
   return queryOne<ConnRow>(
-    `SELECT id, host, port, username, encrypted_password, user_id, shared
+    `SELECT id, host, port, username, encrypted_password, user_id, shared, extra_config_json
      FROM connections
      WHERE id = ? AND (user_id = ? OR shared = 1) AND protocol = 'ftp'`,
     [connectionId, userId],
@@ -34,12 +35,22 @@ async function makeFtpClient(conn: ConnRow): Promise<ftp.Client> {
     ? (() => { try { return decrypt(conn.encrypted_password!); } catch { return ''; } })()
     : '';
 
+  let useFtps = false;
+  try {
+    if (conn.extra_config_json) {
+      const cfg = JSON.parse(conn.extra_config_json) as Record<string, unknown>;
+      useFtps = cfg['ftps'] === true;
+    }
+  } catch { /* ignore */ }
+
   const client = new ftp.Client(10000);
   await client.access({
     host: conn.host,
     port: conn.port || 21,
     user: conn.username || 'anonymous',
     password,
+    secure: useFtps,
+    secureOptions: useFtps ? { rejectUnauthorized: false } : undefined,
   });
   return client;
 }
