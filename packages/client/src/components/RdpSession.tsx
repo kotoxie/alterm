@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { Tab } from '../pages/MainLayout';
 import { useAuth } from '../hooks/useAuth';
+import { getWsTicket } from '../lib/wsTicket';
 
 let rdpInitialized = false;
 let Backend: Record<string, unknown> | null = null;
@@ -235,8 +236,11 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
         });
         canvasStyleGuard.observe(canvas, { attributes: true, attributeFilter: ['style'] });
 
+        const ticket = await getWsTicket(token);
+        if (cancelled) return;
+
         const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${proto}//${window.location.host}/ws/rdp-raw?token=${encodeURIComponent(token)}&connectionId=${encodeURIComponent(tab.connectionId)}`;
+        const wsUrl = `${proto}//${window.location.host}/ws/rdp-raw?ticket=${encodeURIComponent(ticket)}&connectionId=${encodeURIComponent(tab.connectionId)}`;
 
         setStatus('Connecting...');
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

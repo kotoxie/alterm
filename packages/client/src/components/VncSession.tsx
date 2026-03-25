@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { getWsTicket } from '../lib/wsTicket';
 
 interface VncSessionProps {
   connectionId: string;
@@ -44,8 +45,11 @@ export function VncSession({ connectionId, connectionName, isActive, onStatusCha
         const RFB = (await import('@novnc/novnc/lib/rfb.js')).default;
         if (cancelled) return;
 
+        const ticket = await getWsTicket(token!);
+        if (cancelled) return;
+
         const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${proto}//${window.location.host}/ws/vnc/${connectionId}?token=${encodeURIComponent(token!)}`;
+        const wsUrl = `${proto}//${window.location.host}/ws/vnc/${connectionId}?ticket=${encodeURIComponent(ticket)}`;
 
         const container = containerRef.current!;
         container.innerHTML = '';

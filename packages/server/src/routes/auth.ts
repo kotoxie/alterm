@@ -10,6 +10,31 @@ import { createLoginSession } from '../services/loginSession.js';
 import { authRequired } from '../middleware/auth.js';
 import { authenticator } from 'otplib';
 import { parseUA } from '../services/ua.js';
+import { issueWsTicket } from '../services/wsTicket.js';
+
+// ── IP-based rate limiting for login ──────────────────────────────────────────
+interface IpRecord { count: number; resetAt: number; }
+const ipLoginAttempts = new Map<string, IpRecord>();
+const IP_RATE_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const IP_RATE_MAX = 30; // max login attempts per IP per window
+
+function checkIpRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const rec = ipLoginAttempts.get(ip);
+  if (!rec || now > rec.resetAt) {
+    ipLoginAttempts.set(ip, { count: 1, resetAt: now + IP_RATE_WINDOW_MS });
+    return true;
+  }
+  rec.count += 1;
+  return rec.count <= IP_RATE_MAX;
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, rec] of ipLoginAttempts) {
+    if (now > rec.resetAt) ipLoginAttempts.delete(ip);
+  }
+}, IP_RATE_WINDOW_MS);
 
 const TRUSTED_DEVICE_COOKIE = 'alterm_trusted_device';
 const TRUSTED_DEVICE_DAYS = 30;
@@ -151,6 +176,13 @@ router.post('/login', async (req: Request, res: Response) => {
   const { username, password } = req.body;
   if (!username || !password) {
     res.status(400).json({ error: 'Username and password are required' });
+    return;
+  }
+
+  // IP-based rate limiting (guards against password spraying / distributed brute force)
+  const clientIp = (req.ip ?? 'unknown').replace(/^::ffff:/i, '');
+  if (!checkIpRateLimit(clientIp)) {
+    res.status(429).json({ error: 'Too many login attempts. Please try again later.' });
     return;
   }
 
@@ -324,6 +356,16 @@ router.post('/logout', authRequired, (req: Request, res: Response) => {
     ipAddress: req.ip,
   });
   res.json({ ok: true });
+});
+
+// POST /ws-ticket — issue a short-lived one-time WebSocket ticket
+// Clients exchange this for the JWT token in WS URL params so the long-lived
+// token never appears in server access logs.
+router.post('/ws-ticket', authRequired, (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const tokenHash = req.user!.tokenHash!;
+  const ticket = issueWsTicket(userId, tokenHash);
+  res.json({ ticket });
 });
 
 // Get current user

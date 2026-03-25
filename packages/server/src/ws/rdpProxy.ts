@@ -3,9 +3,9 @@ import tls from 'tls';
 import type { IncomingMessage } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import type https from 'https';
-import { verifyToken } from '../services/jwt.js';
-import { hashToken, isSessionRevoked } from '../services/loginSession.js';
+import { isSessionRevoked } from '../services/loginSession.js';
 import { registerWs, unregisterWs } from './wsRegistry.js';
+import { redeemWsTicket } from '../services/wsTicket.js';
 import { queryOne } from '../db/helpers.js';
 import { decrypt } from '../services/encryption.js';
 import { logAudit } from '../services/audit.js';
@@ -213,21 +213,16 @@ export function setupRdpProxy(server: https.Server): void {
   // ── RDCleanPath proxy for IronRDP ─────────────────────────────────────────────
   wssRaw.on('connection', (ws: WebSocket, req: IncomingMessage) => {
     const url = new URL(req.url || '', `https://${req.headers.host}`);
-    const token = url.searchParams.get('token');
+    const ticketId = url.searchParams.get('ticket');
     const connectionId = url.searchParams.get('connectionId');
     const clientIp = resolveClientIp(req);
 
-    if (!token || !connectionId) { ws.close(4001, 'Missing token or connectionId'); return; }
+    if (!ticketId || !connectionId) { ws.close(4001, 'Missing ticket or connectionId'); return; }
 
-    let userId: string;
-    try {
-      const payload = verifyToken(token);
-      userId = payload.userId;
-    } catch {
-      ws.close(4001, 'Invalid token'); return;
-    }
+    const ticketData = redeemWsTicket(ticketId);
+    if (!ticketData) { ws.close(4001, 'Invalid or expired ticket'); return; }
+    const { userId, tokenHash } = ticketData;
 
-    const tokenHash = hashToken(token);
     if (isSessionRevoked(tokenHash)) { ws.close(4001, 'Session revoked'); return; }
     registerWs(tokenHash, ws);
     ws.once('close', () => unregisterWs(tokenHash, ws));
@@ -349,25 +344,19 @@ export function setupRdpProxy(server: https.Server): void {
 
   wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
     const url = new URL(req.url || '', `https://${req.headers.host}`);
-    const token = url.searchParams.get('token');
+    const ticketId = url.searchParams.get('ticket');
     const connectionId = url.searchParams.get('connectionId');
     const clientIp = resolveClientIp(req);
 
-    if (!token || !connectionId) {
-      ws.close(4001, 'Missing token or connectionId');
+    if (!ticketId || !connectionId) {
+      ws.close(4001, 'Missing ticket or connectionId');
       return;
     }
 
-    let userId: string;
-    try {
-      const payload = verifyToken(token);
-      userId = payload.userId;
-    } catch {
-      ws.close(4001, 'Invalid token');
-      return;
-    }
+    const ticketData = redeemWsTicket(ticketId);
+    if (!ticketData) { ws.close(4001, 'Invalid or expired ticket'); return; }
+    const { userId, tokenHash: tokenHash2 } = ticketData;
 
-    const tokenHash2 = hashToken(token);
     if (isSessionRevoked(tokenHash2)) { ws.close(4001, 'Session revoked'); return; }
     registerWs(tokenHash2, ws);
     ws.once('close', () => unregisterWs(tokenHash2, ws));
