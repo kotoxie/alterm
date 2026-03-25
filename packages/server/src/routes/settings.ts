@@ -33,6 +33,7 @@ router.get('/public', (_req: Request, res: Response) => {
     'auth.oidc_button_label',
     'auth.ldap_enabled',
     'auth.local_enabled',
+    'security.idle_timeout_minutes',
   ];
   const settings: Record<string, string> = {};
   for (const key of PUBLIC_KEYS) {

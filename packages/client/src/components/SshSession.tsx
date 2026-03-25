@@ -24,6 +24,8 @@ interface TunnelInfo {
   localPort: number;
   remoteHost: string;
   remotePort: number;
+  status: 'listening' | 'failed';
+  error?: string;
 }
 
 export function SshSession({ tab, isActive, paneWidth, paneHeight, onStatusChange, onClose }: SshSessionProps) {
@@ -207,8 +209,18 @@ export function SshSession({ tab, isActive, paneWidth, paneHeight, onStatusChang
         <div className="absolute bottom-0 left-0 right-0 z-10 bg-black/80 border-t border-border/30 px-3 py-1.5 flex items-center gap-3 flex-wrap">
           <span className="text-xs text-text-secondary shrink-0">Tunnels:</span>
           {activeTunnels.map((t, i) => (
-            <span key={i} className="text-xs font-mono bg-surface-hover/50 px-2 py-0.5 rounded text-accent">
+            <span
+              key={i}
+              title={t.status === 'failed' ? (t.error ?? 'Failed to bind port') : `Forwarding localhost:${t.localPort} → ${t.remoteHost}:${t.remotePort}`}
+              className={`text-xs font-mono px-2 py-0.5 rounded flex items-center gap-1.5 ${
+                t.status === 'failed'
+                  ? 'bg-red-500/15 text-red-400'
+                  : 'bg-surface-hover/50 text-accent'
+              }`}
+            >
+              <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${t.status === 'failed' ? 'bg-red-400' : 'bg-green-400'}`} />
               :{t.localPort} → {t.remoteHost}:{t.remotePort}
+              {t.status === 'failed' && <span className="text-red-400 ml-0.5">✕</span>}
             </span>
           ))}
         </div>
