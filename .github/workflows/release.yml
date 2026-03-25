@@ -138,7 +138,6 @@ jobs:
           echo "docker run -d -p 7443:7443 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
           echo '```' >> "$GITHUB_OUTPUT"
           echo "" >> "$GITHUB_OUTPUT"
-          echo "**Digest:** \`${{ steps.build.outputs.digest }}\`" >> "$GITHUB_OUTPUT"
           echo "${EOF_MARKER}" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
