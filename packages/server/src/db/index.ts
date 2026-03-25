@@ -5,6 +5,9 @@ import { config } from '../config.js';
 
 let db: Database;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let SqlModule: any;
+
 export function getDb(): Database {
   if (!db) {
     throw new Error('Database not initialized. Call initDb() first.');
@@ -31,6 +34,7 @@ export async function initDb(): Promise<Database> {
   fs.mkdirSync(path.dirname(config.dbPath), { recursive: true });
 
   const SQL = await initSqlJs();
+  SqlModule = SQL;
 
   if (fs.existsSync(config.dbPath)) {
     const fileBuffer = fs.readFileSync(config.dbPath);
@@ -59,6 +63,11 @@ export async function initDb(): Promise<Database> {
 }
 
 export function persistDb(): void {
+  saveDb();
+}
+
+export function restoreDbFromBytes(bytes: Buffer): void {
+  db = new SqlModule.Database(bytes) as Database;
   saveDb();
 }
 

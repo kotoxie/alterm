@@ -17,6 +17,8 @@ export function LoginPage() {
   const [providers, setProviders] = useState<ProvidersConfig | null>(null);
   const [ssoError, setSsoError] = useState<string | null>(null);
   const [loginMethod, setLoginMethod] = useState<'local' | 'ldap'>('local');
+  const [insecureKey, setInsecureKey] = useState(false);
+  const [keyWarnDismissed, setKeyWarnDismissed] = useState(false);
 
   // MFA step
   const [mfaRequired, setMfaRequired] = useState(false);
@@ -45,6 +47,15 @@ export function LoginPage() {
       setSsoError(decodeURIComponent(params.get('sso_error') ?? 'SSO authentication failed'));
       window.history.replaceState({}, '', '/');
     }
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/v1/settings/public')
+      .then(r => r.json())
+      .then((d: { settings?: Record<string, string> }) => {
+        if (d?.settings?.['system.insecure_key'] === 'true') setInsecureKey(true);
+      })
+      .catch(() => {});
   }, []);
 
   async function handleSubmit(e: FormEvent) {
@@ -190,6 +201,18 @@ export function LoginPage() {
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-surface">
+      {insecureKey && !keyWarnDismissed && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-red-700 text-white px-4 py-3 flex items-start gap-3 shadow-lg">
+          <span className="text-xl shrink-0 mt-0.5">⚠</span>
+          <div className="flex-1 text-sm">
+            <span className="font-bold">Security Warning: </span>
+            ALTERM_ENCRYPTION_KEY is not set. Encryption key is stored alongside encrypted data.
+            Set this environment variable for production use.{' '}
+            <a href="https://github.com/kotoxie/alterm#encryption" target="_blank" rel="noreferrer" className="underline opacity-80 hover:opacity-100">Learn more</a>
+          </div>
+          <button onClick={() => setKeyWarnDismissed(true)} className="shrink-0 text-white/70 hover:text-white text-2xl leading-none mt-[-2px]">×</button>
+        </div>
+      )}
       <div className="w-full max-w-md p-8 bg-surface-alt rounded-lg border border-border">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-text-primary">Alterm</h1>
