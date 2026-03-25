@@ -6,6 +6,7 @@ import type { Tab } from '../pages/MainLayout';
 import { useAuth } from '../hooks/useAuth';
 import { useSshPrefs } from '../hooks/useSshPrefs';
 import { SSH_THEMES } from '../lib/sshThemes';
+import { getWsTicket } from '../lib/wsTicket';
 
 interface SshSessionProps {
   tab: Tab;
@@ -126,55 +127,70 @@ export function SshSession({ tab, isActive, paneWidth, paneHeight, onStatusChang
     // correct BEFORE the WebSocket opens and sends the initial resize message.
     fitAddon.fit();
 
-    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${proto}//${window.location.host}/ws/ssh?token=${encodeURIComponent(token)}&connectionId=${encodeURIComponent(tab.connectionId)}&sessionId=${encodeURIComponent(tab.clientSessionId)}`;
-    const ws = new WebSocket(wsUrl);
-    ws.binaryType = 'arraybuffer';
-    wsRef.current = ws;
+    // Mutable slots accessible by both the async IIFE and the cleanup function
+    let dataDispose: ReturnType<typeof term.onData> | null = null;
 
-    ws.onopen = () => {
-      // By the time the WebSocket handshake completes the fit has run
-      ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
-    };
-
-    ws.onmessage = (e) => {
-      if (typeof e.data === 'string') {
-        try {
-          const msg = JSON.parse(e.data);
-          if (msg.type === 'status' && (msg.message === 'Connected' || msg.message === 'Reattached')) {
-            onStatusChange(tab.id, 'connected');
-            term.focus();
-            // Re-send current dimensions now that the server is ready to accept resize
-            if (ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
-            }
-          } else if (msg.type === 'error') {
-            if (!cancelled) { setDisconnectMessage(msg.message); setDisconnected(true); onStatusChange(tab.id, 'disconnected'); }
-          } else if (msg.type === 'tunnels') {
-            setActiveTunnels(msg.tunnels || []);
-          }
-          return;
-        } catch { /* not JSON — write as terminal data */ }
-        term.write(e.data);
-      } else {
-        term.write(new Uint8Array(e.data as ArrayBuffer));
+    (async () => {
+      let ticket: string;
+      try {
+        ticket = await getWsTicket(token);
+        if (cancelled) return;
+      } catch {
+        if (!cancelled) term.write('\r\nFailed to obtain session ticket.\r\n');
+        return;
       }
-    };
 
-    const handleClose = (reason: string) => {
-      if (!cancelled) { setDisconnected(true); setDisconnectMessage(reason); onStatusChange(tab.id, 'disconnected'); }
-    };
-    ws.onclose = (e) => { if (e.code === 4001) return; handleClose(e.reason || 'Disconnected'); };
-    ws.onerror = () => handleClose('Connection error');
+      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${proto}//${window.location.host}/ws/ssh?ticket=${encodeURIComponent(ticket)}&connectionId=${encodeURIComponent(tab.connectionId)}&sessionId=${encodeURIComponent(tab.clientSessionId)}`;
+      const ws = new WebSocket(wsUrl);
+      ws.binaryType = 'arraybuffer';
+      wsRef.current = ws;
 
-    const dataDispose = term.onData((data) => {
-      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'data', data }));
-    });
+      ws.onopen = () => {
+        // By the time the WebSocket handshake completes the fit has run
+        ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+      };
+
+      ws.onmessage = (e) => {
+        if (typeof e.data === 'string') {
+          try {
+            const msg = JSON.parse(e.data);
+            if (msg.type === 'status' && (msg.message === 'Connected' || msg.message === 'Reattached')) {
+              onStatusChange(tab.id, 'connected');
+              term.focus();
+              // Re-send current dimensions now that the server is ready to accept resize
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+              }
+            } else if (msg.type === 'error') {
+              if (!cancelled) { setDisconnectMessage(msg.message); setDisconnected(true); onStatusChange(tab.id, 'disconnected'); }
+            } else if (msg.type === 'tunnels') {
+              setActiveTunnels(msg.tunnels || []);
+            }
+            return;
+          } catch { /* not JSON — write as terminal data */ }
+          term.write(e.data);
+        } else {
+          term.write(new Uint8Array(e.data as ArrayBuffer));
+        }
+      };
+
+      const handleClose = (reason: string) => {
+        if (!cancelled) { setDisconnected(true); setDisconnectMessage(reason); onStatusChange(tab.id, 'disconnected'); }
+      };
+      ws.onclose = (e) => { if (e.code === 4001) return; handleClose(e.reason || 'Disconnected'); };
+      ws.onerror = () => handleClose('Connection error');
+
+      dataDispose = term.onData((data) => {
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'data', data }));
+      });
+    })();
 
     return () => {
       cancelled = true;
-      dataDispose.dispose();
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) ws.close();
+      dataDispose?.dispose();
+      const ws = wsRef.current;
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) ws.close();
       term.dispose();
       terminalRef.current = null;
       fitAddonRef.current = null;
