@@ -63,7 +63,7 @@ export function SshSession({ tab, isActive, paneWidth, paneHeight, onStatusChang
     }
   }, [paneWidth, paneHeight]);
 
-  // Re-fit + notify server when this tab becomes active (was hidden before)
+  // Re-fit + focus terminal when this tab becomes active (was hidden before)
   useEffect(() => {
     if (!isActive) return;
     const timer = setTimeout(() => {
@@ -72,6 +72,7 @@ export function SshSession({ tab, isActive, paneWidth, paneHeight, onStatusChang
       const ws = wsRef.current;
       if (!fit || !term) return;
       fit.fit();
+      term.focus();
       if (ws?.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
       }
