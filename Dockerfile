@@ -25,9 +25,9 @@ FROM node:20-slim
 
 WORKDIR /app
 
-# Install runtime dependencies
+# Install runtime dependencies (gosu for privilege drop in entrypoint)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends openssl smbclient ca-certificates curl && \
+    apt-get install -y --no-install-recommends openssl smbclient ca-certificates curl gosu && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy package files and install production deps only
@@ -48,7 +48,9 @@ COPY --from=builder /app/packages/client/dist packages/client/dist/
 # created.  For bind-mounts the host directory must be writable by uid 1000.
 RUN mkdir -p /app/data && chown -R node:node /app
 
-USER node
+# Copy entrypoint — runs as root, chowns /app/data, then drops to node user
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 EXPOSE 7443
 
@@ -63,4 +65,5 @@ ENV NODE_OPTIONS="--openssl-legacy-provider"
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
   CMD curl -fsk https://localhost:7443/health || exit 1
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["node", "packages/server/dist/index.js"]
