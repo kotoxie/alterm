@@ -23,17 +23,12 @@ interface ConnectionRow {
 }
 
 export function setupRdpProxy(server: https.Server): void {
-  const wss = new WebSocketServer({ noServer: true });
   const wssRaw = new WebSocketServer({ noServer: true });
 
   server.on('upgrade', (req: IncomingMessage, socket, head) => {
     const url = new URL(req.url || '', `https://${req.headers.host}`);
 
-    if (url.pathname === '/ws/rdp') {
-      wss.handleUpgrade(req, socket, head, (ws) => {
-        wss.emit('connection', ws, req);
-      });
-    } else if (url.pathname === '/ws/rdp-raw') {
+    if (url.pathname === '/ws/rdp-raw') {
       wssRaw.handleUpgrade(req, socket, head, (ws) => {
         wssRaw.emit('connection', ws, req);
       });
@@ -141,75 +136,6 @@ export function setupRdpProxy(server: https.Server): void {
     });
   }
 
-  /**
-   * Open a throw-away TCP connection to grab the RDP host's TLS certificate chain.
-   * Does X.224 handshake, then upgrades to TLS to read the cert. Never throws.
-   */
-  function peekServerCerts(host: string, port: number, x224cr: Buffer): Promise<Buffer[]> {
-    return new Promise((resolve) => {
-      let done = false;
-      const finish = (certs: Buffer[]) => { if (!done) { done = true; resolve(certs); } };
-
-      // 10-second hard timeout for the entire cert peek
-      const hardTimeout = setTimeout(() => {
-        sock.destroy();
-        finish([]);
-      }, 10000);
-
-      const sock = net.connect(port, host);
-      sock.once('connect', () => {
-        sock.write(x224cr);
-      });
-      sock.once('error', () => {
-        clearTimeout(hardTimeout);
-        finish([]);
-      });
-
-      readX224Pdu(sock)
-        .then((x224cc) => {
-          const tlsSock = tls.connect({
-            socket: sock,
-            rejectUnauthorized: false,
-            host,
-            checkServerIdentity: () => undefined,
-          });
-          const tlsTimeout = setTimeout(() => {
-            tlsSock.destroy();
-            clearTimeout(hardTimeout);
-            finish([]);
-          }, 8000);
-          tlsSock.once('secureConnect', () => {
-            clearTimeout(tlsTimeout);
-            clearTimeout(hardTimeout);
-            const certs: Buffer[] = [];
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            let c: any = tlsSock.getPeerCertificate(true);
-            const seen = new Set<string>();
-            while (c && c.raw) {
-              const key = (c.raw as Buffer).toString('hex');
-              if (seen.has(key)) break;
-              seen.add(key);
-              certs.push(Buffer.from(c.raw as Buffer));
-              c = c.issuerCertificate;
-            }
-            tlsSock.destroy();
-            finish(certs);
-          });
-          tlsSock.once('error', () => {
-            clearTimeout(tlsTimeout);
-            clearTimeout(hardTimeout);
-            sock.destroy();
-            finish([]);
-          });
-        })
-        .catch(() => {
-          clearTimeout(hardTimeout);
-          sock.destroy();
-          finish([]);
-        });
-    });
-  }
-
   // ── RDCleanPath proxy for IronRDP ─────────────────────────────────────────────
   wssRaw.on('connection', (ws: WebSocket, req: IncomingMessage) => {
     const url = new URL(req.url || '', `https://${req.headers.host}`);
@@ -228,7 +154,7 @@ export function setupRdpProxy(server: https.Server): void {
     ws.once('close', () => unregisterWs(tokenHash, ws));
 
     const conn = queryOne<ConnectionRow>(
-      'SELECT * FROM connections WHERE id = ? AND user_id = ?',
+      'SELECT * FROM connections WHERE id = ? AND (user_id = ? OR shared = 1)',
       [connectionId, userId],
     );
     if (!conn || conn.protocol !== 'rdp') { ws.close(4002, 'Connection not found or not RDP'); return; }
@@ -340,117 +266,5 @@ export function setupRdpProxy(server: https.Server): void {
         details: { connectionId, sessionId }, ipAddress: clientIp });
     });
     ws.on('error', () => cleanup());
-  });
-
-  wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
-    const url = new URL(req.url || '', `https://${req.headers.host}`);
-    const ticketId = url.searchParams.get('ticket');
-    const connectionId = url.searchParams.get('connectionId');
-    const clientIp = resolveClientIp(req);
-
-    if (!ticketId || !connectionId) {
-      ws.close(4001, 'Missing ticket or connectionId');
-      return;
-    }
-
-    const ticketData = redeemWsTicket(ticketId);
-    if (!ticketData) { ws.close(4001, 'Invalid or expired ticket'); return; }
-    const { userId, tokenHash: tokenHash2 } = ticketData;
-
-    if (isSessionRevoked(tokenHash2)) { ws.close(4001, 'Session revoked'); return; }
-    registerWs(tokenHash2, ws);
-    ws.once('close', () => unregisterWs(tokenHash2, ws));
-
-    const conn = queryOne<ConnectionRow>(
-      'SELECT * FROM connections WHERE id = ? AND user_id = ?',
-      [connectionId, userId],
-    );
-
-    if (!conn || conn.protocol !== 'rdp') {
-      ws.close(4002, 'Connection not found or not an RDP connection');
-      return;
-    }
-
-    const sessionId = uuid();
-    // RDP has no recording support — sessions are tracked via audit trail only
-    logAudit({
-      userId,
-      eventType: 'session.rdp.connect',
-      target: `${conn.host}:${conn.port}`,
-      details: { connectionId, sessionId, connectionName: conn.name },
-      ipAddress: clientIp,
-    });
-
-    // Send connection info to the client (for IronRDP WASM to use)
-    const connInfo: Record<string, unknown> = {
-      type: 'connection_info',
-      host: conn.host,
-      port: conn.port,
-    };
-    if (conn.username) connInfo.username = conn.username;
-    if (conn.encrypted_password) {
-      try {
-        connInfo.password = decrypt(conn.encrypted_password);
-      } catch {
-        // ignore decryption failure
-      }
-    }
-
-    ws.send(JSON.stringify(connInfo));
-
-    // Open TCP connection to the RDP target
-    const tcp = net.connect(conn.port, conn.host);
-
-    tcp.on('connect', () => {
-      ws.send(JSON.stringify({ type: 'tcp_connected' }));
-    });
-
-    tcp.on('data', (chunk: Buffer) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(chunk);
-      }
-    });
-
-    tcp.on('error', (err: Error) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'tcp_error', message: err.message }));
-        ws.close(4003, 'TCP connection error');
-      }
-    });
-
-    tcp.on('close', () => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.close(1000, 'TCP connection closed');
-      }
-    });
-
-    ws.on('message', (data: Buffer | string) => {
-      if (typeof data === 'string') {
-        try {
-          const msg = JSON.parse(data);
-          if (msg.type === 'resize') return;
-        } catch {
-          // Not JSON, forward as-is
-        }
-      }
-      if (tcp.writable) {
-        tcp.write(typeof data === 'string' ? Buffer.from(data) : data);
-      }
-    });
-
-    ws.on('close', () => {
-      tcp.destroy();
-      logAudit({
-        userId,
-        eventType: 'session.rdp.disconnect',
-        target: `${conn.host}:${conn.port}`,
-        details: { connectionId, sessionId },
-        ipAddress: clientIp,
-      });
-    });
-
-    ws.on('error', () => {
-      tcp.destroy();
-    });
   });
 }
