@@ -52,6 +52,7 @@ export function GlobalSettings() {
   // General
   const [appName, setAppName] = useState('Alterm');
   const [timezone, setTimezone] = useState('UTC');
+  const [healthMonitorEnabled, setHealthMonitorEnabled] = useState(true);
   const [generalMsg, setGeneralMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [savingGeneral, setSavingGeneral] = useState(false);
 
@@ -80,6 +81,7 @@ export function GlobalSettings() {
     setTimezone(settings['app.timezone'] ?? 'UTC');
     setLogoPreview(settings['app.logo'] ?? '');
     setAuditRetention(settings['audit.retention_days'] ?? '90');
+    setHealthMonitorEnabled(settings['health_monitor.enabled'] !== 'false');
     setRecordingEnabled(settings['session.recording_enabled'] === 'true');
     setRecordingRetention(settings['session.recording_retention_days'] ?? '90');
   }, [settings]);
@@ -118,6 +120,7 @@ export function GlobalSettings() {
         'app.timezone': timezone,
         'app.logo': logoPreview,
         'audit.retention_days': auditRetention,
+        'health_monitor.enabled': String(healthMonitorEnabled),
       });
       setGeneralMsg(result.ok ? { type: 'success', text: 'Saved.' } : { type: 'error', text: result.error! });
     } catch {
@@ -251,6 +254,13 @@ export function GlobalSettings() {
               onChange={(e) => setAuditRetention(e.target.value)}
               className="w-40 px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
             />
+          </div>
+          <div className="flex items-center gap-3">
+            <Toggle value={healthMonitorEnabled} onChange={setHealthMonitorEnabled} />
+            <div>
+              <span className="text-sm text-text-secondary">Health monitor</span>
+              <p className="text-xs text-text-secondary/60 mt-0.5">Periodically checks if connections are reachable and shows green/red dots in the sidebar.</p>
+            </div>
           </div>
           {generalMsg && (
             <p className={`text-sm ${generalMsg.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
