@@ -6,7 +6,6 @@ import net from 'net';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import { verifyToken } from '../services/jwt.js';
 import { hashToken, isSessionRevoked } from '../services/loginSession.js';
 import { registerWs, unregisterWs } from './wsRegistry.js';
 import { queryOne, execute } from '../db/helpers.js';
@@ -140,7 +139,7 @@ export function setupSshProxy(server: https.Server): void {
 
     // ── New session path ─────────────────────────────────────────────────────
     const conn = queryOne<ConnectionRow>(
-      'SELECT * FROM connections WHERE id = ? AND user_id = ?',
+      'SELECT * FROM connections WHERE id = ? AND (user_id = ? OR shared = 1)',
       [connectionId, userId],
     );
     if (!conn || conn.protocol !== 'ssh') { ws.close(4002, 'Not found or not SSH'); return; }
