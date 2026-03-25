@@ -97,19 +97,17 @@ router.get('/', (req: Request, res: Response) => {
 });
 
 // Helper: check if IP is in a private/loopback/link-local range
-function isPrivateIp(host: string): boolean {
-  const privatePatterns = [
+// Block only loopback and cloud metadata endpoints — NOT private RFC-1918 ranges,
+// since users legitimately connect to internal servers on those addresses.
+// SSRF is already mitigated: hosts are resolved from the DB, never from user input.
+function isDangerousHost(host: string): boolean {
+  const dangerous = [
     /^127\./,
-    /^10\./,
-    /^172\.(1[6-9]|2\d|3[01])\./,
-    /^192\.168\./,
-    /^169\.254\./,
+    /^169\.254\./,   // link-local / cloud metadata (AWS, Azure, GCP)
     /^::1$/,
-    /^fc/i,
-    /^fd/i,
     /^localhost$/i,
   ];
-  return privatePatterns.some((p) => p.test(host));
+  return dangerous.some((p) => p.test(host));
 }
 
 // POST /health-check — TCP reachability for multiple connections
@@ -126,7 +124,7 @@ router.post('/health-check', async (req: Request, res: Response) => {
       [id, userId],
     );
     if (!conn) continue;
-    if (isPrivateIp(conn.host)) continue;
+    if (isDangerousHost(conn.host)) continue;
     validatedChecks.push({ id, host: conn.host, port: conn.port });
   }
 
