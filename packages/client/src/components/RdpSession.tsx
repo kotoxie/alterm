@@ -320,6 +320,7 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
           .password(sessionInfo.password)
           .destination(`${sessionInfo.host}:${sessionInfo.port}`)
           .proxyAddress(wsUrl)
+          .authToken(ticket)
           .desktopSize(new DesktopSize(canvas.width, canvas.height))
           .renderCanvas(canvas)
           .setCursorStyleCallbackContext(null)
