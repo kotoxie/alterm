@@ -244,6 +244,27 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
 
         let localClipboardText = '';
 
+        // ── Software cursor state (for recording compositing) ────────────────
+        // The CSS cursor is a hardware overlay and never appears in captureStream.
+        // IronRDP provides the cursor as a data URL via setCursorStyleCallback;
+        // we keep a decoded HTMLImageElement + hotspot + latest mouse position so
+        // the recording compositor can draw the cursor onto each frame.
+        let recCursorImg: HTMLImageElement | null = null;
+        let recCursorHX = 0;
+        let recCursorHY = 0;
+        let recMouseX = 0;
+        let recMouseY = 0;
+        let recCursorVisible = true;
+
+        const onRecMouseMove = (e: MouseEvent) => {
+          const rect = canvas.getBoundingClientRect();
+          const scaleX = canvas.width / rect.width;
+          const scaleY = canvas.height / rect.height;
+          recMouseX = (e.clientX - rect.left) * scaleX;
+          recMouseY = (e.clientY - rect.top) * scaleY;
+        };
+        canvas.addEventListener('mousemove', onRecMouseMove);
+
         const pushClipboardToGuest = (text: string) => {
           if (!sessionRef.current) return;
           const data = new ClipboardData();
@@ -271,12 +292,23 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
           .setCursorStyleCallbackContext(null)
           .setCursorStyleCallback(
             (kind: string, data: string | undefined, hx: number, hy: number) => {
+              // Update CSS cursor for the live session
               if (kind === 'none') {
                 canvas.style.cursor = 'none';
+                recCursorVisible = false;
               } else if (kind === 'url' && data) {
                 canvas.style.cursor = `url(${data}) ${hx} ${hy}, auto`;
+                recCursorVisible = true;
+                recCursorHX = hx;
+                recCursorHY = hy;
+                // Decode the cursor image for the recording compositor
+                const img = new Image();
+                img.src = data;
+                recCursorImg = img;
               } else {
                 canvas.style.cursor = 'default';
+                recCursorVisible = true;
+                recCursorImg = null;
               }
             },
           )
@@ -305,9 +337,10 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
         setStatus('Connected');
         onStatusChange(tab.id, 'connected');
 
-        // ── RDP recording via canvas.captureStream + MediaRecorder ──────────
-        // preserveDrawingBuffer=true was forced via the getContext override above,
-        // so captureStream() on the original WebGL canvas reads actual frames.
+        // ── RDP recording via compositor canvas + MediaRecorder ──────────────
+        // The CSS cursor is a hardware overlay invisible to captureStream.
+        // We composite the WebGL frame + decoded cursor image onto a 2D canvas
+        // each rAF tick and capture that compositor instead.
         try {
           const recRes = await fetch('/api/v1/sessions/rdp-session', {
             method: 'POST',
@@ -321,7 +354,33 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
               const mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9')
                 ? 'video/webm; codecs=vp9'
                 : 'video/webm';
-              const stream = canvas.captureStream(10);
+
+              // Compositor: 2D canvas that merges the WebGL frame + software cursor
+              const compositor = document.createElement('canvas');
+              compositor.width = canvas.width;
+              compositor.height = canvas.height;
+              const ctx2d = compositor.getContext('2d')!;
+
+              // Keep compositor size in sync when IronRDP resizes the RDP canvas
+              const compSizeObserver = new MutationObserver(() => {
+                if (compositor.width !== canvas.width) compositor.width = canvas.width;
+                if (compositor.height !== canvas.height) compositor.height = canvas.height;
+              });
+              compSizeObserver.observe(canvas, { attributes: true, attributeFilter: ['width', 'height'] });
+
+              let recRafId = 0;
+              function drawCompositeFrame() {
+                // Copy RDP frame (preserveDrawingBuffer=true ensures it's readable)
+                ctx2d.drawImage(canvas, 0, 0);
+                // Draw software cursor on top
+                if (recCursorVisible && recCursorImg?.complete && recCursorImg.naturalWidth > 0) {
+                  ctx2d.drawImage(recCursorImg, recMouseX - recCursorHX, recMouseY - recCursorHY);
+                }
+                recRafId = requestAnimationFrame(drawCompositeFrame);
+              }
+              recRafId = requestAnimationFrame(drawCompositeFrame);
+
+              const stream = compositor.captureStream(10);
               const mr = new MediaRecorder(stream, { mimeType });
               mr.ondataavailable = (e) => {
                 if (e.data.size > 0 && rdpSessionIdRef.current) {
@@ -336,9 +395,20 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
               };
               mr.start(5000);
               mediaRecorderRef.current = mr;
+
+              // Store cleanup refs on the mr object for teardown
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              (mr as any)._recRafId = recRafId;
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              (mr as any)._compSizeObserver = compSizeObserver;
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              (mr as any)._stopRaf = () => { cancelAnimationFrame(recRafId); compSizeObserver.disconnect(); };
             }
           }
         } catch { /* recording unavailable — ignore */ }
+
+        // Clean up the mousemove listener (used for cursor compositing)
+        // when session.run() returns — do it in finally block via the session end path
 
         // ── Auto-resize (debounced) ────────────────────────────────────────
         resizeObserver = new ResizeObserver(() => {
@@ -504,6 +574,9 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
       resizeObserver?.disconnect();
       canvasStyleGuard?.disconnect();
       if (resizeTimer) clearTimeout(resizeTimer);
+      // Stop the compositor rAF loop and size observer used for cursor recording
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (mediaRecorderRef.current as any)?._stopRaf?.();
       // Stop recording and finalize the session
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         mediaRecorderRef.current.stop();
