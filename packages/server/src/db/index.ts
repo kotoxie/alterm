@@ -331,6 +331,10 @@ function runMigrations() {
         `);
       },
     },
+    {
+      version: 13,
+      sql: `DELETE FROM settings WHERE key = 'session.max_concurrent';`,
+    },
   ];
 
   for (const migration of migrations) {

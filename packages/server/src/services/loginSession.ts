@@ -36,8 +36,11 @@ export type SessionCheckResult = 'ok' | 'revoked' | 'idle_expired' | 'not_found'
 /**
  * Single DB round-trip: checks revocation, enforces idle timeout, and touches last_used_at.
  * Returns the reason if the session should be rejected, or 'ok' to proceed.
+ *
+ * @param skipTouch - When true, skip updating last_used_at (used for heartbeat pings that
+ *                    should NOT reset the idle clock).
  */
-export function checkAndTouchSession(tokenHash: string): SessionCheckResult {
+export function checkAndTouchSession(tokenHash: string, skipTouch = false): SessionCheckResult {
   const row = queryOne<SessionRow>(
     'SELECT revoked, last_used_at FROM login_sessions WHERE token_hash = ?',
     [tokenHash],
@@ -60,13 +63,15 @@ export function checkAndTouchSession(tokenHash: string): SessionCheckResult {
     }
   }
 
-  // Touch last_used_at — throttled to once per 60 seconds to avoid excessive DB writes
-  execute(
-    `UPDATE login_sessions SET last_used_at = datetime('now')
-     WHERE token_hash = ? AND revoked = 0
-       AND (strftime('%s','now') - strftime('%s', last_used_at)) > 60`,
-    [tokenHash],
-  );
+  if (!skipTouch) {
+    // Touch last_used_at — throttled to once per 60 seconds to avoid excessive DB writes
+    execute(
+      `UPDATE login_sessions SET last_used_at = datetime('now')
+       WHERE token_hash = ? AND revoked = 0
+         AND (strftime('%s','now') - strftime('%s', last_used_at)) > 60`,
+      [tokenHash],
+    );
+  }
 
   return 'ok';
 }
