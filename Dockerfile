@@ -42,7 +42,12 @@ COPY --from=builder /app/packages/server/dist packages/server/dist/
 # Copy built client
 COPY --from=builder /app/packages/client/dist packages/client/dist/
 
-RUN chown -R node:node /app
+# Pre-create data directory with correct ownership BEFORE declaring VOLUME.
+# Docker initialises the volume mount from the image layer at this path;
+# setting ownership here is preserved when an anonymous/named volume is first
+# created.  For bind-mounts the host directory must be writable by uid 1000.
+RUN mkdir -p /app/data && chown -R node:node /app
+
 USER node
 
 EXPOSE 7443
