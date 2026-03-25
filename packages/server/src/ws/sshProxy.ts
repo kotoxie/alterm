@@ -36,6 +36,7 @@ interface ConnectionRow {
 }
 
 interface TunnelConfig { localPort: number; remoteHost: string; remotePort: number; }
+interface TunnelStatus extends TunnelConfig { status: 'listening' | 'failed'; error?: string; }
 
 function teardownSession(
   clientSessionId: string,
@@ -200,27 +201,52 @@ export function setupSshProxy(server: https.Server): void {
         if (conn.tunnels_json) tunnelConfigs = JSON.parse(conn.tunnels_json) as TunnelConfig[];
       } catch { /* ignore */ }
 
-      for (const tunnel of tunnelConfigs) {
-        if (!tunnel.localPort || !tunnel.remoteHost || !tunnel.remotePort) continue;
-        const srv = net.createServer((localSocket) => {
-          const s = getSession(clientSessionId);
-          if (!s) { localSocket.destroy(); return; }
-          s.ssh.forwardOut('127.0.0.1', tunnel.localPort, tunnel.remoteHost, tunnel.remotePort, (err, stream) => {
-            if (err) { localSocket.destroy(); return; }
-            localSocket.pipe(stream); stream.pipe(localSocket);
-            localSocket.on('close', () => stream.destroy());
-            stream.on('close', () => localSocket.destroy());
-            stream.on('error', () => localSocket.destroy());
-            localSocket.on('error', () => stream.destroy());
-          });
-        });
-        srv.listen(tunnel.localPort, '127.0.0.1');
-        srv.on('error', () => { /* port in use */ });
-        tunnelServers.push(srv);
-      }
-
       if (tunnelConfigs.length > 0) {
-        ws.send(JSON.stringify({ type: 'tunnels', tunnels: tunnelConfigs }));
+        // Set up each tunnel and collect status asynchronously, then notify the client once all are ready.
+        const tunnelStatuses: TunnelStatus[] = [];
+        let pending = 0;
+
+        for (const tunnel of tunnelConfigs) {
+          if (!tunnel.localPort || !tunnel.remoteHost || !tunnel.remotePort) continue;
+          pending++;
+          const statusEntry: TunnelStatus = { ...tunnel, status: 'listening' };
+          tunnelStatuses.push(statusEntry);
+
+          const srv = net.createServer((localSocket) => {
+            const s = getSession(clientSessionId);
+            if (!s) { localSocket.destroy(); return; }
+            s.ssh.forwardOut('127.0.0.1', tunnel.localPort, tunnel.remoteHost, tunnel.remotePort, (err, stream) => {
+              if (err) { localSocket.destroy(); return; }
+              localSocket.pipe(stream); stream.pipe(localSocket);
+              localSocket.on('close', () => stream.destroy());
+              stream.on('close', () => localSocket.destroy());
+              stream.on('error', () => localSocket.destroy());
+              localSocket.on('error', () => stream.destroy());
+            });
+          });
+
+          srv.once('listening', () => {
+            statusEntry.status = 'listening';
+            pending--;
+            if (pending === 0 && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: 'tunnels', tunnels: tunnelStatuses }));
+            }
+          });
+
+          srv.once('error', (err: NodeJS.ErrnoException) => {
+            statusEntry.status = 'failed';
+            statusEntry.error = err.code === 'EADDRINUSE'
+              ? `Port ${tunnel.localPort} already in use`
+              : (err.message ?? 'Unknown error');
+            pending--;
+            if (pending === 0 && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: 'tunnels', tunnels: tunnelStatuses }));
+            }
+          });
+
+          srv.listen(tunnel.localPort, '127.0.0.1');
+          tunnelServers.push(srv);
+        }
       }
 
       ssh.shell({ term: 'xterm-256color', cols, rows }, (err, shellStream: ClientChannel) => {
