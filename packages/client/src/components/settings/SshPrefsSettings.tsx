@@ -1,5 +1,4 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { useAuth } from '../../hooks/useAuth';
 import { SSH_THEMES, THEME_NAMES, DEFAULT_THEME, type SshThemeName } from '../../lib/sshThemes';
 
 const FONT_FAMILIES = [
@@ -177,7 +176,6 @@ interface SshPrefs {
 }
 
 export function SshPrefsSettings() {
-  const { token } = useAuth();
   const [fontFamilyKey, setFontFamilyKey] = useState<FontFamilyKey>('fira-code');
   const [fontSize, setFontSize] = useState('14');
   const [cursorStyle, setCursorStyle] = useState<'block' | 'bar' | 'underline'>('block');
@@ -188,8 +186,7 @@ export function SshPrefsSettings() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!token) return;
-    fetch('/api/v1/profile/ssh-prefs', { headers: { Authorization: `Bearer ${token}` } })
+    fetch('/api/v1/profile/ssh-prefs', { credentials: 'include' })
       .then((r) => r.json())
       .then((d: SshPrefs) => {
         setFontFamilyKey(fontCssToKey(d.fontFamily ?? 'fira-code'));
@@ -200,17 +197,17 @@ export function SshPrefsSettings() {
         setScrollback(d.scrollback ?? '5000');
       })
       .catch(() => {});
-  }, [token]);
+  }, []);
 
   async function handleSave(e: FormEvent) {
     e.preventDefault();
-    if (!token) return;
     setSaving(true);
     setMsg(null);
     try {
       const res = await fetch('/api/v1/profile/ssh-prefs', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           fontFamily: fontKeyToCss(fontFamilyKey),
           fontSize,
@@ -330,17 +327,16 @@ export function SshPrefsSettings() {
               type="button"
               disabled={saving}
               onClick={async () => {
-                if (!token) return;
                 setSaving(true);
                 setMsg(null);
                 try {
                   await fetch('/api/v1/profile/ssh-prefs', {
                     method: 'DELETE',
-                    headers: { Authorization: `Bearer ${token}` },
+                    credentials: 'include',
                   });
                   // Reload defaults from server
                   const res = await fetch('/api/v1/profile/ssh-prefs', {
-                    headers: { Authorization: `Bearer ${token}` },
+                    credentials: 'include',
                   });
                   if (res.ok) {
                     const d = await res.json() as Record<string, string | boolean>;

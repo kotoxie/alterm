@@ -6,9 +6,33 @@ import { getAllSettings, getSetting, setSettings } from '../services/settings.js
 const router = Router();
 router.use(authRequired);
 
-// GET / — return all settings
-router.get('/', (_req: Request, res: Response) => {
+// GET / — return all settings (admin only)
+router.get('/', (req: Request, res: Response) => {
+  if (req.user!.role !== 'admin') {
+    res.status(403).json({ error: 'Admin access required' });
+    return;
+  }
   const settings = getAllSettings();
+  res.json({ settings });
+});
+
+// GET /public — return non-sensitive settings for all authenticated users
+router.get('/public', (_req: Request, res: Response) => {
+  const PUBLIC_KEYS = [
+    'app.name',
+    'app.logo',
+    'health_monitor.enabled',
+    'ssh.font_family',
+    'ssh.font_size',
+    'ssh.cursor_style',
+    'ssh.cursor_blink',
+    'ssh.theme',
+    'ssh.scrollback',
+  ];
+  const settings: Record<string, string> = {};
+  for (const key of PUBLIC_KEYS) {
+    settings[key] = getSetting(key);
+  }
   res.json({ settings });
 });
 

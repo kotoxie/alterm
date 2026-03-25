@@ -11,6 +11,7 @@ import { authRequired } from '../middleware/auth.js';
 import { authenticator } from 'otplib';
 import { parseUA } from '../services/ua.js';
 import { issueWsTicket } from '../services/wsTicket.js';
+import { decrypt } from '../services/encryption.js';
 
 // ── IP-based rate limiting for login ──────────────────────────────────────────
 interface IpRecord { count: number; resetAt: number; }
@@ -74,6 +75,7 @@ function setTrustedDevice(req: Request, res: Response, userId: string): void {
 
   res.cookie(TRUSTED_DEVICE_COOKIE, token, {
     httpOnly: true,
+    secure: true,
     sameSite: 'lax',
     maxAge: TRUSTED_DEVICE_DAYS * 24 * 60 * 60 * 1000,
     path: '/',
@@ -81,6 +83,19 @@ function setTrustedDevice(req: Request, res: Response, userId: string): void {
 }
 
 const router = Router();
+
+function setAuthCookie(res: Response, token: string, maxSessionMinutes?: number): void {
+  const maxAgeMs = maxSessionMinutes
+    ? maxSessionMinutes * 60 * 1000
+    : 24 * 60 * 60 * 1000; // default 24h
+  res.cookie('alterm_token', token, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'strict',
+    maxAge: maxAgeMs,
+    path: '/',
+  });
+}
 
 // In-memory tracker for non-existent usernames (resets on restart — acceptable for single-container)
 interface AttemptRecord { count: number; lockedUntil: Date | null; }
@@ -161,6 +176,7 @@ router.post('/setup', async (req: Request, res: Response) => {
     ipAddress: req.ip,
   });
 
+  setAuthCookie(res, token);
   res.json({
     token,
     user: { id, username, displayName, role: 'admin', theme: null },
@@ -219,8 +235,8 @@ router.post('/login', async (req: Request, res: Response) => {
 
     if (newCount >= maxFailed) {
       execute(
-        `UPDATE users SET failed_login_count = ?, locked_until = datetime('now', '+${lockoutMinutes} minutes'), updated_at = datetime('now') WHERE id = ?`,
-        [newCount, user.id],
+        `UPDATE users SET failed_login_count = ?, locked_until = datetime('now', '+' || CAST(? AS TEXT) || ' minutes'), updated_at = datetime('now') WHERE id = ?`,
+        [newCount, lockoutMinutes, user.id],
       );
     } else {
       execute(
@@ -264,6 +280,7 @@ router.post('/login', async (req: Request, res: Response) => {
     ipAddress: req.ip,
   });
 
+  setAuthCookie(res, token, maxSessionMinutes || undefined);
   res.json({
     token,
     user: {
@@ -304,7 +321,12 @@ router.post('/login/mfa', async (req: Request, res: Response) => {
     return;
   }
 
-  const isValid = authenticator.verify({ token: code, secret: user.mfa_secret });
+  const decryptedSecret = (() => { try { return decrypt(user.mfa_secret!); } catch { return null; } })();
+  if (!decryptedSecret) {
+    res.status(400).json({ error: 'MFA configuration error' });
+    return;
+  }
+  const isValid = authenticator.verify({ token: code, secret: decryptedSecret });
   if (!isValid) {
     res.status(401).json({ error: 'Invalid verification code' });
     return;
@@ -327,6 +349,7 @@ router.post('/login/mfa', async (req: Request, res: Response) => {
     ipAddress: req.ip,
   });
 
+  setAuthCookie(res, token, maxSessionMinutes || undefined);
   res.json({
     token,
     user: {
@@ -351,6 +374,7 @@ router.post('/logout', authRequired, (req: Request, res: Response) => {
     target: req.user!.username,
     ipAddress: req.ip,
   });
+  res.clearCookie('alterm_token', { path: '/', secure: true, sameSite: 'strict' });
   res.json({ ok: true });
 });
 
@@ -367,7 +391,9 @@ router.post('/ws-ticket', authRequired, (req: Request, res: Response) => {
 // Get current user
 router.get('/me', (req: Request, res: Response) => {
   const header = req.headers.authorization;
-  const token = header?.startsWith('Bearer ') ? header.slice(7) : null;
+  const bearerToken = header?.startsWith('Bearer ') ? header.slice(7) : null;
+  const cookieToken = req.cookies?.['alterm_token'] as string | undefined;
+  const token = bearerToken ?? cookieToken ?? null;
   if (!token) {
     res.status(401).json({ error: 'Authentication required' });
     return;
