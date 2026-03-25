@@ -6,6 +6,7 @@ import { logAudit } from '../services/audit.js';
 import { getSetting } from '../services/settings.js';
 import { authenticator } from 'otplib';
 import QRCode from 'qrcode';
+import { encrypt, decrypt } from '../services/encryption.js';
 
 const router = Router();
 router.use(authRequired);
@@ -185,7 +186,7 @@ router.post('/mfa/setup', async (req: Request, res: Response) => {
   const otpUri = authenticator.keyuri(`${appName} (+${user.username})`, appName, secret);
   const qrDataUrl = await QRCode.toDataURL(otpUri);
 
-  execute('UPDATE users SET mfa_secret = ? WHERE id = ?', [secret, userId]);
+  execute('UPDATE users SET mfa_secret = ? WHERE id = ?', [encrypt(secret), userId]);
   res.json({ secret, qrDataUrl });
 });
 
@@ -196,7 +197,7 @@ router.post('/mfa/verify', (req: Request, res: Response) => {
   if (!token) { res.status(400).json({ error: 'token is required' }); return; }
 
   const user = queryOne<UserRow>('SELECT mfa_secret FROM users WHERE id = ?', [userId]);
-  const secret = user?.mfa_secret;
+  const secret = user?.mfa_secret ? (() => { try { return decrypt(user.mfa_secret); } catch { return null; } })() : null;
   if (!secret) { res.status(400).json({ error: 'MFA setup not started' }); return; }
 
   const isValid = authenticator.verify({ token, secret });

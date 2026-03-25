@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent as RMouseEvent } from 'react';
 import { clsx } from 'clsx';
-import { useAuth } from '../hooks/useAuth';
 import { useSettings } from '../hooks/useSettings';
 import { ConnectionModal, type ConnectionPrefill } from './ConnectionModal';
 
@@ -122,7 +121,6 @@ const PenIcon = () => (
 );
 
 export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
-  const { token } = useAuth();
   const { settings } = useSettings();
   const healthMonitorEnabled = settings['health_monitor.enabled'] !== 'false';
   const [groups, setGroups] = useState<ConnectionGroup[]>([]);
@@ -180,7 +178,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
   const flatGroups = flattenGroups(groups);
 
   const checkHealth = useCallback(async () => {
-    if (!token || !healthMonitorEnabled) return;
+    if (!healthMonitorEnabled) return;
     const allConns: { id: string; host: string; port: number }[] = [];
     function collectFromGroup(g: ConnectionGroup) {
       g.connections.forEach((c) => allConns.push({ id: c.id, host: c.host, port: c.port }));
@@ -200,7 +198,8 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
     try {
       const res = await fetch('/api/v1/connections/health-check', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ checks: allConns }),
       });
       if (!res.ok) return;
@@ -211,13 +210,12 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
         return next;
       });
     } catch { /* ignore */ }
-  }, [token, groups, ungrouped, sharedConnections, healthMonitorEnabled]);
+  }, [groups, ungrouped, sharedConnections, healthMonitorEnabled]);
 
   const fetchConnections = useCallback(async () => {
-    if (!token) return;
     try {
       const res = await fetch('/api/v1/connections', {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
       if (!res.ok) return;
       const data = await res.json();
@@ -225,7 +223,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
       setUngrouped(data.ungrouped || []);
       setSharedConnections(data.sharedConnections || []);
     } catch { /* ignore */ }
-  }, [token]);
+  }, []);
 
   useEffect(() => { fetchConnections(); }, [fetchConnections]);
 
@@ -261,28 +259,27 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
   }
 
   async function deleteConnection(id: string) {
-    if (!token) return;
     await fetch(`/api/v1/connections/${id}`, {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: 'include',
     });
     fetchConnections();
   }
 
   async function deleteGroup(id: string) {
-    if (!token) return;
     await fetch(`/api/v1/connections/groups/${id}`, {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: 'include',
     });
     fetchConnections();
   }
 
   async function renameGroup(id: string, newName: string) {
-    if (!token || !newName.trim()) return;
+    if (!newName.trim()) return;
     await fetch(`/api/v1/connections/groups/${id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ name: newName.trim() }),
     });
     setRenamingGroupId(null);
@@ -297,12 +294,13 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
   }
 
   async function commitInlineNewFolder() {
-    if (!inlineNewGroup || !token) return;
+    if (!inlineNewGroup) return;
     const name = inlineNewGroup.name.trim();
     if (!name) { setInlineNewGroup(null); return; }
     await fetch('/api/v1/connections/groups', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ name, parentId: inlineNewGroup.parentId }),
     });
     if (inlineNewGroup.parentId) {
@@ -323,10 +321,9 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
   }
 
   async function handleDuplicate(conn: Connection) {
-    if (!token) return;
     try {
       const res = await fetch(`/api/v1/connections/${conn.id}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
       if (!res.ok) return;
       const d = await res.json();
@@ -353,19 +350,18 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
   }
 
   async function moveConnection(connId: string, targetGroupId: string | null) {
-    if (!token) return;
     skipHealthCheckRef.current = true;
     await fetch(`/api/v1/connections/${connId}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ groupId: targetGroupId }),
     });
     fetchConnections();
   }
 
   async function handleExport() {
-    if (!token) return;
-    const res = await fetch('/api/v1/connections/export', { headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetch('/api/v1/connections/export', { credentials: 'include' });
     if (!res.ok) return;
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
@@ -378,13 +374,14 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
 
   async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file || !token) return;
+    if (!file) return;
     try {
       const text = await file.text();
       const json = JSON.parse(text);
       const res = await fetch('/api/v1/connections/import', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(json),
       });
       if (res.ok) {
@@ -430,10 +427,10 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
   }
 
   async function moveGroup(groupId: string, targetParentId: string | null) {
-    if (!token) return;
     await fetch(`/api/v1/connections/groups/${groupId}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ parentId: targetParentId }),
     });
     if (targetParentId) {
@@ -465,7 +462,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
   }
 
   async function reorderGroup(draggedId: string, targetId: string, position: 'before' | 'after') {
-    if (!token || draggedId === targetId) return;
+    if (draggedId === targetId) return;
     const siblings = getGroupSiblings(draggedId, groups);
     const targetParentId = getGroupParentId(targetId, groups);
     const draggedParentId = getGroupParentId(draggedId, groups);
@@ -476,7 +473,8 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
       // Reparent first (synchronously by optimistic update)
       await fetch(`/api/v1/connections/groups/${draggedId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ parentId: targetParentId ?? null }),
       });
       // Treat target's siblings as working set for ordering
@@ -493,7 +491,8 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
     const items = reordered.map((g, i) => ({ id: g.id, sortOrder: i * 10 }));
     await fetch('/api/v1/connections/groups/reorder', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ items }),
     });
     fetchConnections();

@@ -42,6 +42,9 @@ COPY --from=builder /app/packages/server/dist packages/server/dist/
 # Copy built client
 COPY --from=builder /app/packages/client/dist packages/client/dist/
 
+RUN chown -R node:node /app
+USER node
+
 EXPOSE 7443
 
 VOLUME /app/data

@@ -1,6 +1,4 @@
 import { useRef, useState, useEffect, type FormEvent } from 'react';
-import { useAuth } from '../hooks/useAuth';
-
 interface Connection {
   id: string;
   name: string;
@@ -50,7 +48,7 @@ const defaultPorts: Record<string, number> = {
 };
 
 export function ConnectionModal({ connection, groups, onClose, onSaved, prefill }: ConnectionModalProps) {
-  const { token } = useAuth();
+
   const [name, setName] = useState(prefill?.name ?? connection?.name ?? '');
   const [protocol, setProtocol] = useState<'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp'>(prefill?.protocol ?? connection?.protocol ?? 'rdp');
   const [host, setHost] = useState(prefill?.host ?? connection?.host ?? '');
@@ -74,8 +72,8 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
 
   // Load full details when editing an existing connection
   useEffect(() => {
-    if (!connection?.id || !token) return;
-    fetch(`/api/v1/connections/${connection.id}`, { headers: { Authorization: `Bearer ${token}` } })
+    if (!connection?.id) return;
+    fetch(`/api/v1/connections/${connection.id}`, { credentials: 'include' })
       .then((r) => r.json())
       .then((d) => {
         if (d.username) setUsername(d.username);
@@ -89,7 +87,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
         if (d.extraConfig?.domain) setSmbDomain(d.extraConfig.domain as string);
       })
       .catch(() => {});
-  }, [connection?.id, token]);
+  }, [connection?.id]);
 
   function handleProtocolChange(p: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp') {
     setProtocol(p);
@@ -98,11 +96,12 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
 
   async function handleCreateFolder() {
     const name = newFolderName.trim();
-    if (!name || !token) return;
+    if (!name) return;
     try {
       const res = await fetch('/api/v1/connections/groups', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ name }),
       });
       if (!res.ok) return;
@@ -147,10 +146,8 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
       const method = connection ? 'PUT' : 'POST';
       const res = await fetch(url, {
         method,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(body),
       });
       if (!res.ok) {
