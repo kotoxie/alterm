@@ -7,6 +7,7 @@ import { authRequired, adminRequired } from '../middleware/auth.js';
 import { logAudit } from '../services/audit.js';
 import { getSetting } from '../services/settings.js';
 import { config } from '../config.js';
+import { decryptRecording, encryptRecordingFileInPlace } from '../services/encryption.js';
 
 const router = Router();
 router.use(authRequired);
@@ -120,18 +121,18 @@ router.get('/:id/recording', (req: Request, res: Response) => {
   const filePath = session.recording_path;
   const isWebm = filePath.endsWith('.webm');
   const mimeType = isWebm ? 'video/webm' : 'text/plain';
-  const stat = fs.statSync(filePath);
-  const fileSize = stat.size;
 
-  // For WebM video, implement proper HTTP Range request support so the browser
-  // <video> element can seek and determine duration. Without this, MediaRecorder
-  // WebM files appear unplayable in browsers (duration = NaN, no seeking).
+  // Read and decrypt (handles both encrypted and legacy plaintext files)
+  const rawBuf = fs.readFileSync(filePath);
+  const decrypted = decryptRecording(rawBuf);
+  const fileSize = decrypted.length;
+
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Content-Type', mimeType);
+
   if (isWebm) {
     const rangeHeader = req.headers['range'];
     res.setHeader('Accept-Ranges', 'bytes');
-    res.setHeader('Content-Type', mimeType);
-    res.setHeader('Cache-Control', 'no-cache');
-
     if (rangeHeader) {
       const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
       if (!match) { res.status(416).send('Range Not Satisfiable'); return; }
@@ -142,19 +143,17 @@ router.get('/:id/recording', (req: Request, res: Response) => {
       res.status(206);
       res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
       res.setHeader('Content-Length', chunkSize);
-      fs.createReadStream(filePath, { start, end }).pipe(res);
+      res.end(decrypted.subarray(start, end + 1));
     } else {
       res.status(200);
       res.setHeader('Content-Length', fileSize);
-      fs.createReadStream(filePath).pipe(res);
+      res.end(decrypted);
     }
     return;
   }
 
-  res.setHeader('Content-Type', mimeType);
-  res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Content-Length', fileSize);
-  fs.createReadStream(filePath).pipe(res);
+  res.end(decrypted);
 });
 
 // POST /rdp-session — create a session row for an RDP recording and return sessionId
@@ -227,6 +226,9 @@ router.post('/:id/recording/finalize', (req: Request, res: Response) => {
   if (!isAdmin && session.user_id !== userId) { res.status(403).json({ error: 'Forbidden' }); return; }
 
   execute("UPDATE sessions SET ended_at = datetime('now') WHERE id = ?", [id]);
+  // Encrypt the WebM recording at rest now that the session is complete
+  const finSession = queryOne<{ recording_path: string | null }>('SELECT recording_path FROM sessions WHERE id = ?', [id]);
+  if (finSession?.recording_path) encryptRecordingFileInPlace(finSession.recording_path);
   res.json({ ok: true });
 });
 

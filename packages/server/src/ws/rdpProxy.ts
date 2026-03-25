@@ -7,7 +7,7 @@ import { isSessionRevoked } from '../services/loginSession.js';
 import { registerWs, unregisterWs } from './wsRegistry.js';
 import { redeemWsTicket } from '../services/wsTicket.js';
 import { queryOne, execute } from '../db/helpers.js';
-import { decrypt } from '../services/encryption.js';
+import { decrypt, encryptRecordingFileInPlace } from '../services/encryption.js';
 import { logAudit } from '../services/audit.js';
 import { resolveClientIp } from '../services/ip.js';
 import { v4 as uuid } from 'uuid';
@@ -264,6 +264,8 @@ export function setupRdpProxy(server: https.Server): void {
       // Mark the session as ended in the DB — covers the case where the browser
       // closes/crashes before the client can call /recording/finalize.
       execute("UPDATE sessions SET ended_at = COALESCE(ended_at, datetime('now')) WHERE id = ?", [sessionId]);
+      const rdpRec = queryOne<{ recording_path: string | null }>('SELECT recording_path FROM sessions WHERE id = ?', [sessionId]);
+      if (rdpRec?.recording_path) encryptRecordingFileInPlace(rdpRec.recording_path);
       logAudit({ userId, eventType: 'session.rdp.disconnect',
         target: `${conn.host}:${conn.port}`,
         details: { connectionId, sessionId }, ipAddress: clientIp });
