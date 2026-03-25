@@ -249,7 +249,8 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
         // IronRDP provides the cursor as a data URL via setCursorStyleCallback;
         // we keep a decoded HTMLImageElement + hotspot + latest mouse position so
         // the recording compositor can draw the cursor onto each frame.
-        let recCursorImg: HTMLImageElement | null = null;
+        // Initialized below to defaultArrowImg once that is built.
+        let recCursorImg: HTMLImageElement | null = null; // reassigned after defaultArrowImg
         let recCursorHX = 0;
         let recCursorHY = 0;
         let recMouseX = 0;
@@ -282,6 +283,9 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
           img.src = c.toDataURL();
           return img;
         })();
+        // Start with the fallback arrow so cursor is visible from the very first frame,
+        // even before setCursorStyleCallback has fired.
+        recCursorImg = defaultArrowImg;
 
         const onRecMouseMove = (e: MouseEvent) => {
           const rect = canvas.getBoundingClientRect();
