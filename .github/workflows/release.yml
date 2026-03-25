@@ -63,17 +63,76 @@ jobs:
           else
             RANGE="${PREV}..HEAD"
           fi
-          CHANGES=$(git log $RANGE --pretty=format:"- %s" --no-merges | grep -v '^- ci:' | grep -v '^- chore:' || true)
-          if [ -z "$CHANGES" ]; then
-            CHANGES="- Minor improvements and bug fixes"
-          fi
+
+          # Collect commits by conventional-commit type, strip prefix, title-case the message
+          pretty_line() {
+            echo "$1" \
+              | sed 's/^feat([^)]*): //' \
+              | sed 's/^feat: //' \
+              | sed 's/^fix([^)]*): //' \
+              | sed 's/^fix: //' \
+              | sed 's/^perf([^)]*): //' \
+              | sed 's/^perf: //' \
+              | sed 's/^refactor([^)]*): //' \
+              | sed 's/^refactor: //' \
+              | python3 -c "import sys; s=sys.stdin.read().rstrip(); print(s[:1].upper()+s[1:]) if s else None"
+          }
+
+          FEATS=""
+          FIXES=""
+          PERF=""
+          MISC=""
+
+          while IFS= read -r line; do
+            msg="${line#- }"
+            if echo "$msg" | grep -qE '^(feat|feature)(\([^)]*\))?:'; then
+              FEATS="${FEATS}"$'\n'"- $(echo "$msg" | sed 's/^feat[^:]*: //' | python3 -c "import sys; s=sys.stdin.read().rstrip(); print(s[:1].upper()+s[1:])")"
+            elif echo "$msg" | grep -qE '^fix(\([^)]*\))?:'; then
+              FIXES="${FIXES}"$'\n'"- $(echo "$msg" | sed 's/^fix[^:]*: //' | python3 -c "import sys; s=sys.stdin.read().rstrip(); print(s[:1].upper()+s[1:])")"
+            elif echo "$msg" | grep -qE '^perf(\([^)]*\))?:'; then
+              PERF="${PERF}"$'\n'"- $(echo "$msg" | sed 's/^perf[^:]*: //' | python3 -c "import sys; s=sys.stdin.read().rstrip(); print(s[:1].upper()+s[1:])")"
+            elif echo "$msg" | grep -qE '^(ci|chore|docs|style|test|build)(\([^)]*\))?:'; then
+              true  # skip noise
+            else
+              MISC="${MISC}"$'\n'"- $(echo "$msg" | python3 -c "import sys; s=sys.stdin.read().rstrip(); print(s[:1].upper()+s[1:])")"
+            fi
+          done < <(git log $RANGE --pretty=format:"- %s" --no-merges || true)
+
           EOF_MARKER=$(openssl rand -hex 8)
           echo "body<<${EOF_MARKER}" >> "$GITHUB_OUTPUT"
-          echo "## What's Changed" >> "$GITHUB_OUTPUT"
+          echo "## ✨ What's New in ${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
           echo "" >> "$GITHUB_OUTPUT"
-          echo "$CHANGES" >> "$GITHUB_OUTPUT"
-          echo "" >> "$GITHUB_OUTPUT"
-          echo "## Container image" >> "$GITHUB_OUTPUT"
+
+          if [ -n "$FEATS" ]; then
+            echo "### 🚀 New Features" >> "$GITHUB_OUTPUT"
+            echo "$FEATS" | sed '/^$/d' >> "$GITHUB_OUTPUT"
+            echo "" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ -n "$FIXES" ]; then
+            echo "### 🐛 Bug Fixes" >> "$GITHUB_OUTPUT"
+            echo "$FIXES" | sed '/^$/d' >> "$GITHUB_OUTPUT"
+            echo "" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ -n "$PERF" ]; then
+            echo "### ⚡ Performance" >> "$GITHUB_OUTPUT"
+            echo "$PERF" | sed '/^$/d' >> "$GITHUB_OUTPUT"
+            echo "" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ -n "$MISC" ]; then
+            echo "### 🔧 Other Changes" >> "$GITHUB_OUTPUT"
+            echo "$MISC" | sed '/^$/d' >> "$GITHUB_OUTPUT"
+            echo "" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ -z "$FEATS" ] && [ -z "$FIXES" ] && [ -z "$PERF" ] && [ -z "$MISC" ]; then
+            echo "- Minor improvements and bug fixes" >> "$GITHUB_OUTPUT"
+            echo "" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "## 🐳 Container Image" >> "$GITHUB_OUTPUT"
           echo "" >> "$GITHUB_OUTPUT"
           echo '```bash' >> "$GITHUB_OUTPUT"
           echo "docker run -d -p 7443:7443 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
