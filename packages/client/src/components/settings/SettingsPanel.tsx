@@ -7,6 +7,7 @@ import { UsersSettings } from './UsersSettings';
 import { AuditTrail } from './AuditTrail';
 import { GlobalSettings } from './GlobalSettings';
 import { SessionsHistory } from './SessionsHistory';
+import { AuthProvidersSettings } from './AuthProvidersSettings';
 
 interface SettingsPanelProps {
   isOpen: boolean;
@@ -14,7 +15,7 @@ interface SettingsPanelProps {
   initialSection?: string;
 }
 
-type Section = 'profile' | 'ssh-prefs' | 'security' | 'users' | 'audit' | 'global' | 'sessions';
+type Section = 'profile' | 'ssh-prefs' | 'security' | 'users' | 'audit' | 'global' | 'sessions' | 'authentication';
 
 interface NavItem {
   id: Section;
@@ -108,6 +109,16 @@ function IPIcon() {
   );
 }
 
+function KeyIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="7.5" cy="15.5" r="5.5" />
+      <path d="M21 2l-9.6 9.6" />
+      <path d="M15.5 7.5l3 3L22 7l-3-3" />
+    </svg>
+  );
+}
+
 const MY_SETTINGS_NAV: NavItem[] = [
   { id: 'profile', label: 'Profile', icon: <UserIcon /> },
   { id: 'ssh-prefs', label: 'SSH Terminal', icon: <TerminalIcon /> },
@@ -116,6 +127,7 @@ const MY_SETTINGS_NAV: NavItem[] = [
 const ADMIN_NAV: NavItem[] = [
   { id: 'global', label: 'General', icon: <SlidersIcon />, adminOnly: true },
   { id: 'security', label: 'Security', icon: <ShieldIcon />, adminOnly: true },
+  { id: 'authentication', label: 'Authentication', icon: <KeyIcon />, adminOnly: true },
   { id: 'sessions', label: 'Recordings', icon: <HistoryIcon />, adminOnly: true },
   { id: 'audit', label: 'Audit', icon: <ListIcon />, adminOnly: true },
   { id: 'users', label: 'Users', icon: <UsersIcon />, adminOnly: true },
@@ -124,7 +136,6 @@ const ADMIN_NAV: NavItem[] = [
 // Combine for validation
 const ALL_NAV: NavItem[] = [...MY_SETTINGS_NAV, ...ADMIN_NAV];
 
-// Legacy IP rules section reference via the global section
 const NAV_LABEL_MAP: Record<Section, string> = {
   'profile': 'Profile',
   'ssh-prefs': 'SSH Terminal',
@@ -133,6 +144,7 @@ const NAV_LABEL_MAP: Record<Section, string> = {
   'audit': 'Audit Trail',
   'global': 'General',
   'sessions': 'Session Recordings',
+  'authentication': 'Authentication',
 };
 
 export function SettingsPanel({ isOpen, onClose, initialSection }: SettingsPanelProps) {
@@ -258,6 +270,7 @@ export function SettingsPanel({ isOpen, onClose, initialSection }: SettingsPanel
             {activeSection === 'profile' && <ProfileSettings />}
             {activeSection === 'ssh-prefs' && <SshPrefsSettings />}
             {activeSection === 'security' && isAdmin && <SecuritySettings />}
+            {activeSection === 'authentication' && isAdmin && <AuthProvidersSettings />}
             {activeSection === 'users' && isAdmin && <UsersSettings />}
             {activeSection === 'audit' && isAdmin && <AuditTrail />}
             {activeSection === 'global' && isAdmin && <GlobalSettings />}

@@ -69,7 +69,7 @@ function runMigrations() {
     ? (result[0].values[0][0] as number ?? 0)
     : 0;
 
-  const migrations: { version: number; sql: string }[] = [
+  const migrations: { version: number; sql?: string; run?: (database: Database) => void }[] = [
     {
       version: 1,
       sql: `
@@ -291,11 +291,50 @@ function runMigrations() {
         ALTER TABLE connections ADD COLUMN host_fingerprint TEXT;
       `,
     },
+    {
+      version: 12,
+      run: (database: Database) => {
+        // SQLite doesn't support ADD COLUMN IF NOT EXISTS — use try/catch per column
+        try { database.run("ALTER TABLE users ADD COLUMN auth_provider TEXT NOT NULL DEFAULT 'local'"); } catch { /* already exists */ }
+        try { database.run('ALTER TABLE users ADD COLUMN provider_id TEXT'); } catch { /* already exists */ }
+
+        database.run(`
+          INSERT OR IGNORE INTO settings (key, value) VALUES
+            ('auth.local_enabled', 'true'),
+            ('auth.ldap_enabled', 'false'),
+            ('auth.ldap_url', ''),
+            ('auth.ldap_bind_dn', ''),
+            ('auth.ldap_bind_password', ''),
+            ('auth.ldap_search_base', ''),
+            ('auth.ldap_user_filter', '(uid={username})'),
+            ('auth.ldap_username_attr', 'uid'),
+            ('auth.ldap_email_attr', 'mail'),
+            ('auth.ldap_display_name_attr', 'cn'),
+            ('auth.ldap_admin_group_dn', ''),
+            ('auth.ldap_tls_reject_unauthorized', 'true'),
+            ('auth.oidc_enabled', 'false'),
+            ('auth.oidc_provider_url', ''),
+            ('auth.oidc_client_id', ''),
+            ('auth.oidc_client_secret', ''),
+            ('auth.oidc_redirect_uri', ''),
+            ('auth.oidc_scope', 'openid email profile'),
+            ('auth.oidc_display_name_claim', 'name'),
+            ('auth.oidc_username_claim', 'preferred_username'),
+            ('auth.oidc_admin_group_claim', ''),
+            ('auth.oidc_admin_group_value', ''),
+            ('auth.oidc_button_label', 'Sign in with SSO')
+        `);
+      },
+    },
   ];
 
   for (const migration of migrations) {
     if (migration.version > currentVersion) {
-      db.run(migration.sql);
+      if (migration.sql) {
+        db.run(migration.sql);
+      } else if (migration.run) {
+        migration.run(db);
+      }
       db.run('INSERT INTO schema_version (version) VALUES (?)', [migration.version]);
       console.log(`[DB] Applied migration v${migration.version}`);
     }
