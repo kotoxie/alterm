@@ -106,6 +106,7 @@ function runMigrations() {
           mfa_enabled INTEGER NOT NULL DEFAULT 0,
           auth_provider TEXT NOT NULL DEFAULT 'local',
           provider_id TEXT,
+          dismissed_warnings_json TEXT,
           created_at TEXT NOT NULL DEFAULT (datetime('now')),
           updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
@@ -256,6 +257,10 @@ function runMigrations() {
           ('auth.oidc_admin_group_value', ''),
           ('auth.oidc_button_label', 'Sign in with SSO');
       `,
+    },
+    {
+      version: 2,
+      sql: `ALTER TABLE users ADD COLUMN dismissed_warnings_json TEXT;`,
     },
   ];
 
