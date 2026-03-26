@@ -178,6 +178,12 @@ interface UserRow {
   locked_until: string | null;
   mfa_enabled: number;
   mfa_secret: string | null;
+  dismissed_warnings_json: string | null;
+}
+
+function parseDismissedWarnings(json: string | null): string[] {
+  if (!json) return [];
+  try { return JSON.parse(json) as string[]; } catch { return []; }
 }
 
 // Check if setup is needed
@@ -228,7 +234,7 @@ router.post('/setup', async (req: Request, res: Response) => {
   setAuthCookie(res, token);
   res.json({
     token,
-    user: { id, username, displayName, role: 'admin', theme: null },
+    user: { id, username, displayName, role: 'admin', theme: null, dismissedWarnings: [] },
   });
 });
 
@@ -255,7 +261,7 @@ router.post('/login', async (req: Request, res: Response) => {
   const maxFailed = parseInt(getSetting('security.max_failed_logins'), 10) || 5;
   const lockoutMinutes = parseInt(getSetting('security.lockout_minutes'), 10) || 30;
 
-  const user = queryOne<UserRow>('SELECT id, username, password_hash, display_name, role, theme, failed_login_count, locked_until, mfa_enabled, mfa_secret FROM users WHERE username = ? AND auth_provider = \'local\'', [username]);
+  const user = queryOne<UserRow>('SELECT id, username, password_hash, display_name, role, theme, failed_login_count, locked_until, mfa_enabled, mfa_secret, dismissed_warnings_json FROM users WHERE username = ? AND auth_provider = \'local\'', [username]);
 
   if (!user) {
     // Apply lockout to unknown usernames too (in-memory, resets on restart)
@@ -343,6 +349,7 @@ router.post('/login', async (req: Request, res: Response) => {
       displayName: user.display_name,
       role: user.role,
       theme: user.theme,
+      dismissedWarnings: parseDismissedWarnings(user.dismissed_warnings_json),
     },
   });
 });
@@ -366,7 +373,7 @@ router.post('/login/mfa', async (req: Request, res: Response) => {
   }
 
   const user = queryOne<UserRow>(
-    'SELECT id, username, display_name, role, theme, mfa_secret, mfa_enabled FROM users WHERE id = ?',
+    'SELECT id, username, display_name, role, theme, mfa_secret, mfa_enabled, dismissed_warnings_json FROM users WHERE id = ?',
     [userId],
   );
 
@@ -412,6 +419,7 @@ router.post('/login/mfa', async (req: Request, res: Response) => {
       displayName: user.display_name,
       role: user.role,
       theme: user.theme,
+      dismissedWarnings: parseDismissedWarnings(user.dismissed_warnings_json),
     },
   });
 });
@@ -456,7 +464,7 @@ router.get('/me', (req: Request, res: Response) => {
   try {
     const payload = verifyToken(token);
     const user = queryOne<UserRow>(
-      'SELECT id, username, display_name, role, theme FROM users WHERE id = ?',
+      'SELECT id, username, display_name, role, theme, dismissed_warnings_json FROM users WHERE id = ?',
       [payload.userId],
     );
 
@@ -472,6 +480,7 @@ router.get('/me', (req: Request, res: Response) => {
         displayName: user.display_name,
         role: user.role,
         theme: user.theme,
+        dismissedWarnings: parseDismissedWarnings(user.dismissed_warnings_json),
       },
     });
   } catch {
@@ -534,7 +543,7 @@ router.post('/login/ldap', async (req: Request, res: Response) => {
 
   res.json({
     token,
-    user: { id: user.id, username: user.username, displayName: user.display_name, role: user.role, theme: null },
+    user: { id: user.id, username: user.username, displayName: user.display_name, role: user.role, theme: null, dismissedWarnings: [] },
   });
 });
 
