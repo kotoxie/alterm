@@ -419,18 +419,36 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
 
               const stream = compositor.captureStream(10);
               const mr = new MediaRecorder(stream, { mimeType });
+
+              // Track the last chunk upload so finalize waits for it
+              let lastChunkFetch: Promise<void> = Promise.resolve();
+
               mr.ondataavailable = (e) => {
                 if (e.data.size > 0 && rdpSessionIdRef.current) {
-                  e.data.arrayBuffer().then((buf) => {
-                    fetch(`/api/v1/sessions/${rdpSessionIdRef.current}/recording/chunk`, {
+                  lastChunkFetch = e.data.arrayBuffer().then((buf) => {
+                    return fetch(`/api/v1/sessions/${rdpSessionIdRef.current}/recording/chunk`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/octet-stream' },
                       credentials: 'include',
                       body: buf,
-                    }).catch(() => {});
+                    }).then(() => {}).catch(() => {});
                   }).catch(() => {});
                 }
               };
+
+              // onstop fires after the last ondataavailable — wait for its upload then finalize
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              (mr as any)._finalizeOnStop = (sessionId: string) => {
+                mr.onstop = () => {
+                  lastChunkFetch.finally(() => {
+                    fetch(`/api/v1/sessions/${sessionId}/recording/finalize`, {
+                      method: 'POST',
+                      credentials: 'include',
+                    }).catch(() => {});
+                  });
+                };
+              };
+
               mr.start(5000);
               mediaRecorderRef.current = mr;
 
@@ -615,18 +633,28 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
       // Stop the compositor rAF loop and size observer used for cursor recording
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (mediaRecorderRef.current as any)?._stopRaf?.();
-      // Stop recording and finalize the session
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-        mediaRecorderRef.current.stop();
-      }
+
+      const capturedSessionId = rdpSessionIdRef.current;
+      rdpSessionIdRef.current = null;
+
+      const mr = mediaRecorderRef.current;
       mediaRecorderRef.current = null;
-      if (rdpSessionIdRef.current) {
-        fetch(`/api/v1/sessions/${rdpSessionIdRef.current}/recording/finalize`, {
+
+      if (mr && mr.state !== 'inactive') {
+        // Wire up onstop BEFORE calling stop() so it fires after the last chunk upload
+        if (capturedSessionId) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (mr as any)._finalizeOnStop?.(capturedSessionId);
+        }
+        mr.stop();
+      } else if (capturedSessionId) {
+        // Recorder never started (recording disabled) — still mark session ended
+        fetch(`/api/v1/sessions/${capturedSessionId}/recording/finalize`, {
           method: 'POST',
           credentials: 'include',
         }).catch(() => {});
-        rdpSessionIdRef.current = null;
       }
+
       if (sessionRef.current) {
         try { sessionRef.current.shutdown(); } catch { /* ignore */ }
         sessionRef.current = null;
