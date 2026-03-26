@@ -189,9 +189,11 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
     sharedConnections.forEach((c) => allConns.push({ id: c.id, host: c.host, port: c.port }));
     if (allConns.length === 0) return;
 
+    // Only mark as 'checking' on first load (no prior status).
+    // Re-polls keep the previous green/red dot visible until results return.
     setHealthMap((prev) => {
       const next = { ...prev };
-      allConns.forEach((c) => { next[c.id] = 'checking'; });
+      allConns.forEach((c) => { if (!prev[c.id]) next[c.id] = 'checking'; });
       return next;
     });
 
