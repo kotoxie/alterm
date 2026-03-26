@@ -34,6 +34,8 @@ services:
       - '7443:7443'
     volumes:
       - ./data:/app/data
+    environment:
+      - ALTERM_ENCRYPTION_KEY=your-64-char-hex-key  # openssl rand -hex 32
 ```
 
 ```bash
@@ -64,6 +66,7 @@ Open **`https://<YOUR_IP>:7443`** — on first launch you'll be prompted to crea
 - **Auto-focus** — switching between SSH tabs automatically focuses the terminal
 - **Connect-all** — right-click any folder to open every connection at once
 - **Close-all** — dismiss all sessions in one click
+- **Auto-close on disconnect** — disconnected session tabs close automatically after a 15-second countdown (with cancel option)
 
 ### 📁 Connection Management
 - **Nested folders** — arbitrarily deep folder trees
@@ -79,11 +82,24 @@ Open **`https://<YOUR_IP>:7443`** — on first launch you'll be prompted to crea
 - **MFA (TOTP)** — per-user authenticator app support with trusted device cookies
 - **Authentication Providers** — admin UI to enable/disable local, LDAP, and SSO independently; optionally enforce SSO-only login
 - **IP Access Rules** — allowlist or denylist by CIDR range
-- **Session recording** — record SSH sessions (asciinema) and RDP sessions (WebM video), replay in-browser with download support
-- **Idle timeout & session limits** — configurable auto-logout and max session duration
+- **Session recording** — SSH sessions (asciinema) and RDP sessions (WebM video) recorded and **encrypted at rest**, replayed in-browser; files inaccessible without GUI authentication
+- **Idle timeout** — real idle detection (heartbeats don't reset the clock); warning dialog with countdown before auto-logout
+- **Max session duration** — hard JWT expiry regardless of activity
 - **Audit trail** — every login, session, and config change logged with before/after diffs
 - **TLS** — self-signed cert auto-generated on first launch; bring your own cert optionally
 - **Runs as non-root** — container drops to unprivileged `node` user at startup via `gosu`
+- **Encryption key via env** — `ALTERM_ENCRYPTION_KEY` keeps the key separate from data; falls back to auto-file with a prominent warning
+
+### 💾 Backup & Restore
+- **Full system backup** — exports entire database, all session recordings, and the encryption key into a single encrypted `.aeb` file
+- **Dedicated backup password** — backups are protected with AES-256-CTR + PBKDF2 (200 000 iterations) + HMAC-SHA256; separate from the login password
+- **One-click restore** — upload a `.aeb` file, enter the password, and the system hot-swaps the database and recordings without a restart
+- **Destructive-action confirmation** — restore requires an explicit confirmation step before overwriting data
+
+### 🔌 Port-Forward Tunnels (SSH)
+- Configure local→remote port forwards per SSH connection
+- Per-tunnel status indicators (🟢 listening / 🔴 failed with error message) shown in the session bar
+- Tunnels start automatically when the SSH session connects and close with it
 
 ### 👥 Multi-User Administration
 - **Admin and user roles** with role-based access control
@@ -105,10 +121,25 @@ All configuration is via environment variables:
 | Variable | Default | Description |
 |---|---|---|
 | `PORT` | `7443` | HTTPS port |
+| `ALTERM_ENCRYPTION_KEY` | *(auto-generated file)* | 64-char hex AES-256 key for encrypting credentials and recordings. **Set this in production.** Generate with `openssl rand -hex 32` |
 | `ADMIN_PASSWORD` | *(none)* | Pre-set admin password on first launch (skips setup screen) |
 | `TLS_CERT_PATH` | *(auto)* | Path to a custom TLS certificate inside the container |
 | `TLS_KEY_PATH` | *(auto)* | Path to a custom TLS private key inside the container |
 | `DATA_DIR` | `/app/data` | Directory for database, certs, recordings, and logs |
+
+### Encryption key
+
+Alterm encrypts all credentials, MFA secrets, and session recordings using AES-256. The key can be supplied in two ways:
+
+1. **Recommended — environment variable:**
+   ```bash
+   ALTERM_ENCRYPTION_KEY=$(openssl rand -hex 32)
+   ```
+   The key lives outside the data volume, so a snapshot of `/data` alone is useless without it.
+
+2. **Fallback — auto-generated file** (`/app/data/encryption.key`): Alterm creates a key automatically if the env var is not set. A **red warning banner** is shown in the server logs and on the login page as a reminder. This is acceptable for local/home-lab use but not recommended for production.
+
+> ⚠️ If you switch from file-based to env-based key, export a backup first (Settings → Backup & Restore) and re-import after setting the new key — the backup is self-contained and includes the key used to encrypt recordings.
 
 ### Bind-mount permissions
 
