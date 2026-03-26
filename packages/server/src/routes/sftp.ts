@@ -111,7 +111,7 @@ router.post('/:connectionId/list', async (req: Request, res: Response) => {
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'SFTP error';
     console.error('[sftp] list error:', msg);
-    res.status(500).json({ error: 'Operation failed' });
+    res.status(500).json({ error: msg });
   } finally {
     ssh?.end();
   }
@@ -150,7 +150,7 @@ router.get('/:connectionId/download', async (req: Request, res: Response) => {
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'SFTP error';
     console.error('[sftp] download error:', msg);
-    if (!res.headersSent) res.status(500).json({ error: 'Operation failed' });
+    if (!res.headersSent) res.status(500).json({ error: msg });
   } finally {
     ssh?.end();
   }
@@ -184,7 +184,7 @@ router.post('/:connectionId/upload', async (req: Request, res: Response) => {
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'SFTP error';
     console.error('[sftp] upload error:', msg);
-    res.status(500).json({ error: 'Operation failed' });
+    res.status(500).json({ error: msg });
   } finally {
     ssh?.end();
   }
@@ -217,7 +217,7 @@ router.post('/:connectionId/mkdir', async (req: Request, res: Response) => {
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'SFTP error';
     console.error('[sftp] mkdir error:', msg);
-    res.status(500).json({ error: 'Operation failed' });
+    res.status(500).json({ error: msg });
   } finally {
     ssh?.end();
   }
@@ -250,7 +250,7 @@ router.delete('/:connectionId/file', async (req: Request, res: Response) => {
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'SFTP error';
     console.error('[sftp] delete error:', msg);
-    res.status(500).json({ error: 'Operation failed' });
+    res.status(500).json({ error: msg });
   } finally {
     ssh?.end();
   }
