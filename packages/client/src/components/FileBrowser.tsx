@@ -475,9 +475,7 @@ export function FileBrowser({
                     className={`flex items-center justify-center w-4 h-4 rounded border-2 transition-all shrink-0 ${
                       isSelected
                         ? 'bg-accent border-accent text-white shadow-sm'
-                        : anySelected
-                          ? 'border-border/70 text-transparent hover:border-accent/60'
-                          : 'border-transparent text-transparent group-hover:border-border/70'
+                        : 'border-border/60 text-transparent hover:border-accent/70'
                     }`}
                     onClick={(e) => { e.stopPropagation(); toggleSelect(f.filename); }}
                   >
