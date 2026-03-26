@@ -48,8 +48,18 @@ export function BackupSettings() {
         headers: { 'Content-Type': 'application/octet-stream', 'X-Backup-Password': importPassword },
         body: arrayBuf,
       });
-      const d = await res.json() as { ok?: boolean; message?: string; error?: string; recordingsRestored?: number };
-      if (!res.ok) { setImportMsg({ type: 'error', text: d.error || 'Import failed.' }); return; }
+
+      // Safe JSON parse — avoids unhandled throw if server returns HTML on error
+      let d: { ok?: boolean; message?: string; error?: string; recordingsRestored?: number } = {};
+      try { d = await res.json() as typeof d; } catch { /* non-JSON body */ }
+
+      if (!res.ok) {
+        const msg = res.status === 422
+          ? 'Incorrect backup password.'
+          : (d.error || `Import failed (HTTP ${res.status}).`);
+        setImportMsg({ type: 'error', text: msg });
+        return;
+      }
       setImportMsg({ type: 'success', text: `${d.message ?? 'Restored.'} (${d.recordingsRestored ?? 0} recordings restored)` });
       setImportFile(null); setImportPassword('');
       if (fileRef.current) fileRef.current.value = '';
