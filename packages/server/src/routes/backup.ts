@@ -79,7 +79,8 @@ router.post('/import', adminRequired, (req: Request, res: Response) => {
     });
   } catch (e) {
     const msg = (e as Error).message;
-    const status = msg.includes('Invalid backup password') || msg.includes('corrupted') ? 401 : 400;
+    // Use 422 (not 401) for wrong password — 401 can trigger browser auth dialogs
+    const status = msg.includes('Invalid backup password') || msg.includes('corrupted') ? 422 : 400;
     res.status(status).json({ error: msg });
   }
 });
