@@ -187,6 +187,12 @@ export function SshSession({ tab, isActive, paneWidth, paneHeight, onStatusChang
       dataDispose = term.onData((data) => {
         if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'data', data }));
       });
+
+      // Left-click after selection → copy to clipboard
+      term.onSelectionChange(() => {
+        const sel = term.getSelection();
+        if (sel) navigator.clipboard.writeText(sel).catch(() => { /* ignore */ });
+      });
     })();
 
     return () => {
@@ -202,7 +208,18 @@ export function SshSession({ tab, isActive, paneWidth, paneHeight, onStatusChang
   }, [tab.id, tab.connectionId, token, onStatusChange, reconnectCount, sshFontSize, sshFontFamily, sshScrollback, sshCursorStyle]);
 
   return (
-    <div className="absolute inset-0 bg-[#0d0d0d]">
+    <div
+      className="absolute inset-0 bg-[#0d0d0d]"
+      onContextMenu={async (e) => {
+        e.preventDefault();
+        const ws = wsRef.current;
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        try {
+          const text = await navigator.clipboard.readText();
+          if (text) ws.send(JSON.stringify({ type: 'data', data: text }));
+        } catch { /* clipboard access denied */ }
+      }}
+    >
       <div ref={termRef} className="absolute inset-0" />
 
       {activeTunnels.length > 0 && (
