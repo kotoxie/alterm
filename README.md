@@ -19,17 +19,7 @@
 - [Why Alterm?](#-why-alterm)
 - [Quick Start](#-quick-start)
 - [Features](#-features)
-  - [Protocols](#️-protocols)
-  - [Workspace](#️-workspace)
-  - [Connection Management](#-connection-management)
-  - [Security & Authentication](#-security--authentication)
-  - [Backup & Restore](#-backup--restore)
-  - [Port-Forward Tunnels (SSH)](#-port-forward-tunnels-ssh)
-  - [Multi-User Administration](#-multi-user-administration)
-  - [Infrastructure](#️-infrastructure)
 - [Configuration](#️-configuration)
-  - [Encryption key](#encryption-key)
-  - [Bind-mount permissions](#bind-mount-permissions)
 - [Updating](#-updating)
 - [Building from Source](#️-building-from-source)
 - [License](#-license)
@@ -162,10 +152,6 @@ Alterm encrypts all credentials, MFA secrets, and session recordings using AES-2
 2. **Fallback — auto-generated file** (`/app/data/encryption.key`): Alterm creates a key automatically if the env var is not set. A **red warning banner** is shown in the server logs and on the login page as a reminder. This is acceptable for local/home-lab use but not recommended for production.
 
 > ⚠️ If you switch from file-based to env-based key, export a backup first (Settings → Backup & Restore) and re-import after setting the new key — the backup is self-contained and includes the key used to encrypt recordings.
-
-### Bind-mount permissions
-
-The container starts as root, chowns `/app/data` to the `node` user, then drops privileges. This means bind-mounted data directories work without any host-side `chown`.
 
 ---
 
