@@ -6,6 +6,7 @@ import { queryOne, execute } from '../db/helpers.js';
 import { authRequired } from '../middleware/auth.js';
 import { decrypt } from '../services/encryption.js';
 import { logAudit } from '../services/audit.js';
+import { logFileSessionEvent } from '../services/fileSession.js';
 import { resolveClientIp } from '../services/ip.js';
 
 const router = Router();
@@ -107,6 +108,7 @@ router.post('/:connectionId/list', async (req: Request, res: Response) => {
       });
     });
 
+    logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'sftp', action: 'browse', path: dirPath || '/', detail: { count: entries.length } });
     res.json({ files: entries });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'SFTP error';
@@ -147,6 +149,7 @@ router.get('/:connectionId/download', async (req: Request, res: Response) => {
       res.on('finish', resolve);
       res.on('error', reject);
     });
+    logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'sftp', action: 'download', path: filePath });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'SFTP error';
     console.error('[sftp] download error:', msg);
@@ -180,6 +183,7 @@ router.post('/:connectionId/upload', async (req: Request, res: Response) => {
       req.on('error', reject);
     });
 
+    logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'sftp', action: 'upload', path: filePath });
     res.json({ success: true });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'SFTP error';
@@ -213,6 +217,7 @@ router.post('/:connectionId/mkdir', async (req: Request, res: Response) => {
       });
     });
 
+    logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'sftp', action: 'mkdir', path: dirPath });
     res.json({ success: true });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'SFTP error';
@@ -246,6 +251,7 @@ router.delete('/:connectionId/file', async (req: Request, res: Response) => {
       });
     });
 
+    logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'sftp', action: 'delete', path: filePath });
     res.json({ success: true });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'SFTP error';

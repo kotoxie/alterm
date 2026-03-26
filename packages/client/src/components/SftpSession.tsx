@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { FileBrowser } from './FileBrowser';
 
 interface SftpSessionProps {
@@ -8,5 +9,6 @@ interface SftpSessionProps {
 }
 
 export function SftpSession(props: SftpSessionProps) {
-  return <FileBrowser {...props} apiBase="/api/v1/sftp" pathSep="/" />;
+  const fileSessionId = useMemo(() => crypto.randomUUID(), []);
+  return <FileBrowser {...props} apiBase="/api/v1/sftp" pathSep="/" fileSessionId={fileSessionId} />;
 }

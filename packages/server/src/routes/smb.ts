@@ -3,6 +3,7 @@ import { queryOne } from '../db/helpers.js';
 import { authRequired } from '../middleware/auth.js';
 import { decrypt } from '../services/encryption.js';
 import { logAudit } from '../services/audit.js';
+import { logFileSessionEvent } from '../services/fileSession.js';
 import { resolveClientIp } from '../services/ip.js';
 import SMB2 from '@marsaud/smb2';
 
@@ -99,6 +100,7 @@ router.post('/:connectionId/list', async (req: Request, res: Response) => {
   try {
     smb = makeSmbClient(conn);
     const files = await smbOp(() => smb!.readdir(dirPath, { stats: true }));
+    logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'smb', action: 'browse', path: dirPath || '\\', detail: { count: files.length } });
     res.json({
       files: files.map((f) => ({
         filename: f.name,
@@ -139,6 +141,7 @@ router.get('/:connectionId/download', async (req: Request, res: Response) => {
       res.on('finish', resolve);
       res.on('error', reject);
     });
+    logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'smb', action: 'download', path: filePath });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'SMB error';
     console.error('[smb] download error:', msg);
@@ -168,6 +171,7 @@ router.post('/:connectionId/upload', async (req: Request, res: Response) => {
       stream.on('error', reject);
       req.on('error', reject);
     });
+    logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'smb', action: 'upload', path: filePath });
     res.json({ success: true });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'SMB error';
@@ -192,6 +196,7 @@ router.post('/:connectionId/mkdir', async (req: Request, res: Response) => {
   try {
     smb = makeSmbClient(conn);
     await smbOp(() => smb!.mkdir(dirPath));
+    logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'smb', action: 'mkdir', path: dirPath });
     res.json({ success: true });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'SMB error';
@@ -216,6 +221,7 @@ router.delete('/:connectionId/file', async (req: Request, res: Response) => {
   try {
     smb = makeSmbClient(conn);
     await smbOp(() => smb!.unlink(filePath));
+    logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'smb', action: 'delete', path: filePath });
     res.json({ success: true });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'SMB error';
