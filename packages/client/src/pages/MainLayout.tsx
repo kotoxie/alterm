@@ -133,15 +133,27 @@ export function MainLayout() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<string | undefined>(undefined);
 
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const { settings } = useSettings();
   const insecureKey = settings['system.insecure_key'] === 'true';
-  const [keyWarnDismissed, setKeyWarnDismissed] = useState(
-    () => sessionStorage.getItem('alterm-key-warn-dismissed') === '1',
+  const permanentlyDismissed = user?.dismissedWarnings?.includes('insecure_key') ?? false;
+  const [remindLater, setRemindLater] = useState(
+    () => sessionStorage.getItem('alterm-key-warn-later') === '1',
   );
-  const dismissKeyWarn = () => {
-    sessionStorage.setItem('alterm-key-warn-dismissed', '1');
-    setKeyWarnDismissed(true);
+  const showKeyBanner = insecureKey && !permanentlyDismissed && !remindLater;
+
+  const dismissKeyForever = async () => {
+    await fetch('/api/v1/profile/dismiss-warning', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ warning: 'insecure_key' }),
+    }).catch(() => { /* ignore */ });
+    await refreshUser();
+  };
+
+  const remindKeyLater = () => {
+    sessionStorage.setItem('alterm-key-warn-later', '1');
+    setRemindLater(true);
   };
   const hasRestoredRef = useRef(false);
 
@@ -538,7 +550,7 @@ export function MainLayout() {
     <div className="flex flex-col h-screen bg-surface select-none">
       <IdleMonitor />
       <Header onToggleSidebar={() => setSidebarOpen((o) => !o)} onOpenSettings={onOpenSettings} />
-      {insecureKey && !keyWarnDismissed && (
+      {showKeyBanner && (
         <div className="flex items-start gap-3 bg-red-700 text-white px-4 py-2.5 text-sm shadow-md shrink-0">
           <span className="text-lg shrink-0 mt-0.5">⚠</span>
           <div className="flex-1">
@@ -554,11 +566,20 @@ export function MainLayout() {
               Learn more ↗
             </a>
           </div>
-          <button
-            onClick={dismissKeyWarn}
-            className="shrink-0 text-white/70 hover:text-white text-2xl leading-none"
-            aria-label="Dismiss"
-          >×</button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={remindKeyLater}
+              className="px-2.5 py-1 rounded border border-white/40 text-white/80 hover:bg-white/10 text-xs whitespace-nowrap"
+            >
+              Remind me later
+            </button>
+            <button
+              onClick={dismissKeyForever}
+              className="px-2.5 py-1 rounded bg-white/20 hover:bg-white/30 text-white text-xs whitespace-nowrap"
+            >
+              Never show again
+            </button>
+          </div>
         </div>
       )}
       <div className="flex flex-1 overflow-hidden">

@@ -6,6 +6,7 @@ interface User {
   displayName: string;
   role: 'admin' | 'user';
   theme: string | null;
+  dismissedWarnings: string[];
 }
 
 interface LoginResult {
@@ -22,6 +23,7 @@ interface AuthContextValue {
   logout: () => void;
   setup: (username: string, password: string, displayName: string) => Promise<void>;
   needsSetup: boolean | null;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -260,8 +262,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setNeedsSetup(false);
   }, []);
 
+  const refreshUser = useCallback(async () => {
+    try {
+      const { user: u } = await apiFetch('/auth/me') as { user: User };
+      setUser(u);
+    } catch { /* ignore */ }
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, completeMfaLogin, logout, setup, needsSetup }}>
+    <AuthContext.Provider value={{ user, token, loading, login, completeMfaLogin, logout, setup, needsSetup, refreshUser }}>
       {children}
       {idleWarnSecondsLeft !== null && (
         <IdleWarningDialog secondsLeft={idleWarnSecondsLeft} onStayActive={handleStayActive} />
