@@ -122,6 +122,7 @@ export function FileBrowser({
     setError('');
     setContextMenu(null);
     setSelectedFiles(new Set());
+    const isInitialConnect = dirPath === '' || dirPath === '/';
     try {
       const res = await fetch(`${apiBase}/${connectionId}/list`, {
         method: 'POST',
@@ -137,9 +138,17 @@ export function FileBrowser({
       setPath(dirPath);
       onStatusChange?.('connected');
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Error');
-      setStatus('error');
-      onStatusChange?.('disconnected');
+      const msg = e instanceof Error ? e.message : 'Error';
+      setError(msg);
+      // Only treat the initial connection failure as a full disconnect.
+      // Errors navigating subfolders (permission denied, etc.) show an inline
+      // error message but keep the session alive so the user can go back.
+      if (isInitialConnect) {
+        setStatus('error');
+        onStatusChange?.('disconnected');
+      } else {
+        setStatus('connected');
+      }
     } finally {
       setLoading(false);
     }
