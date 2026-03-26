@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { FileBrowser } from './FileBrowser';
 
 interface SmbSessionProps {
@@ -8,5 +9,6 @@ interface SmbSessionProps {
 }
 
 export function SmbSession(props: SmbSessionProps) {
-  return <FileBrowser {...props} apiBase="/api/v1/smb" pathSep="\\" />;
+  const fileSessionId = useMemo(() => crypto.randomUUID(), []);
+  return <FileBrowser {...props} apiBase="/api/v1/smb" pathSep="\\" fileSessionId={fileSessionId} />;
 }

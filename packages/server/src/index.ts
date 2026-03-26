@@ -27,6 +27,7 @@ import backupRoutes from './routes/backup.js';
 import smbRoutes from './routes/smb.js';
 import sftpRoutes from './routes/sftp.js';
 import ftpRoutes from './routes/ftp.js';
+import fileSessionsRoutes from './routes/file-sessions.js';
 import { ipRulesMiddleware } from './middleware/ipRules.js';
 
 async function main() {
@@ -122,6 +123,7 @@ async function main() {
   app.use('/api/v1/smb', smbRoutes);
   app.use('/api/v1/sftp', sftpRoutes);
   app.use('/api/v1/ftp', ftpRoutes);
+  app.use('/api/v1/file-sessions', fileSessionsRoutes);
   app.use('/health', healthRoutes);
 
   // Global JSON error handler — prevents Express from returning HTML 500 pages

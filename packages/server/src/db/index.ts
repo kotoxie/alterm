@@ -266,6 +266,31 @@ function runMigrations() {
         try { database.run('ALTER TABLE users ADD COLUMN dismissed_warnings_json TEXT'); } catch { /* already exists */ }
       },
     },
+    {
+      version: 3,
+      sql: `
+        CREATE TABLE IF NOT EXISTS file_sessions (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          connection_id TEXT NOT NULL REFERENCES connections(id) ON DELETE CASCADE,
+          protocol TEXT NOT NULL,
+          started_at TEXT NOT NULL DEFAULT (datetime('now')),
+          ended_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS file_session_events (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL REFERENCES file_sessions(id) ON DELETE CASCADE,
+          timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+          action TEXT NOT NULL,
+          path TEXT NOT NULL,
+          detail_json TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_file_sessions_user ON file_sessions(user_id);
+        CREATE INDEX IF NOT EXISTS idx_file_session_events_session ON file_session_events(session_id);
+      `,
+    },
   ];
 
   for (const migration of migrations) {
