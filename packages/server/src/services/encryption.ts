@@ -128,6 +128,36 @@ export function decryptRecording(buf: Buffer): Buffer {
   return Buffer.concat([decipher.update(body), decipher.final()]);
 }
 
+// ── Incremental RDP recording writer ─────────────────────────────────────────
+// RDP recordings arrive as browser MediaRecorder chunks. We encrypt each chunk
+// as it arrives so the file is never plaintext on disk.
+
+export interface RdpRecordingWriter {
+  writeChunk(data: Buffer): void;
+  close(): void;
+}
+
+/**
+ * Opens a new encrypted recording file and returns a writer that encrypts
+ * each chunk with AES-256-CTR (continuous keystream across all chunks).
+ * Writes the magic header + IV synchronously on creation.
+ */
+export function openRdpRecordingFile(filePath: string): RdpRecordingWriter {
+  const iv = crypto.randomBytes(IV_LENGTH);
+  const cipher = crypto.createCipheriv(STREAM_ALGORITHM, encryptionKey, iv);
+  const header = Buffer.concat([REC_MAGIC, Buffer.from([REC_VERSION]), iv]);
+  fs.writeFileSync(filePath, header);
+  return {
+    writeChunk(data: Buffer) {
+      fs.appendFileSync(filePath, cipher.update(data));
+    },
+    close() {
+      const fin = cipher.final();
+      if (fin.length > 0) fs.appendFileSync(filePath, fin);
+    },
+  };
+}
+
 /** Encrypt a complete plaintext buffer and return encrypted bytes with header. */
 export function encryptRecordingBuffer(plaintextBuf: Buffer): Buffer {
   const iv = crypto.randomBytes(IV_LENGTH);
