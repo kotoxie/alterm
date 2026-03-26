@@ -260,7 +260,11 @@ function runMigrations() {
     },
     {
       version: 2,
-      sql: `ALTER TABLE users ADD COLUMN dismissed_warnings_json TEXT;`,
+      // Column is already in the v1 schema for fresh installs; this only runs for
+      // existing containers that have a v1 DB without the column.
+      run: (database) => {
+        try { database.run('ALTER TABLE users ADD COLUMN dismissed_warnings_json TEXT'); } catch { /* already exists */ }
+      },
     },
   ];
 
