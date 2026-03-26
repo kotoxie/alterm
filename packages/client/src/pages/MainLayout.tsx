@@ -137,9 +137,9 @@ export function MainLayout() {
   const { settings } = useSettings();
   const insecureKey = settings['system.insecure_key'] === 'true';
   const permanentlyDismissed = user?.dismissedWarnings?.includes('insecure_key') ?? false;
-  const [remindLater, setRemindLater] = useState(
-    () => sessionStorage.getItem('alterm-key-warn-later') === '1',
-  );
+  // Read directly from sessionStorage each render so logout (which clears the key) is reflected immediately
+  const remindLater = sessionStorage.getItem('alterm-key-warn-later') === '1';
+  const [, forceUpdate] = useState(0);
   const showKeyBanner = insecureKey && !permanentlyDismissed && !remindLater;
 
   const dismissKeyForever = async () => {
@@ -153,7 +153,7 @@ export function MainLayout() {
 
   const remindKeyLater = () => {
     sessionStorage.setItem('alterm-key-warn-later', '1');
-    setRemindLater(true);
+    forceUpdate((n) => n + 1);
   };
   const hasRestoredRef = useRef(false);
 
