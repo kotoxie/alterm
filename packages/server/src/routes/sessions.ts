@@ -198,7 +198,7 @@ router.post('/rdp-session', (req: Request, res: Response) => {
 router.post('/:id/recording/chunk', (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const isAdmin = req.user!.role === 'admin';
-  const { id } = req.params;
+  const id = req.params.id as string;
 
   const session = queryOne<{ recording_path: string | null; user_id: string }>(
     'SELECT recording_path, user_id FROM sessions WHERE id = ?',
@@ -232,7 +232,7 @@ router.post('/:id/recording/chunk', (req: Request, res: Response) => {
 router.post('/:id/recording/finalize', (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const isAdmin = req.user!.role === 'admin';
-  const { id } = req.params;
+  const id = req.params.id as string;
 
   const session = queryOne<{ user_id: string }>(
     'SELECT user_id FROM sessions WHERE id = ?',
