@@ -145,7 +145,7 @@ Alterm encrypts all credentials, MFA secrets, and session recordings using AES-2
 
 1. **Recommended — environment variable:**
    ```bash
-   ALTERM_ENCRYPTION_KEY=$(openssl rand -hex 32)
+   ALTERM_ENCRYPTION_KEY=[Generate encryption key using the command - openssl rand -hex 32]
    ```
    The key lives outside the data volume, so a snapshot of `/data` alone is useless without it.
 
