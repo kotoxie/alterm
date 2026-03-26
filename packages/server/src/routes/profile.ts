@@ -22,13 +22,14 @@ interface UserRow {
   mfa_enabled: number;
   mfa_secret: string | null;
   ssh_prefs_json: string | null;
+  dismissed_warnings_json: string | null;
 }
 
 // GET / — return own profile
 router.get('/', (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const user = queryOne<UserRow>(
-    'SELECT id, username, display_name, email, avatar_text, role FROM users WHERE id = ?',
+    'SELECT id, username, display_name, email, avatar_text, role, dismissed_warnings_json FROM users WHERE id = ?',
     [userId],
   );
 
@@ -44,6 +45,7 @@ router.get('/', (req: Request, res: Response) => {
     email: user.email,
     avatarText: user.avatar_text,
     role: user.role,
+    dismissedWarnings: user.dismissed_warnings_json ? JSON.parse(user.dismissed_warnings_json) as string[] : [],
   });
 });
 
@@ -239,6 +241,24 @@ router.post('/mfa/disable', async (req: Request, res: Response) => {
     ipAddress: req.ip,
   });
 
+  res.json({ ok: true });
+});
+
+// POST /dismiss-warning — permanently dismiss a named warning for this user
+router.post('/dismiss-warning', (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const { warning } = req.body as { warning?: string };
+  if (!warning) { res.status(400).json({ error: 'warning is required' }); return; }
+
+  const row = queryOne<{ dismissed_warnings_json: string | null }>(
+    'SELECT dismissed_warnings_json FROM users WHERE id = ?',
+    [userId],
+  );
+  const current: string[] = row?.dismissed_warnings_json
+    ? JSON.parse(row.dismissed_warnings_json) as string[]
+    : [];
+  if (!current.includes(warning)) current.push(warning);
+  execute('UPDATE users SET dismissed_warnings_json = ? WHERE id = ?', [JSON.stringify(current), userId]);
   res.json({ ok: true });
 });
 
