@@ -115,15 +115,19 @@ export function FileBrowser({
     };
   }, [contextMenu]);
 
-  const joinPath = (base: string, name: string) => base ? `${base}${pathSep}${name}` : name;
+  // For SFTP/FTP (pathSep='/'), always produce absolute paths.
+  // For SMB (pathSep='\\'), keep existing relative-join behaviour.
+  const joinPath = (base: string, name: string) => {
+    if (pathSep === '/') return base ? `${base}/${name}` : `/${name}`;
+    return base ? `${base}${pathSep}${name}` : name;
+  };
 
   const listDir = useCallback(async (dirPath: string) => {
     setLoading(true);
     setError('');
     setContextMenu(null);
     setSelectedFiles(new Set());
-    const isInitialConnect = dirPath === '' || dirPath === '/';
-    try {
+    const isInitialConnect = dirPath === '' || dirPath === '/';    try {
       const res = await fetch(`${apiBase}/${connectionId}/list`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -155,7 +159,7 @@ export function FileBrowser({
   }, [connectionId, apiBase, pathSep, onStatusChange]);
 
   useEffect(() => {
-    if (isActive) listDir('');
+    if (isActive) listDir(pathSep === '/' ? '/' : '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connectionId, isActive]);
 
@@ -164,22 +168,34 @@ export function FileBrowser({
   }
 
   function navigateUp() {
-    const parts = path.split(pathSep).filter(Boolean);
-    parts.pop();
-    listDir(parts.join(pathSep));
+    if (pathSep === '/') {
+      const parts = path.split('/').filter(Boolean);
+      parts.pop();
+      listDir(parts.length ? `/${parts.join('/')}` : '/');
+    } else {
+      const parts = path.split(pathSep).filter(Boolean);
+      parts.pop();
+      listDir(parts.join(pathSep));
+    }
   }
 
   async function downloadFile(name: string) {
     const filePath = joinPath(path, name);
-    const res = await fetch(`${apiBase}/${connectionId}/download?path=${encodeURIComponent(filePath)}`, {
-      credentials: 'include',
-    });
-    if (!res.ok) { setError('Download failed'); return; }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = name; a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const res = await fetch(`${apiBase}/${connectionId}/download?path=${encodeURIComponent(filePath)}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        let msg = 'Download failed';
+        try { const d = await res.json() as { error?: string }; msg = d.error || msg; } catch { /* ignore */ }
+        setError(msg); return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = name; a.click();
+      URL.revokeObjectURL(url);
+    } catch { setError('Download failed'); }
   }
 
   async function deleteFile(name: string) {
@@ -286,7 +302,7 @@ export function FileBrowser({
           <span className="font-semibold text-text-primary shrink-0 mr-1">{connectionName}</span>
           <span className="text-text-secondary shrink-0">/</span>
           <button
-            onClick={() => listDir('')}
+            onClick={() => listDir(pathSep === '/' ? '/' : '')}
             className="text-text-secondary hover:text-text-primary transition-colors shrink-0 px-1"
           >
             Root
@@ -295,7 +311,10 @@ export function FileBrowser({
             <span key={i} className="flex items-center gap-1 shrink-0">
               <span className="text-border">/</span>
               <button
-                onClick={() => listDir(pathParts.slice(0, i + 1).join(pathSep))}
+                onClick={() => {
+                  const joined = pathParts.slice(0, i + 1).join(pathSep);
+                  listDir(pathSep === '/' ? `/${joined}` : joined);
+                }}
                 className={i === pathParts.length - 1
                   ? 'text-text-primary font-medium px-1'
                   : 'text-text-secondary hover:text-text-primary transition-colors px-1'}
@@ -444,19 +463,21 @@ export function FileBrowser({
                 <div
                   key={f.filename}
                   className={`group flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer transition-colors ${
-                    isSelected ? 'bg-accent/12 hover:bg-accent/18' : 'hover:bg-surface-hover'
+                    isSelected
+                      ? 'bg-accent/20 ring-1 ring-accent/40 hover:bg-accent/25'
+                      : 'hover:bg-surface-hover'
                   }`}
                   onClick={() => handleRowClick(f)}
                   onDoubleClick={() => { if (!isDir(f)) downloadFile(f.filename); }}
                   onContextMenu={(e) => handleContextMenu(e, f)}
                 >
                   <div
-                    className={`flex items-center justify-center w-4 h-4 rounded border transition-all shrink-0 ${
+                    className={`flex items-center justify-center w-4 h-4 rounded border-2 transition-all shrink-0 ${
                       isSelected
-                        ? 'bg-accent border-accent text-white'
+                        ? 'bg-accent border-accent text-white shadow-sm'
                         : anySelected
-                          ? 'border-border text-transparent hover:border-accent/60'
-                          : 'border-transparent text-transparent group-hover:border-border'
+                          ? 'border-border/70 text-transparent hover:border-accent/60'
+                          : 'border-transparent text-transparent group-hover:border-border/70'
                     }`}
                     onClick={(e) => { e.stopPropagation(); toggleSelect(f.filename); }}
                   >
