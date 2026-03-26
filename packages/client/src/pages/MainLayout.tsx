@@ -134,6 +134,15 @@ export function MainLayout() {
   const [settingsSection, setSettingsSection] = useState<string | undefined>(undefined);
 
   const { user } = useAuth();
+  const { settings } = useSettings();
+  const insecureKey = settings['system.insecure_key'] === 'true';
+  const [keyWarnDismissed, setKeyWarnDismissed] = useState(
+    () => sessionStorage.getItem('alterm-key-warn-dismissed') === '1',
+  );
+  const dismissKeyWarn = () => {
+    sessionStorage.setItem('alterm-key-warn-dismissed', '1');
+    setKeyWarnDismissed(true);
+  };
   const hasRestoredRef = useRef(false);
 
   const onOpenSettings = useCallback((section?: string) => {
@@ -529,6 +538,29 @@ export function MainLayout() {
     <div className="flex flex-col h-screen bg-surface select-none">
       <IdleMonitor />
       <Header onToggleSidebar={() => setSidebarOpen((o) => !o)} onOpenSettings={onOpenSettings} />
+      {insecureKey && !keyWarnDismissed && (
+        <div className="flex items-start gap-3 bg-red-700 text-white px-4 py-2.5 text-sm shadow-md shrink-0">
+          <span className="text-lg shrink-0 mt-0.5">⚠</span>
+          <div className="flex-1">
+            <span className="font-bold">Security Warning: </span>
+            <code className="bg-red-800 px-1 rounded text-xs">ALTERM_ENCRYPTION_KEY</code> is not set — the encryption key is stored alongside your data.
+            Set this environment variable before going to production.{' '}
+            <a
+              href="https://github.com/kotoxie/alterm#encryption-key"
+              target="_blank"
+              rel="noreferrer"
+              className="underline opacity-80 hover:opacity-100"
+            >
+              Learn more ↗
+            </a>
+          </div>
+          <button
+            onClick={dismissKeyWarn}
+            className="shrink-0 text-white/70 hover:text-white text-2xl leading-none"
+            aria-label="Dismiss"
+          >×</button>
+        </div>
+      )}
       <div className="flex flex-1 overflow-hidden">
         {sidebarOpen && (
           <>
