@@ -14,6 +14,28 @@
 
 ---
 
+## 📋 Table of Contents
+
+- [Why Alterm?](#-why-alterm)
+- [Quick Start](#-quick-start)
+- [Features](#-features)
+  - [Protocols](#️-protocols)
+  - [Workspace](#️-workspace)
+  - [Connection Management](#-connection-management)
+  - [Security & Authentication](#-security--authentication)
+  - [Backup & Restore](#-backup--restore)
+  - [Port-Forward Tunnels (SSH)](#-port-forward-tunnels-ssh)
+  - [Multi-User Administration](#-multi-user-administration)
+  - [Infrastructure](#️-infrastructure)
+- [Configuration](#️-configuration)
+  - [Encryption key](#encryption-key)
+  - [Bind-mount permissions](#bind-mount-permissions)
+- [Updating](#-updating)
+- [Building from Source](#️-building-from-source)
+- [License](#-license)
+
+---
+
 ## 🚀 Why Alterm?
 
 Most browser-based remote access tools relay your display through a server-side engine, adding latency and complexity. Alterm's RDP client runs **entirely in your browser** using WebAssembly — pixel-perfect, low-latency RDP with no middleware, no Java, and no extra containers.
