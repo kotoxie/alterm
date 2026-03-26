@@ -14,6 +14,8 @@ router.get('/', (req: Request, res: Response) => {
     return;
   }
   const settings = getAllSettings();
+  // Inject runtime-only flag so the admin UI can show the insecure-key warning
+  settings['system.insecure_key'] = String(usingFileKey);
   res.json({ settings });
 });
 
