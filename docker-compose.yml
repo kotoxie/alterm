@@ -1,7 +1,8 @@
 services:
   alterm:
     build: .
-    container_name: alterm    
+    container_name: alterm
+    restart: unless-stopped
     ports:
       - "7443:7443"
     volumes:
