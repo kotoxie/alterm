@@ -42,6 +42,7 @@ services:
   alterm:
     image: ghcr.io/kotoxie/alterm:latest
     container_name: alterm
+    restart: unless-stopped
     ports:
       - '7443:7443'
     volumes:
