@@ -73,6 +73,8 @@ interface FileBrowserProps {
   apiBase: string;
   /** Path separator: '/' for SFTP/FTP, '\\' for SMB */
   pathSep?: string;
+  /** Unique session ID passed as X-File-Session-Id header for activity tracking */
+  fileSessionId?: string;
 }
 
 export function FileBrowser({
@@ -82,6 +84,7 @@ export function FileBrowser({
   onStatusChange,
   apiBase,
   pathSep = '/',
+  fileSessionId,
 }: FileBrowserProps) {
   const [path, setPath] = useState('');
   const [files, setFiles] = useState<FileEntry[]>([]);
@@ -130,7 +133,7 @@ export function FileBrowser({
     const isInitialConnect = dirPath === '' || dirPath === '/';    try {
       const res = await fetch(`${apiBase}/${connectionId}/list`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(fileSessionId ? { 'X-File-Session-Id': fileSessionId } : {}) },
         credentials: 'include',
         body: JSON.stringify({ path: dirPath }),
       });
@@ -156,7 +159,7 @@ export function FileBrowser({
     } finally {
       setLoading(false);
     }
-  }, [connectionId, apiBase, pathSep, onStatusChange]);
+  }, [connectionId, apiBase, pathSep, onStatusChange, fileSessionId]);
 
   useEffect(() => {
     if (isActive) listDir(pathSep === '/' ? '/' : '');
@@ -184,6 +187,7 @@ export function FileBrowser({
     try {
       const res = await fetch(`${apiBase}/${connectionId}/download?path=${encodeURIComponent(filePath)}`, {
         credentials: 'include',
+        ...(fileSessionId ? { headers: { 'X-File-Session-Id': fileSessionId } } : {}),
       });
       if (!res.ok) {
         let msg = 'Download failed';
@@ -204,6 +208,7 @@ export function FileBrowser({
     const res = await fetch(`${apiBase}/${connectionId}/file?path=${encodeURIComponent(filePath)}`, {
       method: 'DELETE',
       credentials: 'include',
+      ...(fileSessionId ? { headers: { 'X-File-Session-Id': fileSessionId } } : {}),
     });
     if (res.ok) listDir(path);
     else { const d = await res.json(); setError(d.error || 'Delete failed'); }
@@ -214,7 +219,7 @@ export function FileBrowser({
     const dirPath = joinPath(path, newFolderName.trim());
     const res = await fetch(`${apiBase}/${connectionId}/mkdir`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(fileSessionId ? { 'X-File-Session-Id': fileSessionId } : {}) },
       credentials: 'include',
       body: JSON.stringify({ path: dirPath }),
     });
@@ -230,7 +235,7 @@ export function FileBrowser({
     try {
       const res = await fetch(`${apiBase}/${connectionId}/upload?path=${encodeURIComponent(filePath)}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/octet-stream' },
+        headers: { 'Content-Type': 'application/octet-stream', ...(fileSessionId ? { 'X-File-Session-Id': fileSessionId } : {}) },
         credentials: 'include',
         body: file,
       });
@@ -255,6 +260,7 @@ export function FileBrowser({
       await fetch(`${apiBase}/${connectionId}/file?path=${encodeURIComponent(filePath)}`, {
         method: 'DELETE',
         credentials: 'include',
+        ...(fileSessionId ? { headers: { 'X-File-Session-Id': fileSessionId } } : {}),
       });
     }
     setSelectedFiles(new Set());

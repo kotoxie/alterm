@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { FileBrowser } from './FileBrowser';
 
 interface FtpSessionProps {
@@ -8,5 +9,6 @@ interface FtpSessionProps {
 }
 
 export function FtpSession(props: FtpSessionProps) {
-  return <FileBrowser {...props} apiBase="/api/v1/ftp" pathSep="/" />;
+  const fileSessionId = useMemo(() => crypto.randomUUID(), []);
+  return <FileBrowser {...props} apiBase="/api/v1/ftp" pathSep="/" fileSessionId={fileSessionId} />;
 }

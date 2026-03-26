@@ -5,6 +5,7 @@ import { queryOne } from '../db/helpers.js';
 import { authRequired } from '../middleware/auth.js';
 import { decrypt } from '../services/encryption.js';
 import { logAudit } from '../services/audit.js';
+import { logFileSessionEvent } from '../services/fileSession.js';
 import { resolveClientIp } from '../services/ip.js';
 
 const router = Router();
@@ -79,6 +80,7 @@ router.post('/:connectionId/list', async (req: Request, res: Response) => {
   try {
     client = await makeFtpClient(conn);
     const entries = await client.list(dirPath || '/');
+    logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'ftp', action: 'browse', path: dirPath || '/', detail: { count: entries.length } });
     res.json({
       files: entries.map((e) => ({
         filename: e.name,
@@ -114,6 +116,7 @@ router.get('/:connectionId/download', async (req: Request, res: Response) => {
     res.setHeader('Content-Type', 'application/octet-stream');
     pass.pipe(res);
     await client.downloadTo(pass, filePath);
+    logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'ftp', action: 'download', path: filePath });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'FTP error';
     console.error('[ftp] download error:', msg);
@@ -137,6 +140,7 @@ router.post('/:connectionId/upload', async (req: Request, res: Response) => {
   try {
     client = await makeFtpClient(conn);
     await client.uploadFrom(req, filePath);
+    logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'ftp', action: 'upload', path: filePath });
     res.json({ success: true });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'FTP error';
@@ -163,6 +167,7 @@ router.post('/:connectionId/mkdir', async (req: Request, res: Response) => {
     await client.ensureDir(dirPath);
     // cd back to root so the connection is in a clean state before closing
     await client.cd('/');
+    logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'ftp', action: 'mkdir', path: dirPath });
     res.json({ success: true });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'FTP error';
@@ -192,6 +197,7 @@ router.delete('/:connectionId/file', async (req: Request, res: Response) => {
     } catch {
       await client.removeDir(filePath);
     }
+    logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'ftp', action: 'delete', path: filePath });
     res.json({ success: true });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'FTP error';
