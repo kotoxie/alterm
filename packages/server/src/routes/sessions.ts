@@ -7,10 +7,14 @@ import { authRequired, adminRequired } from '../middleware/auth.js';
 import { logAudit } from '../services/audit.js';
 import { getSetting } from '../services/settings.js';
 import { config } from '../config.js';
-import { decryptRecording, encryptRecordingFileInPlace } from '../services/encryption.js';
+import { decryptRecording, encryptRecordingFileInPlace, openRdpRecordingFile, type RdpRecordingWriter } from '../services/encryption.js';
 
 const router = Router();
 router.use(authRequired);
+
+// Per-session cipher context for RDP recordings. Keyed by session ID.
+// Allows each incoming chunk to be encrypted immediately as it arrives.
+const rdpWriters = new Map<string, RdpRecordingWriter>();
 
 interface SessionRow {
   id: string;
@@ -78,6 +82,12 @@ router.delete('/', adminRequired, (req: Request, res: Response) => {
   // Collect all recording file paths before deleting rows
   const rows = queryAll<{ recording_path: string | null }>('SELECT recording_path FROM sessions', []);
   const totalSessions = rows.length;
+
+  // Close any in-flight RDP recording writers
+  for (const [sid, writer] of rdpWriters) {
+    try { writer.close(); } catch { /* ignore */ }
+    rdpWriters.delete(sid);
+  }
 
   // Delete recording files from disk
   let deletedRecordings = 0;
@@ -205,7 +215,13 @@ router.post('/:id/recording/chunk', (req: Request, res: Response) => {
   }
 
   try {
-    fs.appendFileSync(filePath, req.body as Buffer);
+    let writer = rdpWriters.get(id);
+    if (!writer) {
+      // First chunk — create the encrypted file with header and a new cipher context
+      writer = openRdpRecordingFile(filePath);
+      rdpWriters.set(id, writer);
+    }
+    writer.writeChunk(req.body as Buffer);
   } catch {
     res.status(500).json({ error: 'Failed to write chunk' }); return;
   }
@@ -226,9 +242,12 @@ router.post('/:id/recording/finalize', (req: Request, res: Response) => {
   if (!isAdmin && session.user_id !== userId) { res.status(403).json({ error: 'Forbidden' }); return; }
 
   execute("UPDATE sessions SET ended_at = datetime('now') WHERE id = ?", [id]);
-  // Encrypt the WebM recording at rest now that the session is complete
+  // Finalize the in-flight cipher (CTR final() is a no-op but closes cleanly)
+  const writer = rdpWriters.get(id);
+  if (writer) { writer.close(); rdpWriters.delete(id); }
+  // If no writer (e.g. recording was already on disk from a previous run), encrypt in-place as fallback
   const finSession = queryOne<{ recording_path: string | null }>('SELECT recording_path FROM sessions WHERE id = ?', [id]);
-  if (finSession?.recording_path) encryptRecordingFileInPlace(finSession.recording_path);
+  if (finSession?.recording_path && !writer) encryptRecordingFileInPlace(finSession.recording_path);
   res.json({ ok: true });
 });
 
