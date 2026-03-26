@@ -85,20 +85,32 @@ function runMigrations() {
 
   const migrations: { version: number; sql?: string; run?: (database: Database) => void }[] = [
     {
+      // Single consolidated schema — represents the full current state.
+      // New schema changes must be added as version 2, 3, … going forward.
       version: 1,
       sql: `
-        CREATE TABLE users (
+        CREATE TABLE IF NOT EXISTS users (
           id TEXT PRIMARY KEY,
           username TEXT NOT NULL UNIQUE,
           password_hash TEXT NOT NULL,
           display_name TEXT NOT NULL,
           role TEXT NOT NULL DEFAULT 'user',
           theme TEXT,
+          email TEXT,
+          avatar_text TEXT,
+          failed_login_count INTEGER NOT NULL DEFAULT 0,
+          locked_until TEXT,
+          last_login_at TEXT,
+          ssh_prefs_json TEXT,
+          mfa_secret TEXT,
+          mfa_enabled INTEGER NOT NULL DEFAULT 0,
+          auth_provider TEXT NOT NULL DEFAULT 'local',
+          provider_id TEXT,
           created_at TEXT NOT NULL DEFAULT (datetime('now')),
           updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
 
-        CREATE TABLE connection_groups (
+        CREATE TABLE IF NOT EXISTS connection_groups (
           id TEXT PRIMARY KEY,
           user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           name TEXT NOT NULL,
@@ -106,12 +118,12 @@ function runMigrations() {
           sort_order INTEGER NOT NULL DEFAULT 0
         );
 
-        CREATE TABLE connections (
+        CREATE TABLE IF NOT EXISTS connections (
           id TEXT PRIMARY KEY,
           user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           group_id TEXT REFERENCES connection_groups(id) ON DELETE SET NULL,
           name TEXT NOT NULL,
-          protocol TEXT NOT NULL CHECK(protocol IN ('ssh', 'rdp', 'smb')),
+          protocol TEXT NOT NULL CHECK(protocol IN ('ssh', 'rdp', 'smb', 'vnc', 'sftp', 'ftp')),
           host TEXT NOT NULL,
           port INTEGER NOT NULL,
           username TEXT,
@@ -120,11 +132,14 @@ function runMigrations() {
           extra_config_json TEXT,
           sort_order INTEGER NOT NULL DEFAULT 0,
           recording_enabled INTEGER NOT NULL DEFAULT 1,
+          shared INTEGER NOT NULL DEFAULT 0,
+          tunnels_json TEXT,
+          host_fingerprint TEXT,
           created_at TEXT NOT NULL DEFAULT (datetime('now')),
           updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
 
-        CREATE TABLE sessions (
+        CREATE TABLE IF NOT EXISTS sessions (
           id TEXT PRIMARY KEY,
           user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           connection_id TEXT NOT NULL REFERENCES connections(id) ON DELETE CASCADE,
@@ -134,7 +149,7 @@ function runMigrations() {
           recording_path TEXT
         );
 
-        CREATE TABLE audit_log (
+        CREATE TABLE IF NOT EXISTS audit_log (
           id TEXT PRIMARY KEY,
           user_id TEXT,
           event_type TEXT NOT NULL,
@@ -143,22 +158,6 @@ function runMigrations() {
           ip_address TEXT,
           timestamp TEXT NOT NULL DEFAULT (datetime('now'))
         );
-
-        CREATE INDEX idx_connections_user ON connections(user_id);
-        CREATE INDEX idx_connection_groups_user ON connection_groups(user_id);
-        CREATE INDEX idx_sessions_user ON sessions(user_id);
-        CREATE INDEX idx_audit_log_timestamp ON audit_log(timestamp);
-        CREATE INDEX idx_audit_log_user ON audit_log(user_id);
-      `,
-    },
-    {
-      version: 2,
-      sql: `
-        ALTER TABLE users ADD COLUMN email TEXT;
-        ALTER TABLE users ADD COLUMN avatar_text TEXT;
-        ALTER TABLE users ADD COLUMN failed_login_count INTEGER NOT NULL DEFAULT 0;
-        ALTER TABLE users ADD COLUMN locked_until TEXT;
-        ALTER TABLE users ADD COLUMN last_login_at TEXT;
 
         CREATE TABLE IF NOT EXISTS settings (
           key TEXT PRIMARY KEY,
@@ -175,85 +174,7 @@ function runMigrations() {
           created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
 
-        INSERT OR IGNORE INTO settings (key, value) VALUES
-          ('app.name', 'Alterm'),
-          ('app.logo', ''),
-          ('security.session_timeout_minutes', '0'),
-          ('security.max_failed_logins', '5'),
-          ('security.lockout_minutes', '30'),
-          ('security.ip_rules_enabled', 'false'),
-          ('security.ip_rules_mode', 'allowlist'),
-          ('audit.retention_days', '90'),
-          ('session.recording_enabled', 'false'),
-          ('session.recording_retention_days', '90'),
-          ('session.max_concurrent', '0'),
-          ('ssh.font_size', '14'),
-          ('ssh.font_family', 'Cascadia Code, Fira Code, Menlo, Monaco, Courier New, monospace'),
-          ('ssh.scrollback', '5000'),
-          ('ssh.cursor_style', 'block'),
-          ('rdp.default_port', '3389'),
-          ('rdp.default_width', '1920'),
-          ('rdp.default_height', '1080');
-      `,
-    },
-    {
-      version: 3,
-      sql: `
-        ALTER TABLE connections ADD COLUMN shared INTEGER NOT NULL DEFAULT 0;
-
-        INSERT OR IGNORE INTO settings (key, value) VALUES
-          ('security.idle_timeout_minutes', '0'),
-          ('security.max_session_minutes', '0');
-      `,
-    },
-    {
-      version: 4,
-      sql: `
-        ALTER TABLE connections ADD COLUMN tunnels_json TEXT;
-        INSERT OR IGNORE INTO settings (key, value) VALUES ('session.recording_path', 'recordings');
-      `,
-    },
-    {
-      version: 5,
-      sql: `
-        CREATE TABLE connections_new (
-          id TEXT PRIMARY KEY,
-          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-          group_id TEXT REFERENCES connection_groups(id) ON DELETE SET NULL,
-          name TEXT NOT NULL,
-          protocol TEXT NOT NULL CHECK(protocol IN ('ssh', 'rdp', 'smb', 'vnc', 'sftp', 'ftp')),
-          host TEXT NOT NULL,
-          port INTEGER NOT NULL,
-          username TEXT,
-          encrypted_password TEXT,
-          private_key TEXT,
-          extra_config_json TEXT,
-          sort_order INTEGER NOT NULL DEFAULT 0,
-          recording_enabled INTEGER NOT NULL DEFAULT 1,
-          created_at TEXT NOT NULL DEFAULT (datetime('now')),
-          updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-          shared INTEGER NOT NULL DEFAULT 0,
-          tunnels_json TEXT
-        );
-        INSERT INTO connections_new SELECT id, user_id, group_id, name, protocol, host, port, username, encrypted_password, private_key, extra_config_json, sort_order, recording_enabled, created_at, updated_at, shared, tunnels_json FROM connections;
-        DROP TABLE connections;
-        ALTER TABLE connections_new RENAME TO connections;
-        CREATE INDEX IF NOT EXISTS idx_connections_user ON connections(user_id);
-      `,
-    },
-    {
-      version: 6,
-      sql: `
-        INSERT OR IGNORE INTO settings (key, value) VALUES
-          ('ssh.cursor_blink', 'true'),
-          ('ssh.theme', 'vscode-dark');
-        UPDATE settings SET value = '"Fira Code", monospace' WHERE key = 'ssh.font_family';
-      `,
-    },
-    {
-      version: 7,
-      sql: `
-        CREATE TABLE login_sessions (
+        CREATE TABLE IF NOT EXISTS login_sessions (
           id TEXT PRIMARY KEY,
           user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           token_hash TEXT NOT NULL UNIQUE,
@@ -264,27 +185,7 @@ function runMigrations() {
           last_used_at TEXT NOT NULL DEFAULT (datetime('now')),
           revoked INTEGER NOT NULL DEFAULT 0
         );
-        CREATE INDEX idx_login_sessions_user ON login_sessions(user_id);
-        CREATE INDEX idx_login_sessions_token_hash ON login_sessions(token_hash);
-      `,
-    },
-    {
-      version: 8,
-      sql: `
-        INSERT OR IGNORE INTO settings (key, value) VALUES ('app.timezone', 'UTC');
-        ALTER TABLE users ADD COLUMN ssh_prefs_json TEXT;
-      `,
-    },
-    {
-      version: 9,
-      sql: `
-        ALTER TABLE users ADD COLUMN mfa_secret TEXT;
-        ALTER TABLE users ADD COLUMN mfa_enabled INTEGER NOT NULL DEFAULT 0;
-      `,
-    },
-    {
-      version: 10,
-      sql: `
+
         CREATE TABLE IF NOT EXISTS trusted_devices (
           id TEXT PRIMARY KEY,
           user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -295,54 +196,66 @@ function runMigrations() {
           created_at TEXT NOT NULL DEFAULT (datetime('now')),
           expires_at TEXT NOT NULL
         );
+
+        CREATE INDEX IF NOT EXISTS idx_connections_user ON connections(user_id);
+        CREATE INDEX IF NOT EXISTS idx_connection_groups_user ON connection_groups(user_id);
+        CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+        CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_audit_log_user ON audit_log(user_id);
+        CREATE INDEX IF NOT EXISTS idx_login_sessions_user ON login_sessions(user_id);
+        CREATE INDEX IF NOT EXISTS idx_login_sessions_token_hash ON login_sessions(token_hash);
         CREATE INDEX IF NOT EXISTS idx_trusted_devices_user ON trusted_devices(user_id);
         CREATE INDEX IF NOT EXISTS idx_trusted_devices_hash ON trusted_devices(token_hash);
-      `,
-    },
-    {
-      version: 11,
-      sql: `
-        ALTER TABLE connections ADD COLUMN host_fingerprint TEXT;
-      `,
-    },
-    {
-      version: 12,
-      run: (database: Database) => {
-        // SQLite doesn't support ADD COLUMN IF NOT EXISTS — use try/catch per column
-        try { database.run("ALTER TABLE users ADD COLUMN auth_provider TEXT NOT NULL DEFAULT 'local'"); } catch { /* already exists */ }
-        try { database.run('ALTER TABLE users ADD COLUMN provider_id TEXT'); } catch { /* already exists */ }
 
-        database.run(`
-          INSERT OR IGNORE INTO settings (key, value) VALUES
-            ('auth.local_enabled', 'true'),
-            ('auth.ldap_enabled', 'false'),
-            ('auth.ldap_url', ''),
-            ('auth.ldap_bind_dn', ''),
-            ('auth.ldap_bind_password', ''),
-            ('auth.ldap_search_base', ''),
-            ('auth.ldap_user_filter', '(uid={username})'),
-            ('auth.ldap_username_attr', 'uid'),
-            ('auth.ldap_email_attr', 'mail'),
-            ('auth.ldap_display_name_attr', 'cn'),
-            ('auth.ldap_admin_group_dn', ''),
-            ('auth.ldap_tls_reject_unauthorized', 'true'),
-            ('auth.oidc_enabled', 'false'),
-            ('auth.oidc_provider_url', ''),
-            ('auth.oidc_client_id', ''),
-            ('auth.oidc_client_secret', ''),
-            ('auth.oidc_redirect_uri', ''),
-            ('auth.oidc_scope', 'openid email profile'),
-            ('auth.oidc_display_name_claim', 'name'),
-            ('auth.oidc_username_claim', 'preferred_username'),
-            ('auth.oidc_admin_group_claim', ''),
-            ('auth.oidc_admin_group_value', ''),
-            ('auth.oidc_button_label', 'Sign in with SSO')
-        `);
-      },
-    },
-    {
-      version: 13,
-      sql: `DELETE FROM settings WHERE key = 'session.max_concurrent';`,
+        INSERT OR IGNORE INTO settings (key, value) VALUES
+          ('app.name', 'Alterm'),
+          ('app.logo', ''),
+          ('app.timezone', 'UTC'),
+          ('security.session_timeout_minutes', '0'),
+          ('security.idle_timeout_minutes', '0'),
+          ('security.max_session_minutes', '0'),
+          ('security.max_failed_logins', '5'),
+          ('security.lockout_minutes', '30'),
+          ('security.ip_rules_enabled', 'false'),
+          ('security.ip_rules_mode', 'allowlist'),
+          ('audit.retention_days', '90'),
+          ('session.recording_enabled', 'false'),
+          ('session.recording_retention_days', '90'),
+          ('session.recording_path', 'recordings'),
+          ('ssh.font_size', '14'),
+          ('ssh.font_family', '"Fira Code", monospace'),
+          ('ssh.scrollback', '5000'),
+          ('ssh.cursor_style', 'block'),
+          ('ssh.cursor_blink', 'true'),
+          ('ssh.theme', 'vscode-dark'),
+          ('rdp.default_port', '3389'),
+          ('rdp.default_width', '1920'),
+          ('rdp.default_height', '1080'),
+          ('health_monitor.enabled', 'true'),
+          ('auth.local_enabled', 'true'),
+          ('auth.ldap_enabled', 'false'),
+          ('auth.ldap_url', ''),
+          ('auth.ldap_bind_dn', ''),
+          ('auth.ldap_bind_password', ''),
+          ('auth.ldap_search_base', ''),
+          ('auth.ldap_user_filter', '(uid={username})'),
+          ('auth.ldap_username_attr', 'uid'),
+          ('auth.ldap_email_attr', 'mail'),
+          ('auth.ldap_display_name_attr', 'cn'),
+          ('auth.ldap_admin_group_dn', ''),
+          ('auth.ldap_tls_reject_unauthorized', 'true'),
+          ('auth.oidc_enabled', 'false'),
+          ('auth.oidc_provider_url', ''),
+          ('auth.oidc_client_id', ''),
+          ('auth.oidc_client_secret', ''),
+          ('auth.oidc_redirect_uri', ''),
+          ('auth.oidc_scope', 'openid email profile'),
+          ('auth.oidc_display_name_claim', 'name'),
+          ('auth.oidc_username_claim', 'preferred_username'),
+          ('auth.oidc_admin_group_claim', ''),
+          ('auth.oidc_admin_group_value', ''),
+          ('auth.oidc_button_label', 'Sign in with SSO');
+      `,
     },
   ];
 
