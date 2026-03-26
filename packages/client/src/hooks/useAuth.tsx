@@ -161,7 +161,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     localStorage.removeItem('alterm-token');
     localStorage.removeItem('alterm-sessions');
-    sessionStorage.removeItem('alterm-key-warn-later');
+    sessionStorage.clear();
     setToken(null);
     setUser(null);
     setIdleWarnSecondsLeft(null);
