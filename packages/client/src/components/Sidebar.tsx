@@ -126,7 +126,12 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
   const [groups, setGroups] = useState<ConnectionGroup[]>([]);
   const [ungrouped, setUngrouped] = useState<Connection[]>([]);
   const [sharedConnections, setSharedConnections] = useState<Connection[]>([]);
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem('alterm-expanded-groups');
+      return stored ? new Set<string>(JSON.parse(stored) as string[]) : new Set<string>();
+    } catch { return new Set<string>(); }
+  });
   const [showModal, setShowModal] = useState(false);
   const [editingConnection, setEditingConnection] = useState<Connection | null>(null);
   const [inlineNewGroup, setInlineNewGroup] = useState<{ parentId: string | null; name: string } | null>(null);
@@ -252,11 +257,16 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
     }
   }, [inlineNewGroup]);
 
+  function persistExpandedGroups(next: Set<string>) {
+    try { localStorage.setItem('alterm-expanded-groups', JSON.stringify([...next])); } catch { /* ignore */ }
+    return next;
+  }
+
   function toggleGroup(id: string) {
     setExpandedGroups((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
+      return persistExpandedGroups(next);
     });
   }
 
@@ -290,7 +300,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
 
   function startInlineNewFolder(parentId: string | null) {
     if (parentId !== null) {
-      setExpandedGroups(prev => new Set([...prev, parentId]));
+      setExpandedGroups(prev => persistExpandedGroups(new Set([...prev, parentId])));
     }
     setInlineNewGroup({ parentId, name: '' });
   }
@@ -306,7 +316,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
       body: JSON.stringify({ name, parentId: inlineNewGroup.parentId }),
     });
     if (inlineNewGroup.parentId) {
-      setExpandedGroups(prev => new Set([...prev, inlineNewGroup.parentId!]));
+      setExpandedGroups(prev => persistExpandedGroups(new Set([...prev, inlineNewGroup.parentId!])));
     }
     setInlineNewGroup(null);
     fetchConnections();
@@ -436,7 +446,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
       body: JSON.stringify({ parentId: targetParentId }),
     });
     if (targetParentId) {
-      setExpandedGroups(prev => new Set([...prev, targetParentId]));
+      setExpandedGroups(prev => persistExpandedGroups(new Set([...prev, targetParentId])));
     }
     fetchConnections();
   }
@@ -515,7 +525,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
     e.stopPropagation();
     if (draggingConnId) {
       moveConnection(draggingConnId, groupId);
-      setExpandedGroups((prev) => new Set([...prev, groupId]));
+      setExpandedGroups((prev) => persistExpandedGroups(new Set([...prev, groupId])));
     } else if (draggingGroupId && draggingGroupId !== groupId) {
       if (!isAncestorOrSelf(groupId, draggingGroupId, groups)) {
         const pos = dropIndicator?.id === groupId ? dropIndicator.position : 'inside';
@@ -1044,7 +1054,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
               setRenamingGroupId(folderContextMenu.group.id);
               setRenameValue(folderContextMenu.group.name);
               // Ensure the folder is visible (expand it so the rename input renders)
-              setExpandedGroups((prev) => new Set([...prev, folderContextMenu.group.id]));
+              setExpandedGroups((prev) => persistExpandedGroups(new Set([...prev, folderContextMenu.group.id])));
               setFolderContextMenu(null);
             }}
           >
