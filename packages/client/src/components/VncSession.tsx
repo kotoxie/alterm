@@ -62,7 +62,13 @@ export function VncSession({ connectionId, connectionName, isActive, onStatusCha
         const container = containerRef.current!;
         container.innerHTML = '';
 
-        rfb = new RFB(container, wsUrl, {
+        // Pre-create the WebSocket and pass it to RFB directly.
+        // This avoids noVNC's internal WebSocket creation path which can throw
+        // "raw channel missing property: send" in noVNC 1.6 before the socket
+        // is fully initialised.
+        const socket = new WebSocket(wsUrl);
+
+        rfb = new RFB(container, socket, {
           credentials: info.password ? { password: info.password } : undefined,
         });
 
