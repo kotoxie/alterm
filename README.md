@@ -67,7 +67,7 @@ Open **`https://<YOUR_IP>:7443`** — on first launch you'll be prompted to crea
 | Protocol | Details |
 |---|---|
 | **RDP** | WebAssembly-powered (IronRDP) — no Guacamole, no Java, native browser speed. Session recording with cursor compositing (WebM video) |
-| **SSH** | Full xterm.js terminal, unlimited width, port-forward tunnels, session recording & playback |
+| **SSH** | Full xterm.js terminal, unlimited width, port-forward tunnels, session recording & playback, **command-level audit log** |
 | **VNC** | Remote desktop via noVNC |
 | **SMB** | File browser for Windows network shares |
 | **SFTP** | Secure file browser; open directly from any SSH connection (password or private key auth) |
@@ -75,6 +75,7 @@ Open **`https://<YOUR_IP>:7443`** — on first launch you'll be prompted to crea
 
 ### 🗂️ Workspace
 - **Split panes** — unlimited sessions side by side per tab
+- **Tab drag & drop** — reorder tabs and drag one tab into another to create a split view
 - **Session persistence** — survives page refresh without reconnecting
 - **Auto-focus** — switching between SSH tabs automatically focuses the terminal
 - **Connect-all** — right-click any folder to open every connection at once
@@ -82,7 +83,7 @@ Open **`https://<YOUR_IP>:7443`** — on first launch you'll be prompted to crea
 - **Auto-close on disconnect** — disconnected session tabs close automatically after a 15-second countdown (with cancel option)
 
 ### 📁 Connection Management
-- **Nested folders** — arbitrarily deep folder trees
+- **Nested folders** — arbitrarily deep folder trees with **persistent expand/collapse state** across sidebar toggles and page refreshes
 - **Drag & drop** — reorder connections and folders freely
 - **Right-click menus** — full CRUD on connections and folders from the sidebar
 - **Import / Export** — backup and restore the full connection tree as JSON
@@ -96,6 +97,8 @@ Open **`https://<YOUR_IP>:7443`** — on first launch you'll be prompted to crea
 - **Authentication Providers** — admin UI to enable/disable local, LDAP, and SSO independently; optionally enforce SSO-only login
 - **IP Access Rules** — allowlist or denylist by CIDR range
 - **Session recording** — SSH sessions (asciinema) and RDP sessions (WebM video) recorded and **encrypted at rest**, replayed in-browser; files inaccessible without GUI authentication
+- **SSH command audit log** — every command typed in an SSH session is logged with timestamp and output preview, viewable alongside the recording playback
+- **File activity recording** — SFTP, SMB, and FTP sessions log every file operation (browse, upload, download, delete, mkdir) in a searchable timeline
 - **Idle timeout** — real idle detection (heartbeats don't reset the clock); warning dialog with countdown before auto-logout
 - **Max session duration** — hard JWT expiry regardless of activity
 - **Audit trail** — every login, session, and config change logged with before/after diffs
