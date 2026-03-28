@@ -421,6 +421,38 @@ export function MainLayout() {
     }
   }, []);
 
+  // ---------- mergeViewIntoView ----------
+  // Drops dragged view's tab into target view as a new horizontal split pane,
+  // then removes the dragged view. Only works for single-pane dragged views.
+
+  const mergeViewIntoView = useCallback((draggedViewId: string, targetViewId: string) => {
+    if (draggedViewId === targetViewId) return;
+    setViews((prev) => {
+      const draggedView = prev.find((v) => v.id === draggedViewId);
+      const targetView = prev.find((v) => v.id === targetViewId);
+      if (!draggedView || !targetView) return prev;
+      if (countLeaves(targetView.paneRoot) >= 4) return prev;
+
+      // Take the first tab from the dragged view
+      const draggedTabId = Object.values(draggedView.paneTabMap).find(Boolean) ?? null;
+      const newPaneId = crypto.randomUUID();
+      const newRoot = addSplit(targetView.paneRoot, targetView.activePaneId, 'h', newPaneId);
+
+      return prev
+        .filter((v) => v.id !== draggedViewId)
+        .map((v) => {
+          if (v.id !== targetViewId) return v;
+          return {
+            ...v,
+            paneRoot: newRoot,
+            paneTabMap: { ...v.paneTabMap, [newPaneId]: draggedTabId },
+            activePaneId: newPaneId,
+          };
+        });
+    });
+    setActiveViewId(targetViewId);
+  }, []);
+
   // ---------- focusPaneInView ----------
 
   const focusPaneInView = useCallback((paneId: string) => {
@@ -603,6 +635,7 @@ export function MainLayout() {
             canSplit={canSplit}
             onCloseAll={closeAllViews}
             onReorder={(ids) => setViews((prev) => ids.map((id) => prev.find((v) => v.id === id)!).filter(Boolean))}
+            onMergeInto={mergeViewIntoView}
           />
 
           {/* Sessions container: relative parent for both layers */}
