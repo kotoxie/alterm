@@ -317,7 +317,7 @@ function RecordingPlayer({
   const [totalTime, setTotalTime] = useState(0);
   const [title, setTitle] = useState('');
   const [downloading, setDownloading] = useState(false);
-  const [showCommands, setShowCommands] = useState(false);
+  const [showCommands, setShowCommands] = useState(true);
   const [commands, setCommands] = useState<{ id: string; timestamp: string; elapsed: number; command: string; output_preview: string | null }[]>([]);
 
   const eventsRef = useRef<CastEvent[]>([]);
