@@ -62,14 +62,31 @@ export function VncSession({ connectionId, connectionName, isActive, onStatusCha
         const container = containerRef.current!;
         container.innerHTML = '';
 
-        // Pre-create the WebSocket and pass it to RFB directly.
-        // This avoids noVNC's internal WebSocket creation path which can throw
-        // "raw channel missing property: send" in noVNC 1.6 before the socket
-        // is fully initialised. The RFB type definition only accepts string but
-        // the runtime correctly handles a pre-created WebSocket — cast needed.
-        const socket = new WebSocket(wsUrl);
+        // noVNC's Websock.attach() validates the channel by checking
+        //   Object.keys(channel) + Object.getOwnPropertyNames(Object.getPrototypeOf(channel))
+        // In some browsers, native WebSocket properties (send, binaryType, onopen, etc.)
+        // live deeper in the prototype chain and fail this check ("Raw channel missing
+        // property: send"). Use a plain-object wrapper: all required props are own
+        // enumerable properties that Object.keys() reliably finds.
+        const nativeWs = new WebSocket(wsUrl);
+        const channel = {
+          send: (data: string | ArrayBufferLike | Blob | ArrayBufferView) => nativeWs.send(data as string),
+          close: (code?: number, reason?: string) => nativeWs.close(code, reason),
+          get binaryType(): BinaryType { return nativeWs.binaryType; },
+          set binaryType(v: BinaryType) { nativeWs.binaryType = v; },
+          get onerror() { return nativeWs.onerror; },
+          set onerror(v: ((this: WebSocket, ev: Event) => unknown) | null) { nativeWs.onerror = v; },
+          get onmessage() { return nativeWs.onmessage; },
+          set onmessage(v: ((this: WebSocket, ev: MessageEvent) => unknown) | null) { nativeWs.onmessage = v; },
+          get onopen() { return nativeWs.onopen; },
+          set onopen(v: ((this: WebSocket, ev: Event) => unknown) | null) { nativeWs.onopen = v; },
+          get onclose() { return nativeWs.onclose; },
+          set onclose(v: ((this: WebSocket, ev: CloseEvent) => unknown) | null) { nativeWs.onclose = v; },
+          get protocol(): string { return nativeWs.protocol; },
+          get readyState(): number { return nativeWs.readyState; },
+        };
 
-        rfb = new RFB(container, socket as unknown as string, {
+        rfb = new RFB(container, channel as unknown as string, {
           credentials: info.password ? { password: info.password } : undefined,
         });
 
