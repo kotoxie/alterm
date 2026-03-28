@@ -251,6 +251,26 @@ router.post('/:id/recording/finalize', (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+// GET /:id/commands — list SSH commands logged for a session
+router.get('/:id/commands', (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const isAdmin = req.user!.role === 'admin';
+  const id = req.params.id as string;
+
+  const session = queryOne<{ user_id: string; protocol: string }>(
+    'SELECT user_id, protocol FROM sessions WHERE id = ?',
+    [id],
+  );
+  if (!session) { res.status(404).json({ error: 'Session not found' }); return; }
+  if (!isAdmin && session.user_id !== userId) { res.status(403).json({ error: 'Forbidden' }); return; }
+
+  const commands = queryAll<{ id: string; timestamp: string; elapsed: number; command: string; output_preview: string | null }>(
+    'SELECT id, timestamp, elapsed, command, output_preview FROM ssh_commands WHERE session_id = ? ORDER BY elapsed ASC',
+    [id],
+  );
+  res.json({ commands });
+});
+
 // GET /storage — return total bytes used by all recording files (admin only)
 router.get('/storage', adminRequired, (_req: Request, res: Response) => {
   let totalBytes = 0;
