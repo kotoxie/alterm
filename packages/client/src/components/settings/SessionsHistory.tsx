@@ -317,6 +317,8 @@ function RecordingPlayer({
   const [totalTime, setTotalTime] = useState(0);
   const [title, setTitle] = useState('');
   const [downloading, setDownloading] = useState(false);
+  const [showCommands, setShowCommands] = useState(false);
+  const [commands, setCommands] = useState<{ id: string; timestamp: string; elapsed: number; command: string; output_preview: string | null }[]>([]);
 
   const eventsRef = useRef<CastEvent[]>([]);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -420,6 +422,11 @@ function RecordingPlayer({
         setTitle(header.title ?? '');
         setLoading(false);
         scheduleFrom(0);
+        // Fetch SSH commands in parallel
+        fetch(`/api/v1/sessions/${sessionId}/commands`, { credentials: 'include' })
+          .then(r => r.ok ? r.json() : null)
+          .then(data => { if (data?.commands?.length) setCommands(data.commands); })
+          .catch(() => {});
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to load');
         setLoading(false);
@@ -456,16 +463,62 @@ function RecordingPlayer({
           </svg>
           Download
         </button>
+        {commands.length > 0 && (
+          <button
+            onClick={() => setShowCommands(v => !v)}
+            className={`p-1.5 rounded flex items-center gap-1.5 text-xs transition-colors ${showCommands ? 'bg-blue-500/20 text-blue-400' : 'hover:bg-[#272727] text-[#888] hover:text-[#efefef]'}`}
+            title="Toggle command log"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" />
+            </svg>
+            Commands ({commands.length})
+          </button>
+        )}
         <button onClick={onClose} className="p-1.5 rounded hover:bg-[#272727] text-[#888] hover:text-[#efefef]" title="Close (Esc)">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
           </svg>
         </button>
       </div>
-      <div className="flex-1 overflow-hidden p-3">
-        {loading && <div className="flex items-center justify-center h-full text-[#888] text-sm">Loading recording...</div>}
-        {error && <div className="flex items-center justify-center h-full text-red-400 text-sm">{error}</div>}
-        <div ref={containerRef} className="w-full h-full" style={{ display: loading || error ? 'none' : 'block' }} />
+      <div className="flex-1 overflow-hidden flex">
+        <div className={`flex-1 overflow-hidden p-3 ${showCommands ? '' : ''}`}>
+          {loading && <div className="flex items-center justify-center h-full text-[#888] text-sm">Loading recording...</div>}
+          {error && <div className="flex items-center justify-center h-full text-red-400 text-sm">{error}</div>}
+          <div ref={containerRef} className="w-full h-full" style={{ display: loading || error ? 'none' : 'block' }} />
+        </div>
+        {showCommands && (
+          <div className="w-80 shrink-0 border-l border-[#2e2e2e] bg-[#111] flex flex-col overflow-hidden">
+            <div className="px-3 py-2 border-b border-[#2e2e2e] text-xs font-semibold text-[#888] flex items-center gap-1.5">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" />
+              </svg>
+              Command Log
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {commands.map((cmd, idx) => {
+                const isCurrent = currentTime >= cmd.elapsed && (idx === commands.length - 1 || currentTime < commands[idx + 1].elapsed);
+                return (
+                  <button
+                    key={cmd.id}
+                    onClick={() => seekTo(Math.max(0, cmd.elapsed - 0.5), true)}
+                    className={`w-full text-left px-3 py-2 border-b border-[#1e1e1e] hover:bg-[#1a1a1a] transition-colors group ${isCurrent ? 'bg-blue-500/10 border-l-2 border-l-blue-500' : ''}`}
+                  >
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-[10px] font-mono text-[#555] shrink-0">{formatTime(cmd.elapsed)}</span>
+                      <span className="text-xs font-mono text-green-400 truncate">{cmd.command}</span>
+                    </div>
+                    {cmd.output_preview && (
+                      <div className="text-[10px] font-mono text-[#444] truncate mt-0.5 pl-10 group-hover:text-[#555]">
+                        {cmd.output_preview.split('\n')[0]}
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
       <div className="shrink-0 px-4 py-3 bg-[#141414] border-t border-[#2e2e2e] space-y-2">
         <div className="flex items-center justify-between text-xs font-mono">
