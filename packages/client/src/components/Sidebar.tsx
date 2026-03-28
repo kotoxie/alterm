@@ -126,6 +126,8 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
   const [groups, setGroups] = useState<ConnectionGroup[]>([]);
   const [ungrouped, setUngrouped] = useState<Connection[]>([]);
   const [sharedConnections, setSharedConnections] = useState<Connection[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => {
     try {
       const stored = localStorage.getItem('alterm-expanded-groups');
@@ -603,6 +605,26 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
     return group.connections.length + group.children.reduce((s, c) => s + countConnections(c), 0);
   }
 
+  // Search filter helpers
+  const q = searchQuery.trim().toLowerCase();
+
+  function connMatchesSearch(conn: Connection): boolean {
+    if (!q) return true;
+    return conn.name.toLowerCase().includes(q) || (conn.host || '').toLowerCase().includes(q);
+  }
+
+  function filterGroup(group: ConnectionGroup): ConnectionGroup | null {
+    if (!q) return group;
+    const filteredConns = group.connections.filter(connMatchesSearch);
+    const filteredChildren = group.children.map(filterGroup).filter(Boolean) as ConnectionGroup[];
+    if (filteredConns.length === 0 && filteredChildren.length === 0) return null;
+    return { ...group, connections: filteredConns, children: filteredChildren };
+  }
+
+  const filteredGroups = q ? groups.map(filterGroup).filter(Boolean) as ConnectionGroup[] : groups;
+  const filteredUngrouped = ungrouped.filter(connMatchesSearch);
+  const filteredShared = sharedConnections.filter(connMatchesSearch);
+
   function renderInlineNewFolder() {
     return (
       <div className="flex items-center gap-1 px-2 py-1 mx-1 my-0.5 rounded bg-surface border border-accent/50">
@@ -641,7 +663,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
   }
 
   function renderGroup(group: ConnectionGroup, depth = 0) {
-    const expanded = expandedGroups.has(group.id);
+    const expanded = q ? true : expandedGroups.has(group.id);
     const isDraggingThisGroup = draggingGroupId === group.id;
     const isInvalidDropTarget = draggingGroupId !== null &&
       isAncestorOrSelf(group.id, draggingGroupId, groups);
@@ -815,6 +837,33 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
               <input type="file" accept=".json" className="hidden" onChange={handleImport} />
             </label>
           </div>
+
+          {/* Search bar */}
+          <div className="relative">
+            <svg className="absolute left-2 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <input
+              ref={searchRef}
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Escape') setSearchQuery(''); }}
+              placeholder="Find connection..."
+              className="w-full pl-7 pr-6 py-1 text-xs bg-surface border border-border rounded text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => { setSearchQuery(''); searchRef.current?.focus(); }}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary"
+                tabIndex={-1}
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Connection list */}
@@ -835,10 +884,10 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
           }}
         >
           {inlineNewGroup?.parentId === null && renderInlineNewFolder()}
-          {groups.map(renderGroup)}
-          {ungrouped.map(renderConnection)}
+          {filteredGroups.map(g => renderGroup(g))}
+          {filteredUngrouped.map(renderConnection)}
 
-          {sharedConnections.length > 0 && (
+          {filteredShared.length > 0 && (
             <div className="mt-2">
               <div className="flex items-center gap-1.5 px-3 py-1 text-xs text-text-secondary font-medium uppercase tracking-wider">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -848,7 +897,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
                 </svg>
                 Shared
               </div>
-              {sharedConnections.map((conn) => (
+              {filteredShared.map((conn) => (
                 <div
                   key={conn.id}
                   onClick={() => onConnect(conn)}
@@ -880,6 +929,11 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
             <p className="text-xs text-text-secondary text-center px-4 mt-8 leading-relaxed">
               No connections yet.<br />
               Click "+ New Connection" to get started.
+            </p>
+          )}
+          {q && filteredGroups.length === 0 && filteredUngrouped.length === 0 && filteredShared.length === 0 && (
+            <p className="text-xs text-text-secondary text-center px-4 mt-8 leading-relaxed">
+              No connections match "{searchQuery}".
             </p>
           )}
         </div>
