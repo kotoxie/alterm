@@ -6,6 +6,7 @@ import type { WebSocket } from 'ws';
 import type { Client as SshClient, ClientChannel } from 'ssh2';
 import type net from 'net';
 import type { Writable } from 'stream';
+import type { CommandTracker } from './commandTracker.js';
 
 const MAX_BUFFER_BYTES = 512 * 1024; // 512 KB of terminal output kept for replay
 const GRACE_MS = 120_000; // 2 minutes before tearing down an orphaned session
@@ -25,6 +26,7 @@ export interface SshCachedSession {
   rows: number;
   castFile: Writable | null;
   castStart: number;
+  cmdTracker: CommandTracker | null;
 }
 
 const cache = new Map<string, SshCachedSession>();

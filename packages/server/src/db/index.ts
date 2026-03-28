@@ -291,6 +291,21 @@ function runMigrations() {
         CREATE INDEX IF NOT EXISTS idx_file_session_events_session ON file_session_events(session_id);
       `,
     },
+    {
+      version: 4,
+      sql: `
+        CREATE TABLE IF NOT EXISTS ssh_commands (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+          timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+          elapsed REAL NOT NULL DEFAULT 0,
+          command TEXT NOT NULL,
+          output_preview TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_ssh_commands_session ON ssh_commands(session_id);
+      `,
+    },
   ];
 
   for (const migration of migrations) {
