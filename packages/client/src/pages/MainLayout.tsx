@@ -602,6 +602,7 @@ export function MainLayout() {
             onSplitV={(viewId) => splitView(viewId, 'v')}
             canSplit={canSplit}
             onCloseAll={closeAllViews}
+            onReorder={(ids) => setViews((prev) => ids.map((id) => prev.find((v) => v.id === id)!).filter(Boolean))}
           />
 
           {/* Sessions container: relative parent for both layers */}
