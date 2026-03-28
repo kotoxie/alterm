@@ -25,6 +25,7 @@ import {
   clearGrace,
   type SshCachedSession,
 } from './sshSessionCache.js';
+import { CommandTracker } from './commandTracker.js';
 
 interface ConnectionRow {
   id: string; host: string; port: number; protocol: string;
@@ -49,6 +50,7 @@ function teardownSession(
   clientIp: string,
 ): void {
   if (session.castFile) { try { session.castFile.end(); } catch { /**/ } session.castFile = null; }
+  if (session.cmdTracker) { try { session.cmdTracker.flush(); } catch { /**/ } session.cmdTracker = null; }
   session.tunnelServers.forEach((s) => { try { s.close(); } catch { /**/ } });
   try { session.ssh.end(); } catch { /**/ }
   execute("UPDATE sessions SET ended_at = datetime('now') WHERE id = ?", [sessionDbId]);
@@ -80,6 +82,7 @@ function wireClientWs(
         s.shellStream.setWindow(s.rows, s.cols, 0, 0);
       } else if (json.type === 'data') {
         s.shellStream.write(json.data);
+        if (s.cmdTracker) s.cmdTracker.feedInput(json.data);
       }
     } catch {
       const s2 = getSession(clientSessionId);
@@ -266,6 +269,7 @@ export function setupSshProxy(server: https.Server): void {
           userId, sessionDbId, connectionId,
           cols, rows,
           castFile, castStart,
+          cmdTracker: doRecord ? new CommandTracker(sessionDbId, castStart) : null,
         };
         storeSession(clientSessionId, session);
         shellStream.setWindow(rows, cols, 0, 0);
@@ -275,9 +279,11 @@ export function setupSshProxy(server: https.Server): void {
           if (!s) return;
           appendToBuffer(s, data);
           if (s.ws?.readyState === WebSocket.OPEN) s.ws.send(data);
+          const text = data.toString('utf8');
+          if (s.cmdTracker) s.cmdTracker.feedOutput(text);
           if (s.castFile) {
             const elapsed = (Date.now() - s.castStart) / 1000;
-            s.castFile.write(JSON.stringify([elapsed, 'o', data.toString('utf8')]) + '\n');
+            s.castFile.write(JSON.stringify([elapsed, 'o', text]) + '\n');
           }
         });
         shellStream.stderr.on('data', (data: Buffer) => {
