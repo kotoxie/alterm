@@ -175,7 +175,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
   // This prevents the modal closing when the user selects text inside and releases outside.
   const backdropMouseDownRef = useRef(false);
 
-  const isCopy = !connection && !!prefill;
+  const isCopy = !connection && !!prefill && !!prefill.name;
   const title = connection ? 'Edit Connection' : isCopy ? `New Connection — copy of "${prefill!.name.replace(/ - copy$/, '')}"` : 'New Connection';
 
   return (
