@@ -6,6 +6,7 @@ import { SmbSession } from './SmbSession';
 import { VncSession } from './VncSession';
 import { SftpSession } from './SftpSession';
 import { FtpSession } from './FtpSession';
+import { TelnetSession } from './TelnetSession';
 
 interface SessionsLayerProps {
   tabs: Tab[];
@@ -119,6 +120,16 @@ export function SessionsLayer({
                 connectionName={tab.name}
                 isActive={isActive}
                 onStatusChange={(status) => onStatusChange(tab.id, status)}
+              />
+            )}
+            {tab.protocol === 'telnet' && (
+              <TelnetSession
+                tab={tab}
+                isActive={isActive}
+                paneWidth={paneW}
+                paneHeight={paneH}
+                onStatusChange={onStatusChange}
+                onClose={onClose}
               />
             )}
           </div>

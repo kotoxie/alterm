@@ -25,6 +25,7 @@ interface ConnectionRow {
   shared: number;
   tunnels_json: string | null;
   extra_config_json: string | null;
+  tags: string | null;
 }
 
 interface GroupRow {
@@ -44,13 +45,13 @@ router.get('/', (req: Request, res: Response) => {
   );
 
   const connections = queryAll<ConnectionRow>(
-    'SELECT id, name, protocol, host, port, group_id, username, sort_order, shared FROM connections WHERE user_id = ? ORDER BY sort_order',
+    'SELECT id, name, protocol, host, port, group_id, username, sort_order, shared, tags FROM connections WHERE user_id = ? ORDER BY sort_order',
     [userId],
   );
 
   // Shared connections from other users
   const sharedConnections = queryAll<ConnectionRow>(
-    'SELECT id, name, protocol, host, port, username, shared, user_id FROM connections WHERE shared = 1 AND user_id != ? ORDER BY name',
+    'SELECT id, name, protocol, host, port, username, shared, user_id, tags FROM connections WHERE shared = 1 AND user_id != ? ORDER BY name',
     [userId],
   );
 
@@ -60,7 +61,7 @@ router.get('/', (req: Request, res: Response) => {
     name: string;
     parentId: string | null;
     children: GroupNode[];
-    connections: { id: string; name: string; protocol: string; host: string; port: number; groupId: string | null; isShared: boolean }[];
+    connections: { id: string; name: string; protocol: string; host: string; port: number; groupId: string | null; isShared: boolean; tags: string[] }[];
   }
 
   const groupMap = new Map<string, GroupNode>();
@@ -79,6 +80,7 @@ router.get('/', (req: Request, res: Response) => {
 
   const connMapped = connections.map((c) => ({
     id: c.id, name: c.name, protocol: c.protocol, host: c.host, port: c.port, groupId: c.group_id, isShared: false,
+    tags: c.tags ? JSON.parse(c.tags) as string[] : [],
   }));
 
   for (const conn of connMapped) {
@@ -91,6 +93,7 @@ router.get('/', (req: Request, res: Response) => {
 
   const sharedMapped = sharedConnections.map((c) => ({
     id: c.id, name: c.name, protocol: c.protocol, host: c.host, port: c.port, groupId: null, isShared: true,
+    tags: c.tags ? JSON.parse(c.tags) as string[] : [],
   }));
 
   res.json({ groups: rootGroups, ungrouped, sharedConnections: sharedMapped });
@@ -216,7 +219,7 @@ router.post('/import', (req: Request, res: Response) => {
 
   for (const c of (connections ?? [])) {
     if (!c.name || !c.protocol || !c.host || !c.port) continue;
-    if (!['ssh', 'rdp', 'smb', 'vnc', 'sftp', 'ftp'].includes(c.protocol)) continue;
+    if (!['ssh', 'rdp', 'smb', 'vnc', 'sftp', 'ftp', 'telnet'].includes(c.protocol)) continue;
     const newId = uuid();
     const newGroupId = c.groupId ? (groupIdMap.get(c.groupId) ?? null) : null;
     execute(
@@ -240,14 +243,14 @@ router.post('/import', (req: Request, res: Response) => {
 // Create connection
 router.post('/', (req: Request, res: Response) => {
   const userId = req.user!.userId;
-  const { name, protocol, host, port, username, password, groupId, privateKey, extraConfig, shared, tunnels } = req.body;
+  const { name, protocol, host, port, username, password, groupId, privateKey, extraConfig, shared, tunnels, tags } = req.body;
 
   if (!name || !protocol || !host || !port) {
     res.status(400).json({ error: 'Name, protocol, host, and port are required' });
     return;
   }
 
-  if (!['ssh', 'rdp', 'smb', 'vnc', 'sftp', 'ftp'].includes(protocol)) {
+  if (!['ssh', 'rdp', 'smb', 'vnc', 'sftp', 'ftp', 'telnet'].includes(protocol)) {
     res.status(400).json({ error: 'Invalid protocol' });
     return;
   }
@@ -255,16 +258,18 @@ router.post('/', (req: Request, res: Response) => {
   const id = uuid();
   const encryptedPassword = password ? encrypt(password) : null;
   const encryptedKey = privateKey ? encrypt(privateKey) : null;
+  const tagsStr = Array.isArray(tags) ? JSON.stringify(tags.map((t: string) => t.trim().toLowerCase()).filter(Boolean)) : null;
 
   execute(
-    `INSERT INTO connections (id, user_id, group_id, name, protocol, host, port, username, encrypted_password, private_key, extra_config_json, sort_order, shared, tunnels_json)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO connections (id, user_id, group_id, name, protocol, host, port, username, encrypted_password, private_key, extra_config_json, sort_order, shared, tunnels_json, tags)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id, userId, groupId || null, name, protocol, host, port,
       username || null, encryptedPassword, encryptedKey,
       extraConfig ? JSON.stringify(extraConfig) : null, 0,
       shared ? 1 : 0,
       tunnels ? JSON.stringify(tunnels) : null,
+      tagsStr,
     ],
   );
 
@@ -322,7 +327,7 @@ router.put('/:id', (req: Request, res: Response) => {
     groupId: existing.group_id,
   };
 
-  const { name, protocol, host, port, username, password, groupId, privateKey, shared, tunnels, extraConfig } = req.body;
+  const { name, protocol, host, port, username, password, groupId, privateKey, shared, tunnels, extraConfig, tags } = req.body;
 
   const updates: string[] = [];
   const params: unknown[] = [];
@@ -338,6 +343,7 @@ router.put('/:id', (req: Request, res: Response) => {
   if (shared !== undefined) { updates.push('shared = ?'); params.push(shared ? 1 : 0); }
   if (tunnels !== undefined) { updates.push('tunnels_json = ?'); params.push(tunnels ? JSON.stringify(tunnels) : null); }
   if (extraConfig !== undefined) { updates.push('extra_config_json = ?'); params.push(extraConfig ? JSON.stringify(extraConfig) : null); }
+  if (tags !== undefined) { updates.push('tags = ?'); params.push(Array.isArray(tags) ? JSON.stringify(tags.map((t: string) => t.trim().toLowerCase()).filter(Boolean)) : null); }
 
   if (updates.length === 0) {
     res.status(400).json({ error: 'No fields to update' });
@@ -417,6 +423,9 @@ router.get('/:id', (req: Request, res: Response) => {
   let extraConfig: unknown = null;
   try { if (conn.extra_config_json) extraConfig = JSON.parse(conn.extra_config_json); } catch { /* ignore */ }
 
+  let tags: string[] = [];
+  try { if (conn.tags) tags = JSON.parse(conn.tags); } catch { /* ignore */ }
+
   res.json({
     id: conn.id,
     name: conn.name,
@@ -431,6 +440,7 @@ router.get('/:id', (req: Request, res: Response) => {
     shared: conn.shared,
     tunnels,
     extraConfig,
+    tags,
   });
 });
 

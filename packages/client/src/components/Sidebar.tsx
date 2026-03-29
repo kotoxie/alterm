@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent as RMouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as RMouseEvent } from 'react';
 import { clsx } from 'clsx';
 import { useSettings } from '../hooks/useSettings';
 import { ConnectionModal, type ConnectionPrefill } from './ConnectionModal';
@@ -14,11 +14,12 @@ interface ConnectionGroup {
 interface Connection {
   id: string;
   name: string;
-  protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp';
+  protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' | 'telnet';
   host: string;
   port: number;
   groupId: string | null;
   isShared?: boolean;
+  tags?: string[];
 }
 
 interface FlatGroup {
@@ -27,8 +28,8 @@ interface FlatGroup {
 }
 
 interface SidebarProps {
-  onConnect: (conn: { id: string; name: string; protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' }) => void;
-  onConnectMultiple?: (conns: Array<{ id: string; name: string; protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' }>) => void;
+  onConnect: (conn: { id: string; name: string; protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' | 'telnet' }) => void;
+  onConnectMultiple?: (conns: Array<{ id: string; name: string; protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' | 'telnet' }>) => void;
   width?: number;
 }
 
@@ -67,6 +68,7 @@ const PROTOCOL_ICONS: Record<string, string> = {
   vnc: '🖱',
   sftp: '📂',
   ftp: '🗂',
+  telnet: '⌨',
 };
 
 const ProtocolBadge = ({ protocol }: { protocol: string }) => (
@@ -128,6 +130,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
   const [sharedConnections, setSharedConnections] = useState<Connection[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
+  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => {
     try {
       const stored = localStorage.getItem('alterm-expanded-groups');
@@ -581,6 +584,14 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
         />
         <ProtocolBadge protocol={conn.protocol} />
         <span className="truncate flex-1 text-text-primary">{conn.name}</span>
+        {conn.tags && conn.tags.length > 0 && (
+          <span className="flex gap-0.5 shrink-0">
+            {conn.tags.slice(0, 2).map((t) => (
+              <span key={t} className="px-1 py-px rounded bg-accent/10 text-accent text-[9px] leading-tight">{t}</span>
+            ))}
+            {conn.tags.length > 2 && <span className="text-[9px] text-text-secondary">+{conn.tags.length - 2}</span>}
+          </span>
+        )}
         <div className="hidden group-hover/conn:flex items-center gap-0.5 shrink-0">
           <button
             onClick={(e) => { e.stopPropagation(); setEditingConnection(conn); setShowModal(true); }}
@@ -607,23 +618,37 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
 
   // Search filter helpers
   const q = searchQuery.trim().toLowerCase();
+  const hasTagFilter = selectedTags.size > 0;
 
-  function connMatchesSearch(conn: Connection): boolean {
-    if (!q) return true;
-    return conn.name.toLowerCase().includes(q) || (conn.host || '').toLowerCase().includes(q);
+  // Collect all unique tags across all connections for the tag filter UI
+  const allTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    const addTags = (conns: Connection[]) => conns.forEach((c) => c.tags?.forEach((t) => tagSet.add(t)));
+    const walkGroups = (gs: ConnectionGroup[]) => gs.forEach((g) => { addTags(g.connections); walkGroups(g.children); });
+    walkGroups(groups);
+    addTags(ungrouped);
+    addTags(sharedConnections);
+    return Array.from(tagSet).sort();
+  }, [groups, ungrouped, sharedConnections]);
+
+  function connMatchesFilter(conn: Connection): boolean {
+    if (q && !conn.name.toLowerCase().includes(q) && !(conn.host || '').toLowerCase().includes(q)) return false;
+    if (hasTagFilter && !conn.tags?.some((t) => selectedTags.has(t))) return false;
+    return true;
   }
 
   function filterGroup(group: ConnectionGroup): ConnectionGroup | null {
-    if (!q) return group;
-    const filteredConns = group.connections.filter(connMatchesSearch);
+    if (!q && !hasTagFilter) return group;
+    const filteredConns = group.connections.filter(connMatchesFilter);
     const filteredChildren = group.children.map(filterGroup).filter(Boolean) as ConnectionGroup[];
     if (filteredConns.length === 0 && filteredChildren.length === 0) return null;
     return { ...group, connections: filteredConns, children: filteredChildren };
   }
 
-  const filteredGroups = q ? groups.map(filterGroup).filter(Boolean) as ConnectionGroup[] : groups;
-  const filteredUngrouped = ungrouped.filter(connMatchesSearch);
-  const filteredShared = sharedConnections.filter(connMatchesSearch);
+  const isFiltering = !!q || hasTagFilter;
+  const filteredGroups = isFiltering ? groups.map(filterGroup).filter(Boolean) as ConnectionGroup[] : groups;
+  const filteredUngrouped = ungrouped.filter(connMatchesFilter);
+  const filteredShared = sharedConnections.filter(connMatchesFilter);
 
   function renderInlineNewFolder() {
     return (
@@ -663,7 +688,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
   }
 
   function renderGroup(group: ConnectionGroup, depth = 0) {
-    const expanded = q ? true : expandedGroups.has(group.id);
+    const expanded = isFiltering ? true : expandedGroups.has(group.id);
     const isDraggingThisGroup = draggingGroupId === group.id;
     const isInvalidDropTarget = draggingGroupId !== null &&
       isAncestorOrSelf(group.id, draggingGroupId, groups);
@@ -864,6 +889,39 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
               </button>
             )}
           </div>
+
+          {/* Tag filter pills */}
+          {allTags.length > 0 && (
+            <div className="flex flex-wrap gap-1 px-2 pt-1">
+              {allTags.map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => setSelectedTags((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(tag)) next.delete(tag); else next.add(tag);
+                    return next;
+                  })}
+                  className={`px-1.5 py-0.5 rounded-full text-[10px] border transition-colors ${
+                    selectedTags.has(tag)
+                      ? 'bg-accent/20 text-accent border-accent/40'
+                      : 'bg-surface border-border text-text-secondary hover:bg-surface-hover'
+                  }`}
+                >
+                  {tag}
+                </button>
+              ))}
+              {selectedTags.size > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedTags(new Set())}
+                  className="px-1.5 py-0.5 rounded-full text-[10px] text-red-400 hover:text-red-300"
+                >
+                  clear
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Connection list */}
@@ -931,9 +989,9 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
               Click "+ New Connection" to get started.
             </p>
           )}
-          {q && filteredGroups.length === 0 && filteredUngrouped.length === 0 && filteredShared.length === 0 && (
+          {isFiltering && filteredGroups.length === 0 && filteredUngrouped.length === 0 && filteredShared.length === 0 && (
             <p className="text-xs text-text-secondary text-center px-4 mt-8 leading-relaxed">
-              No connections match "{searchQuery}".
+              No connections match the current filter.
             </p>
           )}
         </div>
