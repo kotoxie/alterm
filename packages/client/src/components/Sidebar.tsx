@@ -153,6 +153,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
   const [renamingGroupId, setRenamingGroupId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [newConnGroupId, setNewConnGroupId] = useState<string | null>(null);
+  const [newConnProtocol, setNewConnProtocol] = useState<string>('rdp');
   const inlineNewGroupInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const folderMenuRef = useRef<HTMLDivElement>(null);
@@ -331,8 +332,9 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
     setInlineNewGroup(null);
   }
 
-  function openNewConnectionInFolder(groupId: string | null) {
+  function openNewConnectionInFolder(groupId: string | null, protocol = 'rdp') {
     setNewConnGroupId(groupId);
+    setNewConnProtocol(protocol);
     setEditingConnection(null);
     setShowModal(true);
   }
@@ -1003,9 +1005,9 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
           groups={flatGroups}
           prefill={duplicatePrefill ?? (newConnGroupId !== null && !editingConnection ? {
             name: '',
-            protocol: 'rdp',
+            protocol: newConnProtocol as ConnectionPrefill['protocol'],
             host: '',
-            port: 3389,
+            port: { rdp: 3389, ssh: 22, smb: 445, vnc: 5900, sftp: 22, ftp: 21, telnet: 23 }[newConnProtocol] ?? 3389,
             username: '',
             groupId: newConnGroupId,
             shared: false,
@@ -1018,12 +1020,14 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
             setEditingConnection(null);
             setDuplicatePrefill(null);
             setNewConnGroupId(null);
+            setNewConnProtocol('rdp');
           }}
           onSaved={() => {
             setShowModal(false);
             setEditingConnection(null);
             setDuplicatePrefill(null);
             setNewConnGroupId(null);
+            setNewConnProtocol('rdp');
             fetchConnections();
           }}
         />
@@ -1102,16 +1106,28 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
       {bgContextMenu && (
         <div
           ref={bgMenuRef}
-          className="fixed z-50 bg-surface-alt border border-border rounded shadow-lg py-1 text-sm min-w-[160px]"
+          className="fixed z-50 bg-surface-alt border border-border rounded shadow-lg py-1 text-sm min-w-[180px]"
           style={{ left: bgContextMenu.x, top: bgContextMenu.y }}
         >
-          <button
-            className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
-            onClick={() => { openNewConnectionInFolder(null); setBgContextMenu(null); }}
-          >
-            <PlugIcon />
-            New Connection
-          </button>
+          <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-text-secondary select-none">New Connection</div>
+          {([
+            { protocol: 'rdp',    label: 'RDP' },
+            { protocol: 'ssh',    label: 'SSH' },
+            { protocol: 'vnc',    label: 'VNC' },
+            { protocol: 'telnet', label: 'Telnet' },
+            { protocol: 'smb',    label: 'SMB' },
+            { protocol: 'ftp',    label: 'FTP' },
+          ] as const).map(({ protocol, label }) => (
+            <button
+              key={protocol}
+              className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
+              onClick={() => { openNewConnectionInFolder(null, protocol); setBgContextMenu(null); }}
+            >
+              <span className="text-[10px] font-mono text-text-secondary w-12">{PROTOCOL_ICONS[protocol]}</span>
+              {label}
+            </button>
+          ))}
+          <div className="border-t border-border my-1" />
           <button
             className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
             onClick={() => { startInlineNewFolder(null); setBgContextMenu(null); }}
@@ -1145,13 +1161,24 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
             </button>
           )}
           {onConnectMultiple && <div className="border-t border-border my-1" />}
-          <button
-            className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
-            onClick={() => { openNewConnectionInFolder(folderContextMenu.group.id); setFolderContextMenu(null); }}
-          >
-            <PlugIcon />
-            New Connection here
-          </button>
+          <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-text-secondary select-none">New Connection here</div>
+          {([
+            { protocol: 'rdp',    label: 'RDP' },
+            { protocol: 'ssh',    label: 'SSH' },
+            { protocol: 'vnc',    label: 'VNC' },
+            { protocol: 'telnet', label: 'Telnet' },
+            { protocol: 'smb',    label: 'SMB' },
+            { protocol: 'ftp',    label: 'FTP' },
+          ] as const).map(({ protocol, label }) => (
+            <button
+              key={protocol}
+              className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
+              onClick={() => { openNewConnectionInFolder(folderContextMenu.group.id, protocol); setFolderContextMenu(null); }}
+            >
+              <span className="text-[10px] font-mono text-text-secondary w-12">{PROTOCOL_ICONS[protocol]}</span>
+              {label}
+            </button>
+          ))}
           <button
             className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
             onClick={() => { startInlineNewFolder(folderContextMenu.group.id); setFolderContextMenu(null); }}
