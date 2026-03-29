@@ -204,7 +204,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
 
           <div>
             <label className="block text-xs font-medium text-text-secondary mb-1">Protocol</label>
-            <div className="flex flex-wrap gap-1.5 w-full">
+            <div className="flex gap-1 w-full">
               {([
                 { id: 'rdp', label: 'RDP', icon: (
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
@@ -253,7 +253,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
                   key={p}
                   type="button"
                   onClick={() => handleProtocolChange(p)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border ${
+                  className={`flex-1 flex items-center justify-center gap-1 px-1.5 py-1.5 rounded text-xs font-medium border ${
                     protocol === p
                       ? 'bg-accent text-white border-accent'
                       : 'bg-surface border-border text-text-secondary hover:bg-surface-hover'
