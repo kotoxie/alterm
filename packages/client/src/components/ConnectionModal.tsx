@@ -45,12 +45,13 @@ const defaultPorts: Record<string, number> = {
   vnc: 5900,
   sftp: 22,
   ftp: 21,
+  telnet: 23,
 };
 
 export function ConnectionModal({ connection, groups, onClose, onSaved, prefill }: ConnectionModalProps) {
 
   const [name, setName] = useState(prefill?.name ?? connection?.name ?? '');
-  const [protocol, setProtocol] = useState<'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp'>(prefill?.protocol ?? connection?.protocol ?? 'rdp');
+  const [protocol, setProtocol] = useState<'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' | 'telnet'>(prefill?.protocol ?? connection?.protocol ?? 'rdp');
   const [host, setHost] = useState(prefill?.host ?? connection?.host ?? '');
   const [port, setPort] = useState(prefill?.port ?? connection?.port ?? 3389);
   const [username, setUsername] = useState(prefill?.username ?? '');
@@ -68,6 +69,8 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
   const [tunnels, setTunnels] = useState<TunnelDef[]>(prefill?.tunnels ?? []);
   const [smbShare, setSmbShare] = useState(prefill?.smbShare ?? '');
   const [smbDomain, setSmbDomain] = useState(prefill?.smbDomain ?? '');
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState('');
   const newFolderInputRef = useRef<HTMLInputElement>(null);
 
   // Load full details when editing an existing connection
@@ -85,11 +88,12 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
         })));
         if (d.extraConfig?.share) setSmbShare(d.extraConfig.share as string);
         if (d.extraConfig?.domain) setSmbDomain(d.extraConfig.domain as string);
+        if (d.tags && Array.isArray(d.tags)) setTags(d.tags);
       })
       .catch(() => {});
   }, [connection?.id]);
 
-  function handleProtocolChange(p: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp') {
+  function handleProtocolChange(p: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' | 'telnet') {
     setProtocol(p);
     if (!connection) setPort(defaultPorts[p]);
   }
@@ -142,6 +146,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
       if (protocol === 'smb') {
         body.extraConfig = { share: smbShare.trim(), ...(smbDomain.trim() ? { domain: smbDomain.trim() } : {}) };
       }
+      if (tags.length > 0) body.tags = tags;
       const url = connection ? `/api/v1/connections/${connection.id}` : '/api/v1/connections';
       const method = connection ? 'PUT' : 'POST';
       const res = await fetch(url, {
@@ -233,6 +238,14 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
                     <polyline points="14 2 14 8 20 8" />
                     <line x1="12" y1="12" x2="12" y2="18" />
                     <polyline points="9 15 12 18 15 15" />
+                  </svg>
+                )},
+                { id: 'telnet', label: 'Telnet', icon: (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+                    <polyline points="4 17 10 11 4 5" />
+                    <line x1="12" y1="5" x2="20" y2="5" />
+                    <line x1="12" y1="12" x2="20" y2="12" />
+                    <line x1="12" y1="19" x2="20" y2="19" />
                   </svg>
                 )},
               ] as const).map(({ id: p, label, icon }) => (
@@ -463,6 +476,36 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
               <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${shared ? 'translate-x-4' : 'translate-x-0.5'}`} />
             </button>
             <span className="text-xs text-text-secondary">Share with all users</span>
+          </div>
+
+          {/* Tags */}
+          <div>
+            <label className="block text-xs font-medium text-text-secondary mb-1">Tags</label>
+            <div className="flex flex-wrap gap-1 mb-1.5">
+              {tags.map((tag) => (
+                <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-accent/15 text-accent text-xs">
+                  {tag}
+                  <button type="button" onClick={() => setTags(tags.filter((t) => t !== tag))} className="hover:text-red-400 text-[10px] leading-none">×</button>
+                </span>
+              ))}
+            </div>
+            <input
+              type="text"
+              value={tagInput}
+              onChange={(e) => setTagInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ',') {
+                  e.preventDefault();
+                  const val = tagInput.trim().toLowerCase();
+                  if (val && !tags.includes(val)) setTags([...tags, val]);
+                  setTagInput('');
+                } else if (e.key === 'Backspace' && !tagInput && tags.length > 0) {
+                  setTags(tags.slice(0, -1));
+                }
+              }}
+              placeholder="Type and press Enter to add tags..."
+              className="w-full px-2 py-1 text-xs rounded bg-surface border border-border text-text-primary"
+            />
           </div>
 
           {error && <p className="text-red-500 text-xs">{error}</p>}

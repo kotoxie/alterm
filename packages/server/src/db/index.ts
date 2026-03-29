@@ -306,6 +306,39 @@ function runMigrations() {
         CREATE INDEX IF NOT EXISTS idx_ssh_commands_session ON ssh_commands(session_id);
       `,
     },
+    {
+      version: 5,
+      run: (database: Database) => {
+        // Add 'telnet' to protocol CHECK and add 'tags' column to connections
+        // SQLite requires table recreation to change CHECK constraints
+        database.run(`CREATE TABLE connections_new (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          group_id TEXT REFERENCES connection_groups(id) ON DELETE SET NULL,
+          name TEXT NOT NULL,
+          protocol TEXT NOT NULL CHECK(protocol IN ('ssh', 'rdp', 'smb', 'vnc', 'sftp', 'ftp', 'telnet')),
+          host TEXT NOT NULL,
+          port INTEGER NOT NULL,
+          username TEXT,
+          encrypted_password TEXT,
+          private_key TEXT,
+          extra_config_json TEXT,
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          recording_enabled INTEGER NOT NULL DEFAULT 1,
+          shared INTEGER NOT NULL DEFAULT 0,
+          tunnels_json TEXT,
+          host_fingerprint TEXT,
+          tags TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )`);
+        database.run(`INSERT INTO connections_new (id, user_id, group_id, name, protocol, host, port, username, encrypted_password, private_key, extra_config_json, sort_order, recording_enabled, shared, tunnels_json, host_fingerprint, created_at, updated_at)
+          SELECT id, user_id, group_id, name, protocol, host, port, username, encrypted_password, private_key, extra_config_json, sort_order, recording_enabled, shared, tunnels_json, host_fingerprint, created_at, updated_at FROM connections`);
+        database.run('DROP TABLE connections');
+        database.run('ALTER TABLE connections_new RENAME TO connections');
+        database.run('CREATE INDEX IF NOT EXISTS idx_connections_user ON connections(user_id)');
+      },
+    },
   ];
 
   for (const migration of migrations) {
