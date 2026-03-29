@@ -122,6 +122,62 @@ const PenIcon = () => (
   </svg>
 );
 
+const PROTOCOL_SUBMENU: Array<{ protocol: string; label: string; icon: React.ReactNode }> = [
+  { protocol: 'rdp', label: 'RDP', icon: (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <rect x="2" y="3" width="20" height="14" rx="2" />
+      <line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" />
+    </svg>
+  )},
+  { protocol: 'ssh', label: 'SSH', icon: (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" />
+    </svg>
+  )},
+  { protocol: 'vnc', label: 'VNC', icon: (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <rect x="2" y="3" width="20" height="14" rx="2" />
+      <circle cx="12" cy="10" r="3" />
+      <line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" />
+    </svg>
+  )},
+  { protocol: 'telnet', label: 'Telnet', icon: (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <polyline points="4 17 10 11 4 5" />
+      <line x1="12" y1="5" x2="20" y2="5" /><line x1="12" y1="12" x2="20" y2="12" /><line x1="12" y1="19" x2="20" y2="19" />
+    </svg>
+  )},
+  { protocol: 'smb', label: 'SMB', icon: (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+    </svg>
+  )},
+  { protocol: 'ftp', label: 'FTP', icon: (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="12" y1="12" x2="12" y2="18" /><polyline points="9 15 12 18 15 15" />
+    </svg>
+  )},
+];
+
+function ProtocolSubmenuItems({ groupId: _groupId, onSelect }: { groupId: string | null; onSelect: (p: string) => void }) {
+  return (
+    <>
+      {PROTOCOL_SUBMENU.map(({ protocol, label, icon }) => (
+        <button
+          key={protocol}
+          className="w-full px-3 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2.5 whitespace-nowrap"
+          onClick={() => onSelect(protocol)}
+        >
+          <span className="text-text-secondary shrink-0">{icon}</span>
+          <span className="text-sm">{label}</span>
+        </button>
+      ))}
+    </>
+  );
+}
+
 export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
   const { settings } = useSettings();
   const healthMonitorEnabled = settings['health_monitor.enabled'] !== 'false';
@@ -148,6 +204,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
   const [folderContextMenu, setFolderContextMenu] = useState<FolderContextMenu | null>(null);
   const [bgContextMenu, setBgContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [showNewConnSubmenu, setShowNewConnSubmenu] = useState(false);
   const [duplicatePrefill, setDuplicatePrefill] = useState<ConnectionPrefill | null>(null);
   const [healthMap, setHealthMap] = useState<Record<string, 'checking' | 'up' | 'down'>>({});
   const [renamingGroupId, setRenamingGroupId] = useState<string | null>(null);
@@ -1003,7 +1060,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
         <ConnectionModal
           connection={editingConnection}
           groups={flatGroups}
-          prefill={duplicatePrefill ?? (newConnGroupId !== null && !editingConnection ? {
+          prefill={duplicatePrefill ?? (!editingConnection ? {
             name: '',
             protocol: newConnProtocol as ConnectionPrefill['protocol'],
             host: '',
@@ -1106,30 +1163,27 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
       {bgContextMenu && (
         <div
           ref={bgMenuRef}
-          className="fixed z-50 bg-surface-alt border border-border rounded shadow-lg py-1 text-sm min-w-[180px]"
+          className="fixed z-50 bg-surface-alt border border-border rounded shadow-lg py-1 text-sm min-w-[170px]"
           style={{ left: bgContextMenu.x, top: bgContextMenu.y }}
+          onMouseLeave={() => setShowNewConnSubmenu(false)}
         >
-          <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-text-secondary select-none">New Connection</div>
-          {([
-            { protocol: 'rdp',    label: 'RDP' },
-            { protocol: 'ssh',    label: 'SSH' },
-            { protocol: 'vnc',    label: 'VNC' },
-            { protocol: 'telnet', label: 'Telnet' },
-            { protocol: 'smb',    label: 'SMB' },
-            { protocol: 'ftp',    label: 'FTP' },
-          ] as const).map(({ protocol, label }) => (
-            <button
-              key={protocol}
-              className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
-              onClick={() => { openNewConnectionInFolder(null, protocol); setBgContextMenu(null); }}
-            >
-              <span className="text-[10px] font-mono text-text-secondary w-12">{PROTOCOL_ICONS[protocol]}</span>
-              {label}
+          {/* New Connection with flyout */}
+          <div
+            className="relative"
+            onMouseEnter={() => setShowNewConnSubmenu(true)}
+          >
+            <button className="w-full px-3 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2"><PlugIcon />New Connection</span>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M9 18l6-6-6-6"/></svg>
             </button>
-          ))}
-          <div className="border-t border-border my-1" />
+            {showNewConnSubmenu && (
+              <div className="absolute left-full top-0 ml-0.5 bg-surface-alt border border-border rounded shadow-lg py-1 min-w-[130px] z-50">
+                <ProtocolSubmenuItems groupId={null} onSelect={(p) => { openNewConnectionInFolder(null, p); setBgContextMenu(null); setShowNewConnSubmenu(false); }} />
+              </div>
+            )}
+          </div>
           <button
-            className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
+            className="w-full px-3 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
             onClick={() => { startInlineNewFolder(null); setBgContextMenu(null); }}
           >
             <FolderIcon />
@@ -1144,10 +1198,11 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
           ref={folderMenuRef}
           className="fixed z-50 bg-surface-alt border border-border rounded shadow-lg py-1 text-sm min-w-[180px]"
           style={{ left: folderContextMenu.x, top: folderContextMenu.y }}
+          onMouseLeave={() => setShowNewConnSubmenu(false)}
         >
           {onConnectMultiple && (
             <button
-              className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
+              className="w-full px-3 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
               onClick={() => {
                 const conns = getAllConnectionsInGroup(folderContextMenu.group);
                 if (conns.length > 0) onConnectMultiple(conns);
@@ -1161,26 +1216,23 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
             </button>
           )}
           {onConnectMultiple && <div className="border-t border-border my-1" />}
-          <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-text-secondary select-none">New Connection here</div>
-          {([
-            { protocol: 'rdp',    label: 'RDP' },
-            { protocol: 'ssh',    label: 'SSH' },
-            { protocol: 'vnc',    label: 'VNC' },
-            { protocol: 'telnet', label: 'Telnet' },
-            { protocol: 'smb',    label: 'SMB' },
-            { protocol: 'ftp',    label: 'FTP' },
-          ] as const).map(({ protocol, label }) => (
-            <button
-              key={protocol}
-              className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
-              onClick={() => { openNewConnectionInFolder(folderContextMenu.group.id, protocol); setFolderContextMenu(null); }}
-            >
-              <span className="text-[10px] font-mono text-text-secondary w-12">{PROTOCOL_ICONS[protocol]}</span>
-              {label}
+          {/* New Connection with flyout */}
+          <div
+            className="relative"
+            onMouseEnter={() => setShowNewConnSubmenu(true)}
+          >
+            <button className="w-full px-3 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2"><PlugIcon />New Connection</span>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M9 18l6-6-6-6"/></svg>
             </button>
-          ))}
+            {showNewConnSubmenu && (
+              <div className="absolute left-full top-0 ml-0.5 bg-surface-alt border border-border rounded shadow-lg py-1 min-w-[130px] z-50">
+                <ProtocolSubmenuItems groupId={folderContextMenu.group.id} onSelect={(p) => { openNewConnectionInFolder(folderContextMenu.group.id, p); setFolderContextMenu(null); setShowNewConnSubmenu(false); }} />
+              </div>
+            )}
+          </div>
           <button
-            className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
+            className="w-full px-3 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
             onClick={() => { startInlineNewFolder(folderContextMenu.group.id); setFolderContextMenu(null); }}
           >
             <SubfolderIcon />
@@ -1188,11 +1240,10 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
           </button>
           <div className="border-t border-border my-1" />
           <button
-            className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
+            className="w-full px-3 py-1.5 text-left hover:bg-surface-hover text-text-primary flex items-center gap-2"
             onClick={() => {
               setRenamingGroupId(folderContextMenu.group.id);
               setRenameValue(folderContextMenu.group.name);
-              // Ensure the folder is visible (expand it so the rename input renders)
               setExpandedGroups((prev) => persistExpandedGroups(new Set([...prev, folderContextMenu.group.id])));
               setFolderContextMenu(null);
             }}
@@ -1201,7 +1252,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
             Rename
           </button>
           <button
-            className="w-full px-4 py-1.5 text-left hover:bg-surface-hover text-red-400 flex items-center gap-2"
+            className="w-full px-3 py-1.5 text-left hover:bg-surface-hover text-red-400 flex items-center gap-2"
             onClick={() => { deleteGroup(folderContextMenu.group.id); setFolderContextMenu(null); }}
           >
             <TrashIcon size={13} />
