@@ -66,7 +66,7 @@ Open **`https://<YOUR_IP>:7443`** — on first launch you'll be prompted to crea
 ### 🖥️ Protocols
 | Protocol | Details |
 |---|---|
-| **RDP** | WebAssembly-powered (IronRDP) — no Guacamole, no Java, native browser speed. Session recording with cursor compositing (WebM video) |
+| **RDP** | WebAssembly-powered — no Guacamole, no Java, native browser speed. Session recording with cursor compositing (WebM video) |
 | **SSH** | Full xterm.js terminal, unlimited width, port-forward tunnels, session recording & playback, **command-level audit log** |
 | **VNC** | Remote desktop via noVNC |
 | **SMB** | File browser for Windows network shares |

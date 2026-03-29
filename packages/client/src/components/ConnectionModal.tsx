@@ -2,7 +2,7 @@ import { useRef, useState, useEffect, type FormEvent } from 'react';
 interface Connection {
   id: string;
   name: string;
-  protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp';
+  protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' | 'telnet';
   host: string;
   port: number;
   groupId: string | null;
@@ -16,7 +16,7 @@ interface FlatGroup {
 
 export interface ConnectionPrefill {
   name: string;
-  protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp';
+  protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' | 'telnet';
   host: string;
   port: number;
   username: string;
