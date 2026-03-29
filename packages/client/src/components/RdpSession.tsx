@@ -290,6 +290,19 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
         // even before setCursorStyleCallback has fired.
         recCursorImg = defaultArrowImg;
 
+        // ── Click ripple effect (for recording) ──────────────────────────────
+        // Draws an expanding, fading circle on each mouse click so reviewers
+        // can see exactly where and when clicks happened during playback.
+        interface ClickRipple { x: number; y: number; t: number; color: string }
+        const RIPPLE_DURATION = 400; // ms
+        const RIPPLE_MAX_R = 28;     // max radius in canvas pixels
+        const RIPPLE_COLORS: Record<number, string> = {
+          0: 'rgba(59,130,246,A)',  // left  — blue
+          1: 'rgba(156,163,175,A)', // middle — gray
+          2: 'rgba(239,68,68,A)',   // right — red
+        };
+        const clickRipples: ClickRipple[] = [];
+
         const onRecMouseMove = (e: MouseEvent) => {
           const rect = canvas.getBoundingClientRect();
           const scaleX = canvas.width / rect.width;
@@ -409,6 +422,27 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
               function drawCompositeFrame() {
                 // Copy RDP frame (preserveDrawingBuffer=true ensures it's readable)
                 ctx2d.drawImage(canvas, 0, 0);
+                // Draw click ripples
+                const now = performance.now();
+                for (let i = clickRipples.length - 1; i >= 0; i--) {
+                  const r = clickRipples[i];
+                  const elapsed = now - r.t;
+                  if (elapsed > RIPPLE_DURATION) { clickRipples.splice(i, 1); continue; }
+                  const progress = elapsed / RIPPLE_DURATION;
+                  const radius = RIPPLE_MAX_R * progress;
+                  const alpha = (1 - progress) * 0.6;
+                  const color = r.color.replace('A', String(alpha));
+                  ctx2d.beginPath();
+                  ctx2d.arc(r.x, r.y, radius, 0, Math.PI * 2);
+                  ctx2d.strokeStyle = color;
+                  ctx2d.lineWidth = 2;
+                  ctx2d.stroke();
+                  // Small filled dot at center
+                  ctx2d.beginPath();
+                  ctx2d.arc(r.x, r.y, 3, 0, Math.PI * 2);
+                  ctx2d.fillStyle = r.color.replace('A', String(alpha * 0.8));
+                  ctx2d.fill();
+                }
                 // Draw software cursor on top
                 if (recCursorVisible && recCursorImg?.complete && recCursorImg.naturalWidth > 0) {
                   ctx2d.drawImage(recCursorImg, recMouseX - recCursorHX, recMouseY - recCursorHY);
@@ -500,6 +534,9 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
           canvas.focus();
           e.preventDefault();
           applyEvents(DeviceEvent.mouseButtonPressed(e.button));
+          // Record click ripple for the compositor
+          const colorTpl = RIPPLE_COLORS[e.button] ?? RIPPLE_COLORS[0];
+          clickRipples.push({ x: recMouseX, y: recMouseY, t: performance.now(), color: colorTpl });
           if (e.button === 2) {
             syncHostClipboardToGuest();
           } else if (!clipboardPermissionRequested) {
