@@ -2,7 +2,7 @@
 
 # ⚡ Alterm
 
-### Lightning-fast, self-hosted remote access — RDP, SSH, VNC, SMB, SFTP & FTP in one Docker container.
+### Lightning-fast, self-hosted remote access — RDP, SSH, VNC, Telnet, SMB, SFTP & FTP in one Docker container.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Latest Release](https://img.shields.io/github/v/release/kotoxie/alterm?label=release)](https://github.com/kotoxie/alterm/releases/latest)
@@ -66,9 +66,10 @@ Open **`https://<YOUR_IP>:7443`** — on first launch you'll be prompted to crea
 ### 🖥️ Protocols
 | Protocol | Details |
 |---|---|
-| **RDP** | WebAssembly-powered — no Guacamole, no Java, native browser speed. Session recording with cursor compositing (WebM video) |
+| **RDP** | WebAssembly-powered — no Guacamole, no Java, native browser speed. Session recording with cursor compositing and **click ripple indicators** (WebM video) |
 | **SSH** | Full xterm.js terminal, unlimited width, port-forward tunnels, session recording & playback, **command-level audit log** |
 | **VNC** | Remote desktop via noVNC |
+| **Telnet** | Full terminal client with IAC negotiation, auto-login, window resize (NAWS), and session recording |
 | **SMB** | File browser for Windows network shares |
 | **SFTP** | Secure file browser; open directly from any SSH connection (password or private key auth) |
 | **FTP** | File browser for FTP servers with optional FTPS support |
@@ -85,6 +86,8 @@ Open **`https://<YOUR_IP>:7443`** — on first launch you'll be prompted to crea
 ### 📁 Connection Management
 - **Nested folders** — arbitrarily deep folder trees with **persistent expand/collapse state** across sidebar toggles and page refreshes
 - **Drag & drop** — reorder connections and folders freely
+- **Connection search** — instant search-as-you-type filter matching name and host
+- **Connection tags** — label connections (e.g. `prod`, `linux`, `customer-a`) and filter the sidebar by tag
 - **Right-click menus** — full CRUD on connections and folders from the sidebar
 - **Import / Export** — backup and restore the full connection tree as JSON
 - **Health monitor** — live green/red reachability dots in the sidebar (configurable, enable/disable from settings)
@@ -96,7 +99,7 @@ Open **`https://<YOUR_IP>:7443`** — on first launch you'll be prompted to crea
 - **MFA (TOTP)** — per-user authenticator app support with trusted device cookies
 - **Authentication Providers** — admin UI to enable/disable local, LDAP, and SSO independently; optionally enforce SSO-only login
 - **IP Access Rules** — allowlist or denylist by CIDR range
-- **Session recording** — SSH sessions (asciinema) and RDP sessions (WebM video) recorded and **encrypted at rest**, replayed in-browser; files inaccessible without GUI authentication
+- **Session recording** — SSH sessions (asciinema) and RDP sessions (WebM video) recorded and **encrypted at rest**, replayed in-browser; RDP recordings include **click ripple indicators** (color-coded: blue=left, red=right, gray=middle); files inaccessible without GUI authentication
 - **SSH command audit log** — every command typed in an SSH session is logged with timestamp and output preview, viewable alongside the recording playback
 - **File activity recording** — SFTP, SMB, and FTP sessions log every file operation (browse, upload, download, delete, mkdir) in a searchable timeline
 - **Idle timeout** — real idle detection (heartbeats don't reset the clock); warning dialog with countdown before auto-logout
@@ -182,3 +185,6 @@ npm install && npm run build && npm start
 ## 📄 License
 
 [MIT]
+
+## Attribution
+<a href="https://www.flaticon.com/free-icons/terminal" title="terminal icons">Terminal icons created by msidiqf - Flaticon</a>
