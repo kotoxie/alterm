@@ -49,7 +49,7 @@ export interface Tab {
   id: string;
   connectionId: string;
   name: string;
-  protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp';
+  protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' | 'telnet';
   status: 'connecting' | 'connected' | 'disconnected';
   /** Stable across page refreshes — used to reattach SSH sessions without reconnecting. */
   clientSessionId: string;
@@ -65,7 +65,7 @@ export interface ViewData {
 export interface TabBarItem {
   id: string;
   label: string;
-  protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' | 'split';
+  protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' | 'telnet' | 'split';
   status: 'connecting' | 'connected' | 'disconnected';
 }
 
@@ -215,7 +215,7 @@ export function MainLayout() {
   // Rule: if active view has an empty pane, fill it; otherwise create a new view.
 
   const openTab = useCallback(
-    (connection: { id: string; name: string; protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' }) => {
+    (connection: { id: string; name: string; protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' | 'telnet' }) => {
       const currentViews = viewsRef.current;
       const currentActiveViewId = activeViewIdRef.current;
       const activeView = currentActiveViewId
@@ -273,7 +273,7 @@ export function MainLayout() {
   // Opens multiple connections as separate views atomically (used for "Connect All").
 
   const openMultipleTabs = useCallback(
-    (connections: Array<{ id: string; name: string; protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' }>) => {
+    (connections: Array<{ id: string; name: string; protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' | 'telnet' }>) => {
       if (connections.length === 0) return;
       const newTabs: Tab[] = connections.map((conn) => ({
         id: crypto.randomUUID(),

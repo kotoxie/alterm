@@ -22,6 +22,7 @@ const protocolIcons: Record<string, string> = {
   vnc: '🖱',
   sftp: '📂',
   ftp: '🗂',
+  telnet: '⌨',
   split: '⊞',
 };
 

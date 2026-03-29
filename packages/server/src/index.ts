@@ -12,6 +12,7 @@ import { ensureTlsCerts } from './services/tls.js';
 import { setupRdpProxy } from './ws/rdpProxy.js';
 import { setupSshProxy } from './ws/sshProxy.js';
 import { setupVncProxy } from './ws/vncProxy.js';
+import { setupTelnetProxy } from './ws/telnetProxy.js';
 import { getSetting } from './services/settings.js';
 import authRoutes from './routes/auth.js';
 import connectionRoutes from './routes/connections.js';
@@ -155,6 +156,7 @@ async function main() {
   setupRdpProxy(server);
   setupSshProxy(server);
   setupVncProxy(server);
+  setupTelnetProxy(server);
 
   // Graceful shutdown
   function shutdown() {
