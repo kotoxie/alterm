@@ -1114,7 +1114,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
       {showModal && (
         <ConnectionModal
           connection={editingConnection}
-          groups={flatGroups}
+          groups={flattenGroups(groups)}
           prefill={duplicatePrefill ?? (!editingConnection ? {
             name: '',
             protocol: newConnProtocol as ConnectionPrefill['protocol'],
