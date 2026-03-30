@@ -10,6 +10,7 @@ import { hashToken, isSessionRevoked } from '../services/loginSession.js';
 import { registerWs, unregisterWs } from './wsRegistry.js';
 import { queryOne, execute } from '../db/helpers.js';
 import { redeemWsTicket } from '../services/wsTicket.js';
+import { userHasPermission, wsCanAccess } from '../services/permissions.js';
 import { decrypt, encryptRecordingStream } from '../services/encryption.js';
 import { logAudit } from '../services/audit.js';
 import { resolveClientIp } from '../services/ip.js';
@@ -124,6 +125,10 @@ export function setupSshProxy(server: https.Server): void {
     const { userId, tokenHash } = ticketData;
 
     if (isSessionRevoked(tokenHash)) { ws.close(4001, 'Session revoked'); return; }
+
+    // Protocol permission check
+    if (!userHasPermission(userId, 'protocols.ssh')) { ws.close(4003, 'Protocol not permitted'); return; }
+
     registerWs(tokenHash, ws);
     ws.once('close', () => unregisterWs(tokenHash, ws));
 
@@ -142,9 +147,10 @@ export function setupSshProxy(server: https.Server): void {
     }
 
     // ── New session path ─────────────────────────────────────────────────────
+    const access = wsCanAccess(userId);
     const conn = queryOne<ConnectionRow>(
-      'SELECT * FROM connections WHERE id = ? AND (user_id = ? OR shared = 1)',
-      [connectionId, userId],
+      `SELECT * FROM connections WHERE id = ? AND ${access.where}`,
+      [connectionId, ...access.params],
     );
     if (!conn || conn.protocol !== 'ssh') { ws.close(4002, 'Not found or not SSH'); return; }
 

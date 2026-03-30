@@ -172,9 +172,10 @@ router.post('/rdp-session', (req: Request, res: Response) => {
   const { connectionId } = req.body as { connectionId?: string };
   if (!connectionId) { res.status(400).json({ error: 'connectionId required' }); return; }
 
+  const role = req.user!.role;
   const conn = queryOne<{ id: string; recording_enabled: number }>(
-    'SELECT id, recording_enabled FROM connections WHERE id = ? AND (user_id = ? OR shared = 1)',
-    [connectionId, userId],
+    `SELECT id, recording_enabled FROM connections WHERE id = ? AND (user_id = ? OR shared = 1 OR id IN (SELECT cs.connection_id FROM connection_shares cs WHERE (cs.share_type = 'user' AND cs.target_id = ?) OR (cs.share_type = 'role' AND cs.target_id = ?)))`,
+    [connectionId, userId, userId, role],
   );
   if (!conn) { res.status(404).json({ error: 'Connection not found' }); return; }
 
