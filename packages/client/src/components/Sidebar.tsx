@@ -213,6 +213,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
   const [renameValue, setRenameValue] = useState('');
   const [newConnGroupId, setNewConnGroupId] = useState<string | null>(null);
   const [newConnProtocol, setNewConnProtocol] = useState<string>('rdp');
+  const [deleteFolderConfirm, setDeleteFolderConfirm] = useState<{ group: ConnectionGroup; connCount: number } | null>(null);
   const inlineNewGroupInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const folderMenuRef = useRef<HTMLDivElement>(null);
@@ -353,11 +354,24 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
     fetchConnections();
   }
 
-  async function deleteGroup(id: string) {
+  function requestDeleteGroup(group: ConnectionGroup) {
+    // Count all connections recursively
+    const count = (g: ConnectionGroup): number =>
+      g.connections.length + g.children.reduce((s, c) => s + count(c), 0);
+    const connCount = count(group);
+    if (connCount > 0) {
+      setDeleteFolderConfirm({ group, connCount });
+    } else {
+      void confirmDeleteGroup(group.id);
+    }
+  }
+
+  async function confirmDeleteGroup(id: string) {
     await fetch(`/api/v1/connections/groups/${id}`, {
       method: 'DELETE',
       credentials: 'include',
     });
+    setDeleteFolderConfirm(null);
     fetchConnections();
   }
 
@@ -844,7 +858,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
           )}
           <span className="text-xs text-text-secondary mr-1">{totalCount}</span>
           <button
-            onClick={(e) => { e.stopPropagation(); deleteGroup(group.id); }}
+            onClick={(e) => { e.stopPropagation(); requestDeleteGroup(group); }}
             title="Delete folder"
             className="hidden group-hover/folder:flex p-1 rounded text-text-secondary hover:text-red-400 hover:bg-surface"
           >
@@ -1131,6 +1145,43 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
         />
       )}
 
+      {/* Delete folder confirmation dialog */}
+      {deleteFolderConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
+          <div className="bg-surface-alt border border-border rounded-lg shadow-xl p-5 max-w-sm w-full mx-4">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="shrink-0 w-9 h-9 rounded-full bg-red-500/15 flex items-center justify-center">
+                <TrashIcon size={16} />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-text-primary mb-1">Delete "{deleteFolderConfirm.group.name}"?</h3>
+                <p className="text-xs text-text-secondary leading-relaxed">
+                  This folder contains <span className="font-semibold text-red-400">{deleteFolderConfirm.connCount} connection{deleteFolderConfirm.connCount !== 1 ? 's' : ''}</span>.
+                  Deleting this folder will permanently remove all connections inside it.
+                  This action cannot be undone.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setDeleteFolderConfirm(null)}
+                className="px-3 py-1.5 text-xs border border-border rounded text-text-secondary hover:bg-surface-hover"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => confirmDeleteGroup(deleteFolderConfirm.group.id)}
+                className="px-3 py-1.5 text-xs bg-red-500 hover:bg-red-600 text-white rounded font-medium"
+              >
+                Delete folder &amp; {deleteFolderConfirm.connCount} connection{deleteFolderConfirm.connCount !== 1 ? 's' : ''}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Connection right-click context menu */}
       {contextMenu && (
         <div
@@ -1294,7 +1345,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
           </button>
           <button
             className="w-full px-3 py-1.5 text-left hover:bg-surface-hover text-red-400 flex items-center gap-2"
-            onClick={() => { deleteGroup(folderContextMenu.group.id); setFolderContextMenu(null); }}
+            onClick={() => { requestDeleteGroup(folderContextMenu.group); setFolderContextMenu(null); }}
           >
             <TrashIcon size={13} />
             Delete Folder

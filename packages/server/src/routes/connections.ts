@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import net from 'net';
 import { v4 as uuid } from 'uuid';
-import { queryAll, queryOne, execute, getChanges } from '../db/helpers.js';
+import { queryAll, queryOne, execute } from '../db/helpers.js';
 import { authRequired } from '../middleware/auth.js';
 import { encrypt, decrypt } from '../services/encryption.js';
 import { logAudit } from '../services/audit.js';
@@ -533,12 +533,31 @@ router.delete('/groups/:id', (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const id = req.params.id as string;
 
-  execute('DELETE FROM connection_groups WHERE id = ? AND user_id = ?', [id, userId]);
-  const changes = getChanges();
-  if (changes === 0) {
-    res.status(404).json({ error: 'Group not found' });
-    return;
+  // Verify ownership
+  const group = queryOne<{ user_id: string }>(
+    'SELECT user_id FROM connection_groups WHERE id = ? AND user_id = ?', [id, userId],
+  );
+  if (!group) { res.status(404).json({ error: 'Group not found' }); return; }
+
+  // Recursively collect all descendant group IDs (including this one)
+  const allGroupIds: string[] = [];
+  const queue = [id];
+  while (queue.length > 0) {
+    const current = queue.pop()!;
+    allGroupIds.push(current);
+    const children = queryAll<{ id: string }>(
+      'SELECT id FROM connection_groups WHERE parent_id = ? AND user_id = ?', [current, userId],
+    );
+    children.forEach(c => queue.push(c.id));
   }
+
+  // Delete all connections in those groups
+  for (const gid of allGroupIds) {
+    execute('DELETE FROM connections WHERE group_id = ? AND user_id = ?', [gid, userId]);
+  }
+
+  // Delete the group (cascades to subgroups via ON DELETE CASCADE)
+  execute('DELETE FROM connection_groups WHERE id = ? AND user_id = ?', [id, userId]);
 
   res.json({ success: true });
 });
