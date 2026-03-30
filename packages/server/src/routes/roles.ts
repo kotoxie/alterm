@@ -124,17 +124,18 @@ router.post('/:id/reset', requirePermission('roles.manage'), (req: Request, res:
   if (!existing) { res.status(404).json({ error: 'Role not found' }); return; }
   if (!existing.is_builtin) { res.status(400).json({ error: 'Only built-in roles can be reset' }); return; }
 
-  const defaults = DEFAULT_BUILTIN_PERMISSIONS[id];
+  const roleId = id as string;
+  const defaults = DEFAULT_BUILTIN_PERMISSIONS[roleId];
   if (!defaults) { res.status(400).json({ error: 'No defaults defined for this role' }); return; }
 
   const beforePerms = JSON.parse(existing.permissions_json || '[]') as string[];
   execute(
     `UPDATE roles SET permissions_json = ?, updated_at = datetime('now') WHERE id = ?`,
-    [JSON.stringify(defaults), id],
+    [JSON.stringify(defaults), roleId],
   );
 
-  const added = defaults.filter(p => !beforePerms.includes(p));
-  const removed = beforePerms.filter(p => !defaults.includes(p));
+  const added = defaults.filter((p: string) => !beforePerms.includes(p));
+  const removed = beforePerms.filter((p: string) => !(defaults as string[]).includes(p));
   logAudit({
     userId: req.user!.userId,
     eventType: 'role.reset',
