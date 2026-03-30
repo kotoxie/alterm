@@ -16,8 +16,14 @@ import { execute } from '../db/helpers.js';
 // Common shell prompt endings: $, #, %, >, »
 const PROMPT_RE = /[$#%>»]\s*$/;
 
-// Password prompt patterns — triggers redaction of the next keystroke input
-const PASSWORD_PROMPT_RE = /(\[sudo\]\s*password|password\s*for\s+\w|password\s*:|enter passphrase|enter password|pin\s*:)\s*$/i;
+// Password prompt patterns — triggers redaction of the next keystroke input.
+// Matches prompts like:
+//   [sudo] password for user:
+//   Password:
+//   Enter passphrase for key '...':
+//   Enter password:
+//   PIN:
+const PASSWORD_PROMPT_RE = /\bpassword\b[^:]*:\s*$|enter\s+passphrase\b[^:]*:\s*$|enter\s+password\s*:\s*$|\bpin\s*:\s*$/i;
 
 export class CommandTracker {
   private sessionDbId: string;
