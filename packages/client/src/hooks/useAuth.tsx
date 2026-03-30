@@ -4,8 +4,9 @@ interface User {
   id: string;
   username: string;
   displayName: string;
-  role: 'admin' | 'user';
+  role: string;
   theme: string | null;
+  permissions: string[];
   dismissedWarnings: string[];
 }
 

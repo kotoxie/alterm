@@ -71,6 +71,11 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
   const [smbDomain, setSmbDomain] = useState(prefill?.smbDomain ?? '');
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
+  const [sharingOpen, setSharingOpen] = useState(false);
+  const [shareRoles, setShareRoles] = useState<{ id: string; name: string }[]>([]);
+  const [shareUsers, setShareUsers] = useState<{ id: string; username: string }[]>([]);
+  const [selectedShareRoles, setSelectedShareRoles] = useState<string[]>([]);
+  const [selectedShareUsers, setSelectedShareUsers] = useState<string[]>([]);
   const newFolderInputRef = useRef<HTMLInputElement>(null);
 
   // Load full details when editing an existing connection
@@ -89,9 +94,26 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
         if (d.extraConfig?.share) setSmbShare(d.extraConfig.share as string);
         if (d.extraConfig?.domain) setSmbDomain(d.extraConfig.domain as string);
         if (d.tags && Array.isArray(d.tags)) setTags(d.tags);
+        if (d.shares && Array.isArray(d.shares)) {
+          setSelectedShareRoles(d.shares.filter((s: { shareType: string }) => s.shareType === 'role').map((s: { targetId: string }) => s.targetId));
+          setSelectedShareUsers(d.shares.filter((s: { shareType: string }) => s.shareType === 'user').map((s: { targetId: string }) => s.targetId));
+          if (d.shares.length > 0) setSharingOpen(true);
+        }
       })
       .catch(() => {});
   }, [connection?.id]);
+
+  // Load roles and users for sharing dropdowns
+  useEffect(() => {
+    fetch('/api/v1/roles', { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setShareRoles(d.map((r: { id: string; name: string }) => ({ id: r.id, name: r.name }))); })
+      .catch(() => {});
+    fetch('/api/v1/users', { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => { if (d?.users && Array.isArray(d.users)) setShareUsers(d.users.map((u: { id: string; username: string }) => ({ id: u.id, username: u.username }))); })
+      .catch(() => {});
+  }, []);
 
   function handleProtocolChange(p: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' | 'telnet') {
     setProtocol(p);
@@ -155,6 +177,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
         credentials: 'include',
         body: JSON.stringify(body),
       });
+      let resultData: Record<string, unknown> = {};
       if (!res.ok) {
         let errMsg = `Server error (${res.status})`;
         try {
@@ -162,7 +185,32 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
           errMsg = data.error || errMsg;
         } catch { /* server returned non-JSON (e.g. HTML error page) */ }
         throw new Error(errMsg);
+      } else {
+        try { resultData = await res.json(); } catch { /* ignore */ }
       }
+
+      // Save shares if any were configured
+      const connId = connection?.id || resultData.id as string;
+      if (connId && (selectedShareRoles.length > 0 || selectedShareUsers.length > 0)) {
+        const shares = [
+          ...selectedShareRoles.map(id => ({ shareType: 'role', targetId: id })),
+          ...selectedShareUsers.map(id => ({ shareType: 'user', targetId: id })),
+        ];
+        await fetch(`/api/v1/connections/${connId}/shares`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ shares }),
+        });
+      } else if (connId && connection) {
+        await fetch(`/api/v1/connections/${connId}/shares`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ shares: [] }),
+        });
+      }
+
       onSaved();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Save failed');
@@ -465,19 +513,6 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
             </div>
           )}
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setShared((v) => !v)}
-              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                shared ? 'bg-accent' : 'bg-surface-hover border border-border'
-              }`}
-            >
-              <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${shared ? 'translate-x-4' : 'translate-x-0.5'}`} />
-            </button>
-            <span className="text-xs text-text-secondary">Share with all users</span>
-          </div>
-
           {/* Tags */}
           <div>
             <label className="block text-xs font-medium text-text-secondary mb-1">Tags</label>
@@ -506,6 +541,92 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
               placeholder="Type and press Enter to add tags..."
               className="w-full px-2 py-1 text-xs rounded bg-surface border border-border text-text-primary"
             />
+          </div>
+
+          {/* Sharing — collapsible */}
+          <div className="border border-border rounded overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setSharingOpen(v => !v)}
+              className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-text-secondary hover:bg-surface-hover"
+            >
+              <span className="flex items-center gap-1.5">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+                Sharing
+              </span>
+              <span className="flex items-center gap-1.5">
+                {(shared || selectedShareRoles.length > 0 || selectedShareUsers.length > 0) && (
+                  <span className="px-1.5 py-0.5 bg-accent/15 text-accent rounded text-[10px]">
+                    {shared ? 'All users' : `${selectedShareRoles.length + selectedShareUsers.length} target${selectedShareRoles.length + selectedShareUsers.length !== 1 ? 's' : ''}`}
+                  </span>
+                )}
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                  className={`transform transition-transform ${sharingOpen ? 'rotate-180' : ''}`}>
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </span>
+            </button>
+            {sharingOpen && (
+              <div className="px-3 pb-3 space-y-3 border-t border-border pt-3">
+                {/* Share with all users toggle */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShared(v => !v)}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                      shared ? 'bg-accent' : 'bg-surface-hover border border-border'
+                    }`}
+                  >
+                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${shared ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                  </button>
+                  <span className="text-xs text-text-secondary">Share with all users</span>
+                </div>
+
+                {!shared && (
+                  <>
+                    {/* Share with roles */}
+                    <div>
+                      <label className="block text-[10px] font-medium text-text-secondary mb-1">Share with roles</label>
+                      <div className="space-y-1">
+                        {shareRoles.map(r => (
+                          <label key={r.id} className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={selectedShareRoles.includes(r.id)}
+                              onChange={() => setSelectedShareRoles(prev =>
+                                prev.includes(r.id) ? prev.filter(x => x !== r.id) : [...prev, r.id]
+                              )}
+                              className="accent-accent"
+                            />
+                            <span className="text-xs text-text-primary">{r.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Share with users */}
+                    <div>
+                      <label className="block text-[10px] font-medium text-text-secondary mb-1">Share with users</label>
+                      <div className="space-y-1 max-h-32 overflow-y-auto">
+                        {shareUsers.map(u => (
+                          <label key={u.id} className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={selectedShareUsers.includes(u.id)}
+                              onChange={() => setSelectedShareUsers(prev =>
+                                prev.includes(u.id) ? prev.filter(x => x !== u.id) : [...prev, u.id]
+                              )}
+                              className="accent-accent"
+                            />
+                            <span className="text-xs text-text-primary">{u.username}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           {error && <p className="text-red-500 text-xs">{error}</p>}

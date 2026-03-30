@@ -95,7 +95,7 @@ function DetailsView({ details }: { details: unknown }) {
 export function AuditTrail() {
   const { user } = useAuth();
   const timezone = useTimezone();
-  const isAdmin = user?.role === 'admin';
+  const canViewAny = user?.permissions?.includes('audit.view_any') ?? false;
 
   const [entries, setEntries] = useState<AuditEntry[]>([]);
   const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: 50, total: 0, totalPages: 1 });
@@ -160,13 +160,13 @@ export function AuditTrail() {
       .then((d) => setEventTypes(d.eventTypes ?? []))
       .catch(() => {});
 
-    if (isAdmin) {
+    if (canViewAny) {
       fetch('/api/v1/audit/users', { credentials: 'include' })
         .then((r) => r.json())
         .then((d) => setAuditUsers(d.users ?? []))
         .catch(() => {});
     }
-  }, [isAdmin]);
+  }, [canViewAny]);
 
   async function exportData(format: 'csv' | 'json') {
     const p = buildParams(1);
@@ -254,7 +254,7 @@ export function AuditTrail() {
           {eventTypes.map((et) => <option key={et} value={et}>{et}</option>)}
         </select>
 
-        {isAdmin && (
+        {canViewAny && (
           <select
             value={userFilter}
             onChange={(e) => { setUserFilter(e.target.value); setPage(1); }}
