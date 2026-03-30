@@ -5,6 +5,7 @@ import { queryOne } from '../db/helpers.js';
 import { isSessionRevoked } from '../services/loginSession.js';
 import { registerWs, unregisterWs } from './wsRegistry.js';
 import { redeemWsTicket } from '../services/wsTicket.js';
+import { userHasPermission, wsCanAccess } from '../services/permissions.js';
 import { logAudit } from '../services/audit.js';
 import { resolveClientIp } from '../services/ip.js';
 import { v4 as uuid } from 'uuid';
@@ -29,9 +30,13 @@ export function setupVncProxy(server: Server): void {
 
     if (isSessionRevoked(vncTokenHash)) { socket.destroy(); return; }
 
+    // Protocol permission check
+    if (!userHasPermission(userId, 'protocols.vnc')) { socket.destroy(); return; }
+
+    const access = wsCanAccess(userId);
     const conn = queryOne<{ host: string; port: number; user_id: string; shared: number }>(
-      `SELECT host, port, user_id, shared FROM connections WHERE id = ? AND (user_id = ? OR shared = 1) AND protocol = 'vnc'`,
-      [connectionId, userId],
+      `SELECT host, port, user_id, shared FROM connections WHERE id = ? AND ${access.where} AND protocol = 'vnc'`,
+      [connectionId, ...access.params],
     );
     if (!conn) { socket.destroy(); return; }
 
