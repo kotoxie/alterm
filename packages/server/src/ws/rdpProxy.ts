@@ -6,6 +6,7 @@ import type https from 'https';
 import { isSessionRevoked } from '../services/loginSession.js';
 import { registerWs, unregisterWs } from './wsRegistry.js';
 import { redeemWsTicket } from '../services/wsTicket.js';
+import { userHasPermission, wsCanAccess } from '../services/permissions.js';
 import { queryOne, execute } from '../db/helpers.js';
 import { decrypt } from '../services/encryption.js';
 import { logAudit } from '../services/audit.js';
@@ -150,12 +151,17 @@ export function setupRdpProxy(server: https.Server): void {
     const { userId, tokenHash } = ticketData;
 
     if (isSessionRevoked(tokenHash)) { ws.close(4001, 'Session revoked'); return; }
+
+    // Protocol permission check
+    if (!userHasPermission(userId, 'protocols.rdp')) { ws.close(4003, 'Protocol not permitted'); return; }
+
     registerWs(tokenHash, ws);
     ws.once('close', () => unregisterWs(tokenHash, ws));
 
+    const access = wsCanAccess(userId);
     const conn = queryOne<ConnectionRow>(
-      'SELECT * FROM connections WHERE id = ? AND (user_id = ? OR shared = 1)',
-      [connectionId, userId],
+      `SELECT * FROM connections WHERE id = ? AND ${access.where}`,
+      [connectionId, ...access.params],
     );
     if (!conn || conn.protocol !== 'rdp') { ws.close(4002, 'Connection not found or not RDP'); return; }
 

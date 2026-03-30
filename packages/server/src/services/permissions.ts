@@ -86,3 +86,26 @@ export function getPermissionsForRole(roleId: string): string[] {
 export function roleHasPermission(roleId: string, perm: PermissionKey): boolean {
   return getPermissionsForRole(roleId).includes(perm);
 }
+
+/**
+ * Check whether a user (by ID) has a specific permission.
+ * Looks up their role from the users table then checks the role's permissions.
+ */
+export function userHasPermission(userId: string, perm: PermissionKey): boolean {
+  const user = queryOne<{ role: string }>('SELECT role FROM users WHERE id = ?', [userId]);
+  if (!user) return false;
+  return roleHasPermission(user.role, perm);
+}
+
+/**
+ * Build SQL WHERE clause + params for connection access (used by WS proxies).
+ * Checks ownership, shared=1, or connection_shares matching user/role.
+ */
+export function wsCanAccess(userId: string): { where: string; params: unknown[] } {
+  const user = queryOne<{ role: string }>('SELECT role FROM users WHERE id = ?', [userId]);
+  const role = user?.role ?? '';
+  return {
+    where: '(user_id = ? OR shared = 1 OR id IN (SELECT cs.connection_id FROM connection_shares cs WHERE (cs.share_type = \'user\' AND cs.target_id = ?) OR (cs.share_type = \'role\' AND cs.target_id = ?)))',
+    params: [userId, userId, role],
+  };
+}

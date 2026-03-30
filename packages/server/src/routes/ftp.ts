@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { PassThrough } from 'stream';
 import * as ftp from 'basic-ftp';
 import { queryOne } from '../db/helpers.js';
-import { authRequired } from '../middleware/auth.js';
+import { authRequired, requirePermission } from '../middleware/auth.js';
 import { decrypt } from '../services/encryption.js';
 import { logAudit } from '../services/audit.js';
 import { logFileSessionEvent } from '../services/fileSession.js';
@@ -10,6 +10,7 @@ import { resolveClientIp } from '../services/ip.js';
 
 const router = Router();
 router.use(authRequired);
+router.use(requirePermission('protocols.ftp'));
 
 interface ConnRow {
   id: string;
@@ -22,12 +23,12 @@ interface ConnRow {
   extra_config_json: string | null;
 }
 
-function getConn(connectionId: string, userId: string): ConnRow | null {
+function getConn(connectionId: string, userId: string, role: string): ConnRow | null {
   return queryOne<ConnRow>(
     `SELECT id, host, port, username, encrypted_password, user_id, shared, extra_config_json
      FROM connections
-     WHERE id = ? AND (user_id = ? OR shared = 1) AND protocol = 'ftp'`,
-    [connectionId, userId],
+     WHERE id = ? AND (user_id = ? OR shared = 1 OR id IN (SELECT cs.connection_id FROM connection_shares cs WHERE (cs.share_type = 'user' AND cs.target_id = ?) OR (cs.share_type = 'role' AND cs.target_id = ?))) AND protocol = 'ftp'`,
+    [connectionId, userId, userId, role],
   ) ?? null;
 }
 
@@ -59,7 +60,7 @@ async function makeFtpClient(conn: ConnRow): Promise<ftp.Client> {
 // POST /:connectionId/list — list directory
 router.post('/:connectionId/list', async (req: Request, res: Response) => {
   const userId = req.user!.userId;
-  const conn = getConn(req.params.connectionId as string, userId);
+  const conn = getConn(req.params.connectionId as string, userId, req.user!.role);
   if (!conn) { res.status(404).json({ error: 'Connection not found' }); return; }
 
   const { path: dirPath = '/' } = req.body as { path?: string };
@@ -99,7 +100,7 @@ router.post('/:connectionId/list', async (req: Request, res: Response) => {
 // GET /:connectionId/download — download a file
 router.get('/:connectionId/download', async (req: Request, res: Response) => {
   const userId = req.user!.userId;
-  const conn = getConn(req.params.connectionId as string, userId);
+  const conn = getConn(req.params.connectionId as string, userId, req.user!.role);
   if (!conn) { res.status(404).json({ error: 'Connection not found' }); return; }
 
   const filePath = req.query.path as string;
@@ -129,7 +130,7 @@ router.get('/:connectionId/download', async (req: Request, res: Response) => {
 // POST /:connectionId/upload — upload a file (body is raw buffer / req is readable)
 router.post('/:connectionId/upload', async (req: Request, res: Response) => {
   const userId = req.user!.userId;
-  const conn = getConn(req.params.connectionId as string, userId);
+  const conn = getConn(req.params.connectionId as string, userId, req.user!.role);
   if (!conn) { res.status(404).json({ error: 'Connection not found' }); return; }
 
   const filePath = req.query.path as string;
@@ -154,7 +155,7 @@ router.post('/:connectionId/upload', async (req: Request, res: Response) => {
 // POST /:connectionId/mkdir — create directory
 router.post('/:connectionId/mkdir', async (req: Request, res: Response) => {
   const userId = req.user!.userId;
-  const conn = getConn(req.params.connectionId as string, userId);
+  const conn = getConn(req.params.connectionId as string, userId, req.user!.role);
   if (!conn) { res.status(404).json({ error: 'Connection not found' }); return; }
 
   const { path: dirPath } = req.body as { path?: string };
@@ -181,7 +182,7 @@ router.post('/:connectionId/mkdir', async (req: Request, res: Response) => {
 // DELETE /:connectionId/file — delete a file or directory
 router.delete('/:connectionId/file', async (req: Request, res: Response) => {
   const userId = req.user!.userId;
-  const conn = getConn(req.params.connectionId as string, userId);
+  const conn = getConn(req.params.connectionId as string, userId, req.user!.role);
   if (!conn) { res.status(404).json({ error: 'Connection not found' }); return; }
 
   const filePath = req.query.path as string;
