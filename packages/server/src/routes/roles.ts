@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import crypto from 'crypto';
 import { authRequired, requirePermission } from '../middleware/auth.js';
 import { queryAll, queryOne, execute, getChanges } from '../db/helpers.js';
-import { ALL_PERMISSIONS, PERMISSION_GROUPS } from '../services/permissions.js';
+import { ALL_PERMISSIONS, PERMISSION_GROUPS, DEFAULT_BUILTIN_PERMISSIONS } from '../services/permissions.js';
 import { logAudit } from '../services/audit.js';
 
 const router = Router();
@@ -114,6 +114,40 @@ router.put('/:id', requirePermission('roles.manage'), (req: Request, res: Respon
     },
     ipAddress: req.ip,
   });
+  res.json(parseRole(updated!));
+});
+
+// POST /roles/:id/reset — reset built-in role to default permissions
+router.post('/:id/reset', requirePermission('roles.manage'), (req: Request, res: Response) => {
+  const { id } = req.params;
+  const existing = queryOne<RoleRow>('SELECT * FROM roles WHERE id = ?', [id]);
+  if (!existing) { res.status(404).json({ error: 'Role not found' }); return; }
+  if (!existing.is_builtin) { res.status(400).json({ error: 'Only built-in roles can be reset' }); return; }
+
+  const defaults = DEFAULT_BUILTIN_PERMISSIONS[id];
+  if (!defaults) { res.status(400).json({ error: 'No defaults defined for this role' }); return; }
+
+  const beforePerms = JSON.parse(existing.permissions_json || '[]') as string[];
+  execute(
+    `UPDATE roles SET permissions_json = ?, updated_at = datetime('now') WHERE id = ?`,
+    [JSON.stringify(defaults), id],
+  );
+
+  const added = defaults.filter(p => !beforePerms.includes(p));
+  const removed = beforePerms.filter(p => !defaults.includes(p));
+  logAudit({
+    userId: req.user!.userId,
+    eventType: 'role.reset',
+    target: existing.name,
+    details: {
+      roleId: id,
+      ...(added.length ? { permissionsAdded: added } : {}),
+      ...(removed.length ? { permissionsRemoved: removed } : {}),
+    },
+    ipAddress: req.ip,
+  });
+
+  const updated = queryOne<RoleRow>('SELECT * FROM roles WHERE id = ?', [id]);
   res.json(parseRole(updated!));
 });
 
