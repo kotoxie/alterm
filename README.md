@@ -19,6 +19,7 @@
 - [Why Alterm?](#-why-alterm)
 - [Quick Start](#-quick-start)
 - [Features](#-features)
+- [Alterm vs Guacamole](COMPARISON.md) — see how Alterm compares to Apache Guacamole
 - [Configuration](#️-configuration)
 - [Updating](#-updating)
 - [Building from Source](#️-building-from-source)
