@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { authRequired, requirePermission } from '../middleware/auth.js';
 import { queryAll, queryOne, execute, getChanges } from '../db/helpers.js';
 import { ALL_PERMISSIONS, PERMISSION_GROUPS } from '../services/permissions.js';
+import { logAudit } from '../services/audit.js';
 
 const router = Router();
 
@@ -58,6 +59,13 @@ router.post('/', requirePermission('roles.manage'), (req: Request, res: Response
     [id, name.trim(), (description ?? '').trim(), JSON.stringify(validPerms)],
   );
   const row = queryOne<RoleRow>('SELECT * FROM roles WHERE id = ?', [id]);
+  logAudit({
+    userId: req.user!.userId,
+    eventType: 'role.created',
+    target: name.trim(),
+    details: { roleId: id, permissions: validPerms },
+    ipAddress: req.ip,
+  });
   res.status(201).json(parseRole(row!));
 });
 
@@ -74,6 +82,8 @@ router.put('/:id', requirePermission('roles.manage'), (req: Request, res: Respon
   const validPerms = (permissions ?? JSON.parse(existing.permissions_json))
     .filter((p: string) => (ALL_PERMISSIONS as readonly string[]).includes(p));
 
+  const beforePerms = JSON.parse(existing.permissions_json || '[]') as string[];
+
   if (existing.is_builtin) {
     // Builtin: only permissions can change
     execute(
@@ -89,6 +99,21 @@ router.put('/:id', requirePermission('roles.manage'), (req: Request, res: Respon
     );
   }
   const updated = queryOne<RoleRow>('SELECT * FROM roles WHERE id = ?', [id]);
+
+  const added = validPerms.filter((p: string) => !beforePerms.includes(p));
+  const removed = beforePerms.filter((p: string) => !validPerms.includes(p));
+  logAudit({
+    userId: req.user!.userId,
+    eventType: 'role.updated',
+    target: updated!.name,
+    details: {
+      roleId: id,
+      ...(added.length ? { permissionsAdded: added } : {}),
+      ...(removed.length ? { permissionsRemoved: removed } : {}),
+      ...(name && name.trim() !== existing.name ? { nameChanged: { from: existing.name, to: name.trim() } } : {}),
+    },
+    ipAddress: req.ip,
+  });
   res.json(parseRole(updated!));
 });
 
@@ -107,6 +132,13 @@ router.delete('/:id', requirePermission('roles.manage'), (req: Request, res: Res
   }
 
   execute('DELETE FROM roles WHERE id = ?', [id]);
+  logAudit({
+    userId: req.user!.userId,
+    eventType: 'role.deleted',
+    target: existing.name,
+    details: { roleId: id },
+    ipAddress: req.ip,
+  });
   res.json({ success: true });
 });
 
