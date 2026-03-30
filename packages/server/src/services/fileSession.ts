@@ -2,7 +2,7 @@ import { v4 as uuid } from 'uuid';
 import type { Request } from 'express';
 import { execute } from '../db/helpers.js';
 
-export type FileSessionAction = 'browse' | 'download' | 'upload' | 'mkdir' | 'delete';
+export type FileSessionAction = 'browse' | 'download' | 'upload' | 'mkdir' | 'delete' | 'rename' | 'chmod' | 'copy';
 
 export function logFileSessionEvent(params: {
   req: Request;
