@@ -9,6 +9,7 @@ import { GlobalSettings } from './GlobalSettings';
 import { SessionsHistory } from './SessionsHistory';
 import { AuthProvidersSettings } from './AuthProvidersSettings';
 import { BackupSettings } from './BackupSettings';
+import { RolesSettings } from './RolesSettings';
 
 interface SettingsPanelProps {
   isOpen: boolean;
@@ -16,12 +17,12 @@ interface SettingsPanelProps {
   initialSection?: string;
 }
 
-type Section = 'profile' | 'ssh-prefs' | 'security' | 'users' | 'audit' | 'global' | 'sessions' | 'authentication' | 'backup';
+type Section = 'profile' | 'ssh-prefs' | 'security' | 'users' | 'audit' | 'global' | 'sessions' | 'authentication' | 'backup' | 'roles';
 
 interface NavItem {
   id: Section;
   label: string;
-  adminOnly?: boolean;
+  permission?: string;
   icon: React.ReactNode;
 }
 
@@ -130,19 +131,30 @@ function ArchiveIcon() {
   );
 }
 
+function RolesIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M12 2L2 7l10 5 10-5-10-5z" />
+      <path d="M2 17l10 5 10-5" />
+      <path d="M2 12l10 5 10-5" />
+    </svg>
+  );
+}
+
 const MY_SETTINGS_NAV: NavItem[] = [
   { id: 'profile', label: 'Profile', icon: <UserIcon /> },
   { id: 'ssh-prefs', label: 'SSH Terminal', icon: <TerminalIcon /> },
 ];
 
 const ADMIN_NAV: NavItem[] = [
-  { id: 'global', label: 'General', icon: <SlidersIcon />, adminOnly: true },
-  { id: 'security', label: 'Security', icon: <ShieldIcon />, adminOnly: true },
-  { id: 'authentication', label: 'Authentication', icon: <KeyIcon />, adminOnly: true },
-  { id: 'sessions', label: 'Recordings', icon: <HistoryIcon />, adminOnly: true },
-  { id: 'audit', label: 'Audit', icon: <ListIcon />, adminOnly: true },
-  { id: 'users', label: 'Users', icon: <UsersIcon />, adminOnly: true },
-  { id: 'backup', label: 'Backup & Restore', icon: <ArchiveIcon />, adminOnly: true },
+  { id: 'global', label: 'General', icon: <SlidersIcon />, permission: 'settings.manage' },
+  { id: 'security', label: 'Security', icon: <ShieldIcon />, permission: 'settings.security' },
+  { id: 'authentication', label: 'Authentication', icon: <KeyIcon />, permission: 'settings.auth_providers' },
+  { id: 'sessions', label: 'Recordings', icon: <HistoryIcon />, permission: 'sessions.view_any' },
+  { id: 'audit', label: 'Audit', icon: <ListIcon />, permission: 'audit.view_any' },
+  { id: 'users', label: 'Users', icon: <UsersIcon />, permission: 'users.manage' },
+  { id: 'roles', label: 'Roles', icon: <RolesIcon />, permission: 'roles.manage' },
+  { id: 'backup', label: 'Backup & Restore', icon: <ArchiveIcon />, permission: 'settings.backup' },
 ];
 
 // Combine for validation
@@ -158,11 +170,15 @@ const NAV_LABEL_MAP: Record<Section, string> = {
   'sessions': 'Session Recordings',
   'authentication': 'Authentication',
   'backup': 'Backup & Restore',
+  'roles': 'Roles',
 };
 
 export function SettingsPanel({ isOpen, onClose, initialSection }: SettingsPanelProps) {
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const perms = user?.permissions ?? [];
+  const hasPerm = (p: string) => perms.includes(p);
+  const visibleAdminNav = ADMIN_NAV.filter(n => !n.permission || hasPerm(n.permission));
+  const hasAnyAdminPerm = visibleAdminNav.length > 0;
   const [expanded, setExpanded] = useState(false);
   const [activeSection, setActiveSection] = useState<Section>(() => {
     if (initialSection && ALL_NAV.some((n) => n.id === initialSection)) {
@@ -228,13 +244,13 @@ export function SettingsPanel({ isOpen, onClose, initialSection }: SettingsPanel
               <NavButton key={item.id} item={item} />
             ))}
 
-            {/* Administration section — admin only */}
-            {isAdmin && (
+            {/* Administration section — permission-gated */}
+            {hasAnyAdminPerm && (
               <>
                 <div className="px-4 pt-4 pb-1">
                   <span className="text-[10px] font-semibold uppercase tracking-widest text-text-secondary/60">Administration</span>
                 </div>
-                {ADMIN_NAV.map((item) => (
+                {visibleAdminNav.map((item) => (
                   <NavButton key={item.id} item={item} />
                 ))}
               </>
@@ -282,13 +298,14 @@ export function SettingsPanel({ isOpen, onClose, initialSection }: SettingsPanel
           <div className="flex-1 overflow-y-auto p-6">
             {activeSection === 'profile' && <ProfileSettings />}
             {activeSection === 'ssh-prefs' && <SshPrefsSettings />}
-            {activeSection === 'security' && isAdmin && <SecuritySettings />}
-            {activeSection === 'authentication' && isAdmin && <AuthProvidersSettings />}
-            {activeSection === 'users' && isAdmin && <UsersSettings />}
-            {activeSection === 'audit' && isAdmin && <AuditTrail />}
-            {activeSection === 'global' && isAdmin && <GlobalSettings />}
-            {activeSection === 'sessions' && isAdmin && <SessionsHistory />}
-            {activeSection === 'backup' && isAdmin && <BackupSettings />}
+            {activeSection === 'security' && hasPerm('settings.security') && <SecuritySettings />}
+            {activeSection === 'authentication' && hasPerm('settings.auth_providers') && <AuthProvidersSettings />}
+            {activeSection === 'users' && hasPerm('users.manage') && <UsersSettings />}
+            {activeSection === 'audit' && (hasPerm('audit.view_any') || hasPerm('audit.view_own')) && <AuditTrail />}
+            {activeSection === 'global' && hasPerm('settings.manage') && <GlobalSettings />}
+            {activeSection === 'sessions' && (hasPerm('sessions.view_any') || hasPerm('sessions.view_own')) && <SessionsHistory />}
+            {activeSection === 'backup' && hasPerm('settings.backup') && <BackupSettings />}
+            {activeSection === 'roles' && hasPerm('roles.manage') && <RolesSettings />}
           </div>
         </div>
       </div>

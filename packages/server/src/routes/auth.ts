@@ -8,6 +8,7 @@ import { logAudit } from '../services/audit.js';
 import { getSetting } from '../services/settings.js';
 import { createLoginSession, hashToken } from '../services/loginSession.js';
 import { authRequired, adminRequired } from '../middleware/auth.js';
+import { getPermissionsForRole } from '../services/permissions.js';
 import { authenticator } from 'otplib';
 import { parseUA } from '../services/ua.js';
 import { issueWsTicket } from '../services/wsTicket.js';
@@ -234,7 +235,7 @@ router.post('/setup', async (req: Request, res: Response) => {
   setAuthCookie(res, token);
   res.json({
     token,
-    user: { id, username, displayName, role: 'admin', theme: null, dismissedWarnings: [] },
+    user: { id, username, displayName, role: 'admin', theme: null, permissions: getPermissionsForRole('admin'), dismissedWarnings: [] },
   });
 });
 
@@ -349,6 +350,7 @@ router.post('/login', async (req: Request, res: Response) => {
       displayName: user.display_name,
       role: user.role,
       theme: user.theme,
+      permissions: getPermissionsForRole(user.role),
       dismissedWarnings: parseDismissedWarnings(user.dismissed_warnings_json),
     },
   });
@@ -419,6 +421,7 @@ router.post('/login/mfa', async (req: Request, res: Response) => {
       displayName: user.display_name,
       role: user.role,
       theme: user.theme,
+      permissions: getPermissionsForRole(user.role),
       dismissedWarnings: parseDismissedWarnings(user.dismissed_warnings_json),
     },
   });
@@ -480,6 +483,7 @@ router.get('/me', (req: Request, res: Response) => {
         displayName: user.display_name,
         role: user.role,
         theme: user.theme,
+        permissions: getPermissionsForRole(user.role),
         dismissedWarnings: parseDismissedWarnings(user.dismissed_warnings_json),
       },
     });
@@ -543,7 +547,7 @@ router.post('/login/ldap', async (req: Request, res: Response) => {
 
   res.json({
     token,
-    user: { id: user.id, username: user.username, displayName: user.display_name, role: user.role, theme: null, dismissedWarnings: [] },
+    user: { id: user.id, username: user.username, displayName: user.display_name, role: user.role, theme: null, permissions: getPermissionsForRole(user.role), dismissedWarnings: [] },
   });
 });
 
