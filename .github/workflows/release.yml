@@ -59,7 +59,16 @@ jobs:
         run: |
           VERSION="${{ github.ref_name }}"
           VERSION="${VERSION#v}"
-          PREV=$(git tag --sort=-version:refname | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+' | sed -n '2p')
+          # Strip optional v-prefix for correct semver sorting, then find the tag just before the current one
+          CURRENT="${{ github.ref_name }}"
+          CURRENT_BARE="${CURRENT#v}"
+          PREV=$(git tag -l | sed 's/^v//' | sort -t. -k1,1nr -k2,2nr -k3,3nr | grep -E '^[0-9]+\.[0-9]+\.[0-9]+' | while read -r t; do
+            if [ "$t" != "$CURRENT_BARE" ]; then
+              # Find the actual tag name (bare or v-prefixed)
+              if git rev-parse "v$t" >/dev/null 2>&1; then echo "v$t"; else echo "$t"; fi
+              break
+            fi
+          done)
           if [ -z "$PREV" ]; then
             RANGE="HEAD"
           else
@@ -93,7 +102,7 @@ jobs:
               FIXES="${FIXES}"$'\n'"- $(echo "$msg" | sed 's/^fix[^:]*: //' | python3 -c "import sys; s=sys.stdin.read().rstrip(); print(s[:1].upper()+s[1:])")"
             elif echo "$msg" | grep -qE '^perf(\([^)]*\))?:'; then
               PERF="${PERF}"$'\n'"- $(echo "$msg" | sed 's/^perf[^:]*: //' | python3 -c "import sys; s=sys.stdin.read().rstrip(); print(s[:1].upper()+s[1:])")"
-            elif echo "$msg" | grep -qE '^(ci|chore|docs|style|test|build)(\([^)]*\))?:'; then
+            elif echo "$msg" | grep -qE '^(ci|chore|docs|style|test|build|release)(\([^)]*\))?:'; then
               true  # skip noise
             else
               MISC="${MISC}"$'\n'"- $(echo "$msg" | python3 -c "import sys; s=sys.stdin.read().rstrip(); print(s[:1].upper()+s[1:])")"
