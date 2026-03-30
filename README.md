@@ -93,6 +93,9 @@ Open **`https://<YOUR_IP>:7443`** — on first launch you'll be prompted to crea
 - **Health monitor** — live green/red reachability dots in the sidebar (configurable, enable/disable from settings)
 
 ### 🔒 Security & Authentication
+- **Granular RBAC** — role-based access control with 22 fine-grained permissions across connections, sessions, audit, admin, and protocols; create custom roles beyond the built-in Admin/User
+- **Connection sharing** — share individual connections with specific roles and/or specific users (not just all-or-nothing); collapsible sharing panel in the connection editor
+- **Protocol permissions** — control which protocols each role can access (SSH, RDP, VNC, Telnet, SMB, FTP)
 - **Local authentication** with bcrypt-hashed passwords and brute-force lockout
 - **LDAP / Active Directory** — authenticate users against any LDAP directory; map groups to admin role
 - **OpenID Connect (SSO)** — sign in via Azure AD, Okta, Google, Keycloak, or any OIDC-compatible provider; auto-provision users on first login
@@ -100,8 +103,9 @@ Open **`https://<YOUR_IP>:7443`** — on first launch you'll be prompted to crea
 - **Authentication Providers** — admin UI to enable/disable local, LDAP, and SSO independently; optionally enforce SSO-only login
 - **IP Access Rules** — allowlist or denylist by CIDR range
 - **Session recording** — SSH sessions (asciinema) and RDP sessions (WebM video) recorded and **encrypted at rest**, replayed in-browser; RDP recordings include **click ripple indicators** (color-coded: blue=left, red=right, gray=middle); files inaccessible without GUI authentication
-- **SSH command audit log** — every command typed in an SSH session is logged with timestamp and output preview, viewable alongside the recording playback
+- **SSH command audit log** — every command typed in an SSH session is logged with timestamp and output preview, viewable alongside the recording playback; **passwords are automatically redacted** from the audit trail
 - **File activity recording** — SFTP, SMB, and FTP sessions log every file operation (browse, upload, download, delete, mkdir) in a searchable timeline
+- **Folder delete cascade** — deleting a folder warns before recursively removing all connections inside
 - **Idle timeout** — real idle detection (heartbeats don't reset the clock); warning dialog with countdown before auto-logout
 - **Max session duration** — hard JWT expiry regardless of activity
 - **Audit trail** — every login, session, and config change logged with before/after diffs
@@ -123,7 +127,8 @@ Open **`https://<YOUR_IP>:7443`** — on first launch you'll be prompted to crea
 ### 👥 Multi-User Administration
 - **Admin and user roles** with role-based access control
 - **User management** — create, edit, and deactivate users from the UI
-- **Shared connections** — share connections across all users
+- **Shared connections** — share connections with all users, specific roles, or specific users
+- **Roles management** — create and manage custom roles with granular permission assignments from the settings panel
 - **Per-user SSH preferences** — font, theme, cursor, scrollback
 
 ### 🏗️ Infrastructure
