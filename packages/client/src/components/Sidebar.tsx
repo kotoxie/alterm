@@ -187,6 +187,8 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
+  const [showTagDropdown, setShowTagDropdown] = useState(false);
+  const tagDropdownRef = useRef<HTMLDivElement>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => {
     try {
       const stored = localStorage.getItem('alterm-expanded-groups');
@@ -243,7 +245,17 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
     };
   }, [contextMenu, folderContextMenu, bgContextMenu]);
 
-  const flatGroups = flattenGroups(groups);
+  // Close tag dropdown on outside click
+  useEffect(() => {
+    if (!showTagDropdown) return;
+    function onDown(e: MouseEvent) {
+      if (!tagDropdownRef.current?.contains(e.target as Node)) {
+        setShowTagDropdown(false);
+      }
+    }
+    window.addEventListener('mousedown', onDown);
+    return () => window.removeEventListener('mousedown', onDown);
+  }, [showTagDropdown]);
 
   const checkHealth = useCallback(async () => {
     if (!healthMonitorEnabled) return;
@@ -922,65 +934,94 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
             </label>
           </div>
 
-          {/* Search bar */}
-          <div className="relative">
-            <svg className="absolute left-2 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-            <input
-              ref={searchRef}
-              type="text"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Escape') setSearchQuery(''); }}
-              placeholder="Find connection..."
-              className="w-full pl-7 pr-6 py-1 text-xs bg-surface border border-border rounded text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => { setSearchQuery(''); searchRef.current?.focus(); }}
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary"
-                tabIndex={-1}
-              >
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-            )}
-          </div>
-
-          {/* Tag filter pills */}
-          {allTags.length > 0 && (
-            <div className="flex flex-wrap gap-1 px-2 pt-1">
-              {allTags.map((tag) => (
+          {/* Search bar + Tag filter button */}
+          <div className="flex gap-1 items-center">
+            <div className="relative flex-1">
+              <svg className="absolute left-2 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                ref={searchRef}
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Escape') setSearchQuery(''); }}
+                placeholder="Find connection..."
+                className="w-full pl-7 pr-6 py-1 text-xs bg-surface border border-border rounded text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent"
+              />
+              {searchQuery && (
                 <button
-                  key={tag}
-                  type="button"
-                  onClick={() => setSelectedTags((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(tag)) next.delete(tag); else next.add(tag);
-                    return next;
-                  })}
-                  className={`px-1.5 py-0.5 rounded-full text-[10px] border transition-colors ${
-                    selectedTags.has(tag)
-                      ? 'bg-accent/20 text-accent border-accent/40'
-                      : 'bg-surface border-border text-text-secondary hover:bg-surface-hover'
-                  }`}
+                  onClick={() => { setSearchQuery(''); searchRef.current?.focus(); }}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary"
+                  tabIndex={-1}
                 >
-                  {tag}
-                </button>
-              ))}
-              {selectedTags.size > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedTags(new Set())}
-                  className="px-1.5 py-0.5 rounded-full text-[10px] text-red-400 hover:text-red-300"
-                >
-                  clear
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
                 </button>
               )}
             </div>
-          )}
+
+            {/* Tag filter button — only shown when tags exist */}
+            {allTags.length > 0 && (
+              <div className="relative" ref={tagDropdownRef}>
+                <button
+                  type="button"
+                  title="Filter by tag"
+                  onClick={() => setShowTagDropdown(v => !v)}
+                  className={`flex items-center gap-1 px-2 py-1 rounded border text-xs transition-colors ${
+                    selectedTags.size > 0
+                      ? 'bg-accent/15 border-accent/40 text-accent'
+                      : 'bg-surface border-border text-text-secondary hover:bg-surface-hover'
+                  }`}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+                    <line x1="7" y1="7" x2="7.01" y2="7"/>
+                  </svg>
+                  {selectedTags.size > 0 && <span className="font-medium">{selectedTags.size}</span>}
+                </button>
+
+                {showTagDropdown && (
+                  <div className="absolute right-0 top-full mt-1 z-50 bg-surface-alt border border-border rounded shadow-lg py-1 min-w-[140px] max-h-60 overflow-y-auto">
+                    <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-text-secondary select-none">Filter by tag</div>
+                    {allTags.map((tag) => {
+                      const active = selectedTags.has(tag);
+                      return (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => setSelectedTags(prev => {
+                            const next = new Set(prev);
+                            if (next.has(tag)) next.delete(tag); else next.add(tag);
+                            return next;
+                          })}
+                          className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-surface-hover"
+                        >
+                          <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${active ? 'bg-accent border-accent' : 'border-border'}`}>
+                            {active && <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="white" strokeWidth="2.5"><polyline points="2 6 5 9 10 3"/></svg>}
+                          </span>
+                          <span className={active ? 'text-text-primary' : 'text-text-secondary'}>{tag}</span>
+                        </button>
+                      );
+                    })}
+                    {selectedTags.size > 0 && (
+                      <>
+                        <div className="border-t border-border my-1" />
+                        <button
+                          type="button"
+                          onClick={() => { setSelectedTags(new Set()); setShowTagDropdown(false); }}
+                          className="w-full px-3 py-1.5 text-xs text-left text-red-400 hover:bg-surface-hover"
+                        >
+                          Clear all
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Connection list */}
