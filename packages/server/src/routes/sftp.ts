@@ -263,4 +263,116 @@ router.delete('/:connectionId/file', async (req: Request, res: Response) => {
   }
 });
 
+// POST /:connectionId/rename — rename a file or folder
+router.post('/:connectionId/rename', async (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const conn = getConn(req.params.connectionId as string, userId, req.user!.role);
+  if (!conn) { res.status(404).json({ error: 'Connection not found' }); return; }
+
+  const { oldPath, newPath } = req.body as { oldPath?: string; newPath?: string };
+  if (!oldPath || !newPath) { res.status(400).json({ error: 'oldPath and newPath required' }); return; }
+
+  let ssh: SshClient | null = null;
+  try {
+    const result = await connectSftp(conn);
+    ssh = result.ssh;
+    const { sftp } = result;
+    await new Promise<void>((resolve, reject) => {
+      sftp.rename(oldPath, newPath, (err) => err ? reject(err) : resolve());
+    });
+    logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'sftp', action: 'rename', path: `${oldPath} → ${newPath}` });
+    res.json({ success: true });
+  } catch (e: unknown) {
+    res.status(500).json({ error: e instanceof Error ? e.message : 'SFTP error' });
+  } finally { ssh?.end(); }
+});
+
+// POST /:connectionId/stat — get file/folder info (size, permissions, timestamps)
+router.post('/:connectionId/stat', async (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const conn = getConn(req.params.connectionId as string, userId, req.user!.role);
+  if (!conn) { res.status(404).json({ error: 'Connection not found' }); return; }
+
+  const { path: filePath } = req.body as { path?: string };
+  if (!filePath) { res.status(400).json({ error: 'path required' }); return; }
+
+  let ssh: SshClient | null = null;
+  try {
+    const result = await connectSftp(conn);
+    ssh = result.ssh;
+    const { sftp } = result;
+    const stats = await new Promise<import('ssh2').Stats>((resolve, reject) => {
+      sftp.stat(filePath, (err, s) => err ? reject(err) : resolve(s));
+    });
+    res.json({
+      size: stats.size,
+      mode: stats.mode,
+      permissions: `0${(stats.mode & 0o7777).toString(8)}`,
+      uid: stats.uid,
+      gid: stats.gid,
+      atime: new Date(stats.atime * 1000).toISOString(),
+      mtime: new Date(stats.mtime * 1000).toISOString(),
+      isDirectory: stats.isDirectory(),
+    });
+  } catch (e: unknown) {
+    res.status(500).json({ error: e instanceof Error ? e.message : 'SFTP error' });
+  } finally { ssh?.end(); }
+});
+
+// POST /:connectionId/chmod — change file permissions
+router.post('/:connectionId/chmod', async (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const conn = getConn(req.params.connectionId as string, userId, req.user!.role);
+  if (!conn) { res.status(404).json({ error: 'Connection not found' }); return; }
+
+  const { path: filePath, mode } = req.body as { path?: string; mode?: number };
+  if (!filePath || mode === undefined) { res.status(400).json({ error: 'path and mode required' }); return; }
+
+  let ssh: SshClient | null = null;
+  try {
+    const result = await connectSftp(conn);
+    ssh = result.ssh;
+    const { sftp } = result;
+    await new Promise<void>((resolve, reject) => {
+      sftp.chmod(filePath, mode, (err) => err ? reject(err) : resolve());
+    });
+    logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'sftp', action: 'chmod', path: `${filePath} → ${mode.toString(8)}` });
+    res.json({ success: true });
+  } catch (e: unknown) {
+    res.status(500).json({ error: e instanceof Error ? e.message : 'SFTP error' });
+  } finally { ssh?.end(); }
+});
+
+// POST /:connectionId/copy — copy a file (server-side)
+router.post('/:connectionId/copy', async (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const conn = getConn(req.params.connectionId as string, userId, req.user!.role);
+  if (!conn) { res.status(404).json({ error: 'Connection not found' }); return; }
+
+  const { srcPath, destPath } = req.body as { srcPath?: string; destPath?: string };
+  if (!srcPath || !destPath) { res.status(400).json({ error: 'srcPath and destPath required' }); return; }
+
+  let ssh: SshClient | null = null;
+  try {
+    const result = await connectSftp(conn);
+    ssh = result.ssh;
+    // Use SSH exec for copy since SFTP has no native copy
+    await new Promise<void>((resolve, reject) => {
+      ssh!.exec(`cp -r "${srcPath}" "${destPath}"`, (err, stream) => {
+        if (err) { reject(err); return; }
+        let stderr = '';
+        stream.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
+        stream.on('close', (code: number) => {
+          if (code !== 0) reject(new Error(stderr || `cp failed with code ${code}`));
+          else resolve();
+        });
+      });
+    });
+    logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'sftp', action: 'copy', path: `${srcPath} → ${destPath}` });
+    res.json({ success: true });
+  } catch (e: unknown) {
+    res.status(500).json({ error: e instanceof Error ? e.message : 'SFTP error' });
+  } finally { ssh?.end(); }
+});
+
 export default router;

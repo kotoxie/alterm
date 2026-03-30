@@ -209,4 +209,53 @@ router.delete('/:connectionId/file', async (req: Request, res: Response) => {
   }
 });
 
+// POST /:connectionId/rename — rename a file or folder
+router.post('/:connectionId/rename', async (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const conn = getConn(req.params.connectionId as string, userId, req.user!.role);
+  if (!conn) { res.status(404).json({ error: 'Connection not found' }); return; }
+
+  const { oldPath, newPath } = req.body as { oldPath?: string; newPath?: string };
+  if (!oldPath || !newPath) { res.status(400).json({ error: 'oldPath and newPath required' }); return; }
+
+  let client: ftp.Client | null = null;
+  try {
+    client = await makeFtpClient(conn);
+    await client.rename(oldPath, newPath);
+    logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'ftp', action: 'rename', path: `${oldPath} → ${newPath}` });
+    res.json({ success: true });
+  } catch (e: unknown) {
+    res.status(500).json({ error: e instanceof Error ? e.message : 'FTP error' });
+  } finally { client?.close(); }
+});
+
+// POST /:connectionId/stat — get file info (size)
+router.post('/:connectionId/stat', async (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const conn = getConn(req.params.connectionId as string, userId, req.user!.role);
+  if (!conn) { res.status(404).json({ error: 'Connection not found' }); return; }
+
+  const { path: filePath } = req.body as { path?: string };
+  if (!filePath) { res.status(400).json({ error: 'path required' }); return; }
+
+  let client: ftp.Client | null = null;
+  try {
+    client = await makeFtpClient(conn);
+    const size = await client.size(filePath);
+    const lastMod = await client.lastMod(filePath);
+    res.json({
+      size,
+      mtime: lastMod.toISOString(),
+      isDirectory: false,
+    });
+  } catch (e: unknown) {
+    // If size fails, it's likely a directory
+    try {
+      res.json({ size: null, mtime: null, isDirectory: true });
+    } catch {
+      res.status(500).json({ error: e instanceof Error ? e.message : 'FTP error' });
+    }
+  } finally { client?.close(); }
+});
+
 export default router;
