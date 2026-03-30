@@ -26,6 +26,7 @@ export function RolesSettings() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [resetConfirm, setResetConfirm] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<Role | null>(null);
 
   const loadRoles = useCallback(async () => {
     const res = await fetch('/api/v1/roles', { credentials: 'include' });
@@ -108,9 +109,9 @@ export function RolesSettings() {
   }
 
   async function handleDelete(role: Role) {
-    if (!confirm(`Delete role "${role.name}"? Users assigned to this role will need to be reassigned.`)) return;
+    setDeleteConfirm(null);
     const res = await fetch(`/api/v1/roles/${role.id}`, { method: 'DELETE', credentials: 'include' });
-    if (!res.ok) { const d = await res.json(); alert(d.error || 'Delete failed'); return; }
+    if (!res.ok) { const d = await res.json(); setError(d.error || 'Delete failed'); return; }
     loadRoles();
   }
 
@@ -172,7 +173,7 @@ export function RolesSettings() {
                 <span className="text-[10px] text-text-secondary">{role.permissions.length} permissions</span>
                 {!role.isBuiltin && (
                   <button
-                    onClick={(e) => { e.stopPropagation(); handleDelete(role); }}
+                    onClick={(e) => { e.stopPropagation(); setDeleteConfirm(role); }}
                     className="p-1 rounded text-text-secondary hover:text-red-400 hover:bg-surface"
                     title="Delete role"
                   >
@@ -308,6 +309,33 @@ export function RolesSettings() {
             >
               {saving ? 'Saving…' : creating ? 'Create Role' : 'Save Changes'}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirmation dialog */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-surface border border-border rounded-lg p-5 max-w-sm w-full shadow-xl space-y-4">
+            <h3 className="text-sm font-semibold text-text-primary">Delete Role</h3>
+            <p className="text-xs text-text-secondary">
+              Delete role "<span className="text-text-primary font-medium">{deleteConfirm.name}</span>"? Users assigned to this role will need to be reassigned.
+            </p>
+            {error && <div className="text-xs text-red-400 bg-red-400/10 rounded px-3 py-2">{error}</div>}
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => { setDeleteConfirm(null); setError(''); }}
+                className="px-3 py-1.5 text-xs border border-border rounded text-text-secondary hover:bg-surface-hover"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDelete(deleteConfirm)}
+                className="px-3 py-1.5 text-xs bg-red-500 hover:bg-red-600 text-white rounded font-medium"
+              >
+                Delete
+              </button>
+            </div>
           </div>
         </div>
       )}
