@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { v4 as uuid } from 'uuid';
 import { queryAll, queryOne, execute } from '../db/helpers.js';
-import { authRequired, adminRequired } from '../middleware/auth.js';
+import { authRequired, requirePermission, userCan } from '../middleware/auth.js';
 import { logAudit } from '../services/audit.js';
 import { getSetting } from '../services/settings.js';
 import { config } from '../config.js';
@@ -28,16 +28,16 @@ interface SessionRow {
   username: string | null;
 }
 
-// GET / — list sessions (admin sees all, user sees own)
+// GET / — list sessions (view_any sees all, otherwise own only)
 router.get('/', (req: Request, res: Response) => {
   const userId = req.user!.userId;
-  const isAdmin = req.user!.role === 'admin';
+  const canViewAny = userCan(req, 'sessions.view_any');
   const page = Math.max(1, parseInt(req.query.page as string || '1', 10));
   const limit = Math.min(2000, Math.max(1, parseInt(req.query.limit as string || '50', 10)));
   const offset = (page - 1) * limit;
 
-  const whereClause = isAdmin ? '' : 'WHERE s.user_id = ?';
-  const params: unknown[] = isAdmin ? [limit, offset] : [userId, limit, offset];
+  const whereClause = canViewAny ? '' : 'WHERE s.user_id = ?';
+  const params: unknown[] = canViewAny ? [limit, offset] : [userId, limit, offset];
 
   const sessions = queryAll<SessionRow>(
     `SELECT s.id, s.user_id, s.connection_id, s.protocol, s.started_at, s.ended_at, s.recording_path,
@@ -75,8 +75,8 @@ router.get('/', (req: Request, res: Response) => {
   });
 });
 
-// DELETE / — purge all session history and recordings (admin only)
-router.delete('/', adminRequired, (req: Request, res: Response) => {
+// DELETE / — purge all session history and recordings (sessions.delete permission)
+router.delete('/', requirePermission('sessions.delete'), (req: Request, res: Response) => {
   const userId = req.user!.userId;
 
   // Collect all recording file paths before deleting rows
@@ -114,7 +114,7 @@ router.delete('/', adminRequired, (req: Request, res: Response) => {
 // GET /:id/recording — stream recording file (.cast or .webm) with Range support
 router.get('/:id/recording', (req: Request, res: Response) => {
   const userId = req.user!.userId;
-  const isAdmin = req.user!.role === 'admin';
+  const canViewAny = userCan(req, 'sessions.view_any');
   const { id } = req.params;
 
   const session = queryOne<{ recording_path: string | null; user_id: string }>(
@@ -123,7 +123,7 @@ router.get('/:id/recording', (req: Request, res: Response) => {
   );
 
   if (!session) { res.status(404).json({ error: 'Session not found' }); return; }
-  if (!isAdmin && session.user_id !== userId) { res.status(403).json({ error: 'Forbidden' }); return; }
+  if (!canViewAny && session.user_id !== userId) { res.status(403).json({ error: 'Forbidden' }); return; }
   if (!session.recording_path || !fs.existsSync(session.recording_path)) {
     res.status(404).json({ error: 'Recording not found' }); return;
   }
@@ -197,7 +197,7 @@ router.post('/rdp-session', (req: Request, res: Response) => {
 // POST /:id/recording/chunk — append a binary WebM chunk to the recording file
 router.post('/:id/recording/chunk', (req: Request, res: Response) => {
   const userId = req.user!.userId;
-  const isAdmin = req.user!.role === 'admin';
+  const canViewAny = userCan(req, 'sessions.view_any');
   const id = req.params.id as string;
 
   const session = queryOne<{ recording_path: string | null; user_id: string }>(
@@ -205,7 +205,7 @@ router.post('/:id/recording/chunk', (req: Request, res: Response) => {
     [id],
   );
   if (!session) { res.status(404).json({ error: 'Session not found' }); return; }
-  if (!isAdmin && session.user_id !== userId) { res.status(403).json({ error: 'Forbidden' }); return; }
+  if (!canViewAny && session.user_id !== userId) { res.status(403).json({ error: 'Forbidden' }); return; }
 
   let filePath = session.recording_path;
   if (!filePath) {
@@ -231,7 +231,7 @@ router.post('/:id/recording/chunk', (req: Request, res: Response) => {
 // POST /:id/recording/finalize — mark RDP session as ended
 router.post('/:id/recording/finalize', (req: Request, res: Response) => {
   const userId = req.user!.userId;
-  const isAdmin = req.user!.role === 'admin';
+  const canViewAny = userCan(req, 'sessions.view_any');
   const id = req.params.id as string;
 
   const session = queryOne<{ user_id: string }>(
@@ -239,7 +239,7 @@ router.post('/:id/recording/finalize', (req: Request, res: Response) => {
     [id],
   );
   if (!session) { res.status(404).json({ error: 'Session not found' }); return; }
-  if (!isAdmin && session.user_id !== userId) { res.status(403).json({ error: 'Forbidden' }); return; }
+  if (!canViewAny && session.user_id !== userId) { res.status(403).json({ error: 'Forbidden' }); return; }
 
   execute("UPDATE sessions SET ended_at = datetime('now') WHERE id = ?", [id]);
   // Finalize the in-flight cipher (CTR final() is a no-op but closes cleanly)
@@ -254,7 +254,7 @@ router.post('/:id/recording/finalize', (req: Request, res: Response) => {
 // GET /:id/commands — list SSH commands logged for a session
 router.get('/:id/commands', (req: Request, res: Response) => {
   const userId = req.user!.userId;
-  const isAdmin = req.user!.role === 'admin';
+  const canViewAny = userCan(req, 'sessions.view_any');
   const id = req.params.id as string;
 
   const session = queryOne<{ user_id: string; protocol: string }>(
@@ -262,7 +262,7 @@ router.get('/:id/commands', (req: Request, res: Response) => {
     [id],
   );
   if (!session) { res.status(404).json({ error: 'Session not found' }); return; }
-  if (!isAdmin && session.user_id !== userId) { res.status(403).json({ error: 'Forbidden' }); return; }
+  if (!canViewAny && session.user_id !== userId) { res.status(403).json({ error: 'Forbidden' }); return; }
 
   const commands = queryAll<{ id: string; timestamp: string; elapsed: number; command: string; output_preview: string | null }>(
     'SELECT id, timestamp, elapsed, command, output_preview FROM ssh_commands WHERE session_id = ? ORDER BY elapsed ASC',
@@ -272,7 +272,7 @@ router.get('/:id/commands', (req: Request, res: Response) => {
 });
 
 // GET /storage — return total bytes used by all recording files (admin only)
-router.get('/storage', adminRequired, (_req: Request, res: Response) => {
+router.get('/storage', requirePermission('settings.manage'), (_req: Request, res: Response) => {
   let totalBytes = 0;
   if (fs.existsSync(config.recordingsDir)) {
     for (const f of fs.readdirSync(config.recordingsDir)) {

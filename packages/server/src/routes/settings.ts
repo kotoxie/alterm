@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { authRequired } from '../middleware/auth.js';
+import { authRequired, userCan } from '../middleware/auth.js';
 import { logAudit } from '../services/audit.js';
 import { getAllSettings, getSetting, setSettings } from '../services/settings.js';
 import { encrypt, usingFileKey } from '../services/encryption.js';
@@ -7,14 +7,13 @@ import { encrypt, usingFileKey } from '../services/encryption.js';
 const router = Router();
 router.use(authRequired);
 
-// GET / — return all settings (admin only)
+// GET / — return all settings (settings.manage permission)
 router.get('/', (req: Request, res: Response) => {
-  if (req.user!.role !== 'admin') {
-    res.status(403).json({ error: 'Admin access required' });
+  if (!userCan(req, 'settings.manage')) {
+    res.status(403).json({ error: 'Insufficient permissions' });
     return;
   }
   const settings = getAllSettings();
-  // Inject runtime-only flag so the admin UI can show the insecure-key warning
   settings['system.insecure_key'] = String(usingFileKey);
   res.json({ settings });
 });
@@ -45,10 +44,10 @@ router.get('/public', (_req: Request, res: Response) => {
   res.json({ settings });
 });
 
-// PUT / — update settings (admin only)
+// PUT / — update settings (settings.manage permission)
 router.put('/', (req: Request, res: Response) => {
-  if (req.user!.role !== 'admin') {
-    res.status(403).json({ error: 'Admin access required' });
+  if (!userCan(req, 'settings.manage')) {
+    res.status(403).json({ error: 'Insufficient permissions' });
     return;
   }
 
