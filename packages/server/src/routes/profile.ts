@@ -4,6 +4,7 @@ import { queryOne, execute } from '../db/helpers.js';
 import { authRequired } from '../middleware/auth.js';
 import { logAudit } from '../services/audit.js';
 import { getSetting } from '../services/settings.js';
+import { getPermissionsForRole } from '../services/permissions.js';
 import { authenticator } from 'otplib';
 import QRCode from 'qrcode';
 import { encrypt, decrypt } from '../services/encryption.js';
@@ -45,6 +46,7 @@ router.get('/', (req: Request, res: Response) => {
     email: user.email,
     avatarText: user.avatar_text,
     role: user.role,
+    permissions: getPermissionsForRole(user.role),
     dismissedWarnings: user.dismissed_warnings_json ? JSON.parse(user.dismissed_warnings_json) as string[] : [],
   });
 });

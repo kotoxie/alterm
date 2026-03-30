@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { authRequired } from '../middleware/auth.js';
+import { authRequired, userCan } from '../middleware/auth.js';
 import { queryAll, queryOne } from '../db/helpers.js';
 
 const router = Router();
@@ -29,13 +29,13 @@ interface FileSessionEventRow {
 // GET / — list file sessions (paginated)
 router.get('/', (req: Request, res: Response) => {
   const userId = req.user!.userId;
-  const isAdmin = req.user!.role === 'admin';
+  const canViewAny = userCan(req, 'sessions.view_any');
   const page = Math.max(1, parseInt(req.query.page as string || '1', 10));
   const limit = Math.min(2000, Math.max(1, parseInt(req.query.limit as string || '50', 10)));
   const offset = (page - 1) * limit;
 
-  const whereClause = isAdmin ? '' : 'WHERE fs.user_id = ?';
-  const params: unknown[] = isAdmin ? [limit, offset] : [userId, limit, offset];
+  const whereClause = canViewAny ? '' : 'WHERE fs.user_id = ?';
+  const params: unknown[] = canViewAny ? [limit, offset] : [userId, limit, offset];
 
   const rows = queryAll<FileSessionRow>(
     `SELECT fs.id, fs.user_id, fs.connection_id, fs.protocol, fs.started_at, fs.ended_at,
@@ -71,7 +71,7 @@ router.get('/', (req: Request, res: Response) => {
 // GET /:id/events — get events for a file session
 router.get('/:id/events', (req: Request, res: Response) => {
   const userId = req.user!.userId;
-  const isAdmin = req.user!.role === 'admin';
+  const canViewAny = userCan(req, 'sessions.view_any');
   const sessionId = req.params.id as string;
 
   const session = queryOne<{ user_id: string }>(
@@ -79,7 +79,7 @@ router.get('/:id/events', (req: Request, res: Response) => {
     [sessionId],
   );
   if (!session) { res.status(404).json({ error: 'Session not found' }); return; }
-  if (!isAdmin && session.user_id !== userId) { res.status(403).json({ error: 'Forbidden' }); return; }
+  if (!canViewAny && session.user_id !== userId) { res.status(403).json({ error: 'Forbidden' }); return; }
 
   const events = queryAll<FileSessionEventRow>(
     'SELECT id, session_id, timestamp, action, path, detail_json FROM file_session_events WHERE session_id = ? ORDER BY timestamp ASC',

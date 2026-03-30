@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import net from 'net';
 import { v4 as uuid } from 'uuid';
 import { queryAll, queryOne, execute } from '../db/helpers.js';
-import { authRequired } from '../middleware/auth.js';
+import { authRequired, userCan } from '../middleware/auth.js';
 import { encrypt, decrypt } from '../services/encryption.js';
 import { logAudit } from '../services/audit.js';
 
@@ -35,6 +35,14 @@ interface GroupRow {
   sort_order: number;
 }
 
+/** SQL condition: user owns the connection, OR it's shared globally, OR shared via connection_shares */
+function canAccessWhere(alias = 'connections'): string {
+  return `(${alias}.user_id = ? OR ${alias}.shared = 1 OR ${alias}.id IN (SELECT cs.connection_id FROM connection_shares cs WHERE (cs.share_type = 'user' AND cs.target_id = ?) OR (cs.share_type = 'role' AND cs.target_id = ?)))`;
+}
+function canAccessParams(req: Request): unknown[] {
+  return [req.user!.userId, req.user!.userId, req.user!.role];
+}
+
 // List connections and groups
 router.get('/', (req: Request, res: Response) => {
   const userId = req.user!.userId;
@@ -49,10 +57,18 @@ router.get('/', (req: Request, res: Response) => {
     [userId],
   );
 
-  // Shared connections from other users
+  // Shared connections from other users (shared=1 globally, or shared via connection_shares to this user or role)
+  const userRole = req.user!.role;
   const sharedConnections = queryAll<ConnectionRow>(
-    'SELECT id, name, protocol, host, port, username, shared, user_id, tags FROM connections WHERE shared = 1 AND user_id != ? ORDER BY name',
-    [userId],
+    `SELECT DISTINCT c.id, c.name, c.protocol, c.host, c.port, c.username, c.shared, c.user_id, c.tags
+     FROM connections c
+     WHERE c.user_id != ?
+       AND (c.shared = 1
+            OR c.id IN (SELECT cs.connection_id FROM connection_shares cs
+                        WHERE (cs.share_type = 'user' AND cs.target_id = ?)
+                           OR (cs.share_type = 'role' AND cs.target_id = ?)))
+     ORDER BY c.name`,
+    [userId, userId, userRole],
   );
 
   // Build tree
@@ -123,8 +139,8 @@ router.post('/health-check', async (req: Request, res: Response) => {
   const validatedChecks: { id: string; host: string; port: number }[] = [];
   for (const { id } of checks) {
     const conn = queryOne<{ host: string; port: number }>(
-      'SELECT host, port FROM connections WHERE id = ? AND (user_id = ? OR shared = 1)',
-      [id, userId],
+      `SELECT host, port FROM connections WHERE id = ? AND ${canAccessWhere('connections')}`,
+      [id, ...canAccessParams(req)],
     );
     if (!conn) continue;
     if (isDangerousHost(conn.host)) continue;
@@ -290,7 +306,6 @@ router.post('/', (req: Request, res: Response) => {
 router.put('/:id', (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const id = req.params.id as string;
-  const isAdmin = req.user!.role === 'admin';
 
   interface ExistingConnectionRow {
     id: string;
@@ -313,7 +328,9 @@ router.put('/:id', (req: Request, res: Response) => {
     return;
   }
 
-  if (existing.user_id !== userId && !isAdmin) {
+  const isOwner = existing.user_id === userId;
+  const canEditAny = userCan(req, 'connections.edit_any');
+  if (!isOwner && !canEditAny) {
     res.status(403).json({ error: 'Not authorized' });
     return;
   }
@@ -385,7 +402,7 @@ router.delete('/:id', (req: Request, res: Response) => {
     res.status(404).json({ error: 'Connection not found' });
     return;
   }
-  if (conn.user_id !== userId && req.user!.role !== 'admin') {
+  if (conn.user_id !== userId && !userCan(req, 'connections.delete_any')) {
     res.status(403).json({ error: 'Not authorized' });
     return;
   }
@@ -408,8 +425,8 @@ router.get('/:id', (req: Request, res: Response) => {
   const id = req.params.id as string;
 
   const conn = queryOne<ConnectionRow>(
-    'SELECT * FROM connections WHERE id = ? AND (user_id = ? OR shared = 1)',
-    [id, userId],
+    `SELECT * FROM connections WHERE id = ? AND ${canAccessWhere()}`,
+    [id, ...canAccessParams(req)],
   );
 
   if (!conn) {
@@ -426,6 +443,16 @@ router.get('/:id', (req: Request, res: Response) => {
   let tags: string[] = [];
   try { if (conn.tags) tags = JSON.parse(conn.tags); } catch { /* ignore */ }
 
+  // Include shares if this is the owner or has edit_any permission
+  const isOwner = conn.user_id === userId;
+  let shares: { shareType: string; targetId: string }[] = [];
+  if (isOwner || userCan(req, 'connections.edit_any')) {
+    const shareRows = queryAll<{ share_type: string; target_id: string }>(
+      'SELECT share_type, target_id FROM connection_shares WHERE connection_id = ?', [conn.id],
+    );
+    shares = shareRows.map(s => ({ shareType: s.share_type, targetId: s.target_id }));
+  }
+
   res.json({
     id: conn.id,
     name: conn.name,
@@ -441,6 +468,7 @@ router.get('/:id', (req: Request, res: Response) => {
     tunnels,
     extraConfig,
     tags,
+    shares,
   });
 });
 
@@ -449,11 +477,10 @@ router.get('/:id/session', (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const id = req.params.id as string;
 
-  // Credentials must only be returned to the connection owner — never to users
-  // accessing via a shared connection (they could extract the decrypted password).
+  // Credentials returned to the owner or to users with explicit share access
   const conn = queryOne<ConnectionRow>(
-    'SELECT * FROM connections WHERE id = ? AND user_id = ?',
-    [id, userId],
+    `SELECT * FROM connections WHERE id = ? AND ${canAccessWhere()}`,
+    [id, ...canAccessParams(req)],
   );
 
   if (!conn) {
@@ -559,6 +586,54 @@ router.delete('/groups/:id', (req: Request, res: Response) => {
   // Delete the group (cascades to subgroups via ON DELETE CASCADE)
   execute('DELETE FROM connection_groups WHERE id = ? AND user_id = ?', [id, userId]);
 
+  res.json({ success: true });
+});
+
+// --- Connection Shares ---
+
+// GET /:id/shares — list shares for a connection (owner only)
+router.get('/:id/shares', (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const id = req.params.id as string;
+  const conn = queryOne<{ user_id: string }>('SELECT user_id FROM connections WHERE id = ?', [id]);
+  if (!conn) { res.status(404).json({ error: 'Connection not found' }); return; }
+  if (conn.user_id !== userId && !userCan(req, 'connections.edit_any')) {
+    res.status(403).json({ error: 'Not authorized' }); return;
+  }
+  const shares = queryAll<{ id: string; share_type: string; target_id: string; created_at: string }>(
+    'SELECT id, share_type, target_id, created_at FROM connection_shares WHERE connection_id = ? ORDER BY share_type, target_id',
+    [id],
+  );
+  res.json(shares.map(s => ({ id: s.id, shareType: s.share_type, targetId: s.target_id, createdAt: s.created_at })));
+});
+
+// PUT /:id/shares — replace all shares for a connection
+router.put('/:id/shares', (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const id = req.params.id as string;
+  const conn = queryOne<{ user_id: string }>('SELECT user_id FROM connections WHERE id = ?', [id]);
+  if (!conn) { res.status(404).json({ error: 'Connection not found' }); return; }
+  if (conn.user_id !== userId && !userCan(req, 'connections.edit_any')) {
+    res.status(403).json({ error: 'Not authorized' }); return;
+  }
+  if (!userCan(req, 'connections.share')) {
+    res.status(403).json({ error: 'Sharing permission required' }); return;
+  }
+
+  const { shares } = req.body as { shares: { shareType: string; targetId: string }[] };
+  if (!Array.isArray(shares)) { res.status(400).json({ error: 'shares array required' }); return; }
+
+  // Replace all
+  execute('DELETE FROM connection_shares WHERE connection_id = ?', [id]);
+  for (const s of shares) {
+    if (s.shareType !== 'role' && s.shareType !== 'user') continue;
+    if (!s.targetId) continue;
+    const sid = uuid();
+    execute(
+      'INSERT INTO connection_shares (id, connection_id, share_type, target_id) VALUES (?, ?, ?, ?)',
+      [sid, id, s.shareType, s.targetId],
+    );
+  }
   res.json({ success: true });
 });
 

@@ -339,6 +339,60 @@ function runMigrations() {
         database.run('CREATE INDEX IF NOT EXISTS idx_connections_user ON connections(user_id)');
       },
     },
+    {
+      version: 6,
+      run: (database: Database) => {
+        // --- Roles table ---
+        database.run(`CREATE TABLE IF NOT EXISTS roles (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL UNIQUE,
+          description TEXT,
+          is_builtin INTEGER NOT NULL DEFAULT 0,
+          permissions_json TEXT NOT NULL DEFAULT '[]',
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )`);
+
+        // --- Connection shares table ---
+        database.run(`CREATE TABLE IF NOT EXISTS connection_shares (
+          id TEXT PRIMARY KEY,
+          connection_id TEXT NOT NULL REFERENCES connections(id) ON DELETE CASCADE,
+          share_type TEXT NOT NULL CHECK(share_type IN ('role', 'user')),
+          target_id TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )`);
+        database.run('CREATE INDEX IF NOT EXISTS idx_connection_shares_conn ON connection_shares(connection_id)');
+        database.run('CREATE INDEX IF NOT EXISTS idx_connection_shares_target ON connection_shares(share_type, target_id)');
+
+        // --- Seed built-in roles ---
+        const adminPerms = JSON.stringify([
+          'connections.create', 'connections.edit_own', 'connections.delete_own',
+          'connections.edit_any', 'connections.delete_any', 'connections.share', 'connections.import_export',
+          'sessions.view_own', 'sessions.view_any', 'sessions.delete',
+          'audit.view_own', 'audit.view_any',
+          'users.manage', 'settings.manage', 'settings.auth_providers', 'settings.security', 'settings.backup',
+          'roles.manage',
+          'protocols.ssh', 'protocols.rdp', 'protocols.vnc', 'protocols.smb', 'protocols.ftp', 'protocols.telnet',
+        ]);
+        const userPerms = JSON.stringify([
+          'connections.create', 'connections.edit_own', 'connections.delete_own', 'connections.share',
+          'sessions.view_own',
+          'audit.view_own',
+          'protocols.ssh', 'protocols.rdp', 'protocols.vnc', 'protocols.smb', 'protocols.ftp', 'protocols.telnet',
+        ]);
+        database.run(
+          `INSERT OR IGNORE INTO roles (id, name, description, is_builtin, permissions_json) VALUES (?, ?, ?, 1, ?)`,
+          ['admin', 'Admin', 'Full system access — all permissions enabled', adminPerms],
+        );
+        database.run(
+          `INSERT OR IGNORE INTO roles (id, name, description, is_builtin, permissions_json) VALUES (?, ?, ?, 1, ?)`,
+          ['user', 'User', 'Standard user — manage own connections and sessions', userPerms],
+        );
+
+        // Migrate existing users.role text to match role IDs
+        // The existing values are already 'admin' or 'user' which match our role IDs
+      },
+    },
   ];
 
   for (const migration of migrations) {
