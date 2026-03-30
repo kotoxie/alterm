@@ -112,6 +112,25 @@ export function RolesSettings() {
     loadRoles();
   }
 
+  async function handleReset() {
+    if (!editing?.isBuiltin) return;
+    if (!confirm(`Reset "${editing.name}" role to its default permissions?`)) return;
+    setSaving(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/v1/roles/${editing.id}/reset`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!res.ok) { const d = await res.json(); setError(d.error || 'Reset failed'); return; }
+      const updated = await res.json() as Role;
+      setSelectedPerms(new Set(updated.permissions));
+      loadRoles();
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const isEditorOpen = editing || creating;
 
   return (
@@ -250,6 +269,15 @@ export function RolesSettings() {
 
           {/* Actions */}
           <div className="flex gap-2 justify-end pt-2">
+            {editing?.isBuiltin && (
+              <button
+                onClick={handleReset}
+                disabled={saving}
+                className="px-3 py-1.5 text-xs border border-yellow-500/40 text-yellow-400 rounded hover:bg-yellow-500/10 font-medium disabled:opacity-50 mr-auto"
+              >
+                Reset to Default
+              </button>
+            )}
             <button onClick={close} className="px-3 py-1.5 text-xs border border-border rounded text-text-secondary hover:bg-surface-hover">
               Cancel
             </button>

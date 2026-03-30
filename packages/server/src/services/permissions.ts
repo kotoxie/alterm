@@ -13,6 +13,17 @@ export const ALL_PERMISSIONS = [
 
 export type PermissionKey = typeof ALL_PERMISSIONS[number];
 
+/** Default permissions for built-in roles */
+export const DEFAULT_BUILTIN_PERMISSIONS: Record<string, PermissionKey[]> = {
+  admin: [...ALL_PERMISSIONS],
+  user: [
+    'connections.create', 'connections.edit_own', 'connections.delete_own', 'connections.share',
+    'sessions.view_own',
+    'audit.view_own',
+    'protocols.ssh', 'protocols.rdp', 'protocols.vnc', 'protocols.smb', 'protocols.ftp', 'protocols.telnet',
+  ],
+};
+
 /** Human-friendly permission groups for UI */
 export const PERMISSION_GROUPS: Record<string, { label: string; permissions: { key: PermissionKey; label: string }[] }> = {
   connections: {
