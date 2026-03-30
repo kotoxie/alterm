@@ -506,9 +506,19 @@ function RecordingPlayer({
                   >
                     <div className="flex items-center gap-2 mb-0.5">
                       <span className="text-[10px] font-mono text-[#555] shrink-0">{formatTime(cmd.elapsed)}</span>
-                      <span className="text-xs font-mono text-green-400 truncate">{cmd.command}</span>
+                      {cmd.command === '[password]' ? (
+                        <span className="flex items-center gap-1 text-xs font-mono text-yellow-600/70 italic">
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="shrink-0">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                          </svg>
+                          password entered
+                        </span>
+                      ) : (
+                        <span className="text-xs font-mono text-green-400 truncate">{cmd.command}</span>
+                      )}
                     </div>
-                    {cmd.output_preview && (
+                    {cmd.command !== '[password]' && cmd.output_preview && (
                       <div className="text-[10px] font-mono text-[#444] truncate mt-0.5 pl-10 group-hover:text-[#555]">
                         {cmd.output_preview.split('\n')[0]}
                       </div>

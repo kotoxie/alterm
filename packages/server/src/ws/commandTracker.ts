@@ -6,6 +6,7 @@
  * - Buffer incoming keystrokes (from `type:'data'` messages)
  * - On Enter (`\r`), snapshot the input buffer as a candidate command
  * - Watch shell output for prompt patterns to mark previous command as "complete"
+ * - Detect password prompts in output → redact the next Enter input
  * - Persist each command to the ssh_commands table
  */
 
@@ -14,6 +15,9 @@ import { execute } from '../db/helpers.js';
 
 // Common shell prompt endings: $, #, %, >, »
 const PROMPT_RE = /[$#%>»]\s*$/;
+
+// Password prompt patterns — triggers redaction of the next keystroke input
+const PASSWORD_PROMPT_RE = /(\[sudo\]\s*password|password\s*for\s+\w|password\s*:|enter passphrase|enter password|pin\s*:)\s*$/i;
 
 export class CommandTracker {
   private sessionDbId: string;
@@ -36,6 +40,9 @@ export class CommandTracker {
   // Track whether we've seen the first prompt (skip login banner)
   private seenFirstPrompt = false;
 
+  // Password prompt detection — next Enter input will be redacted
+  private awaitingPassword = false;
+
   // Flush timer — if no prompt detected within a timeout, store command anyway
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private static readonly FLUSH_TIMEOUT_MS = 10_000;
@@ -54,8 +61,9 @@ export class CommandTracker {
         // Backspace — remove last char from buffer
         this.inputBuf = this.inputBuf.slice(0, -1);
       } else if (ch === '\x03') {
-        // Ctrl+C — clear input buffer
+        // Ctrl+C — clear input buffer and cancel password wait
         this.inputBuf = '';
+        this.awaitingPassword = false;
         // If there's a pending command waiting for output, store it now
         if (this.pendingCommand !== null) {
           this.storeCommand('^C');
@@ -79,10 +87,16 @@ export class CommandTracker {
       this.outputLines += (data.match(/\n/g) || []).length;
     }
 
-    // Check if output ends with a prompt pattern
-    // Use last 200 chars to avoid scanning huge output
-    const tail = (this.pendingCommand !== null ? this.outputBuf : data).slice(-200);
+    // Check the tail of recent output for prompt or password-prompt patterns
+    const tail = (this.pendingCommand !== null ? this.outputBuf : data).slice(-400);
     const lastLine = tail.split('\n').pop() || '';
+
+    // Detect password prompts — flag next input as sensitive
+    if (PASSWORD_PROMPT_RE.test(lastLine)) {
+      this.awaitingPassword = true;
+      // Don't treat this as a normal prompt — return early
+      return;
+    }
 
     if (PROMPT_RE.test(lastLine)) {
       if (!this.seenFirstPrompt) {
@@ -108,6 +122,23 @@ export class CommandTracker {
   }
 
   private onEnter(): void {
+    // If a password prompt was detected, discard the typed input and store a redacted marker
+    if (this.awaitingPassword) {
+      this.inputBuf = '';
+      this.awaitingPassword = false;
+      // Store a redacted entry so the audit log shows something happened
+      this.pendingCommand = '[password]';
+      this.pendingTimestamp = new Date().toISOString();
+      this.pendingElapsed = (Date.now() - this.castStart) / 1000;
+      this.outputBuf = '';
+      this.outputLines = 0;
+      if (this.flushTimer) clearTimeout(this.flushTimer);
+      this.flushTimer = setTimeout(() => {
+        if (this.pendingCommand !== null) this.storeCommand();
+      }, CommandTracker.FLUSH_TIMEOUT_MS);
+      return;
+    }
+
     const command = this.inputBuf.trim();
     this.inputBuf = '';
 
@@ -145,20 +176,25 @@ export class CommandTracker {
 
     // Build output preview — strip the first line (echo of the command itself)
     let preview = this.outputBuf;
-    const firstNewline = preview.indexOf('\n');
-    if (firstNewline !== -1) {
-      preview = preview.slice(firstNewline + 1);
+    // For redacted password entries, don't include any output preview
+    if (command === '[password]') {
+      preview = '';
+    } else {
+      const firstNewline = preview.indexOf('\n');
+      if (firstNewline !== -1) {
+        preview = preview.slice(firstNewline + 1);
+      }
+      // Trim to reasonable size
+      const lines = preview.split('\n');
+      if (lines.length > CommandTracker.MAX_OUTPUT_PREVIEW_LINES) {
+        preview = lines.slice(0, CommandTracker.MAX_OUTPUT_PREVIEW_LINES).join('\n') + '\n...';
+      }
+      if (preview.length > CommandTracker.MAX_OUTPUT_PREVIEW_CHARS) {
+        preview = preview.slice(0, CommandTracker.MAX_OUTPUT_PREVIEW_CHARS) + '...';
+      }
+      // Strip ANSI escape codes for cleaner storage
+      preview = preview.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '').trim();
     }
-    // Trim to reasonable size
-    const lines = preview.split('\n');
-    if (lines.length > CommandTracker.MAX_OUTPUT_PREVIEW_LINES) {
-      preview = lines.slice(0, CommandTracker.MAX_OUTPUT_PREVIEW_LINES).join('\n') + '\n...';
-    }
-    if (preview.length > CommandTracker.MAX_OUTPUT_PREVIEW_CHARS) {
-      preview = preview.slice(0, CommandTracker.MAX_OUTPUT_PREVIEW_CHARS) + '...';
-    }
-    // Strip ANSI escape codes for cleaner storage
-    preview = preview.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '').trim();
 
     const timestamp = this.pendingTimestamp || new Date().toISOString();
     const elapsed = this.pendingElapsed || (Date.now() - this.castStart) / 1000;
