@@ -203,6 +203,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   // Fine-grained indicator for folder reorder drags: before/after = insert line, inside = nest
   const [dropIndicator, setDropIndicator] = useState<{ id: string; position: 'before' | 'after' | 'inside' } | null>(null);
+  const [connDropIndicator, setConnDropIndicator] = useState<{ id: string; position: 'before' | 'after' } | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
   const [folderContextMenu, setFolderContextMenu] = useState<FolderContextMenu | null>(null);
   const [bgContextMenu, setBgContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -462,6 +463,62 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
     fetchConnections();
   }
 
+  async function reorderConnection(draggedId: string, targetId: string, position: 'before' | 'after') {
+    if (draggedId === targetId) return;
+
+    // Find connections list containing targetId
+    function findConnsInGroup(groupList: ConnectionGroup[], connId: string): Connection[] | null {
+      for (const g of groupList) {
+        if (g.connections.some(c => c.id === connId)) return g.connections;
+        const found = findConnsInGroup(g.children, connId);
+        if (found) return found;
+      }
+      return null;
+    }
+
+    let siblings = findConnsInGroup(groups, targetId);
+    if (!siblings && ungrouped.some(c => c.id === targetId)) siblings = ungrouped;
+    if (!siblings) return;
+
+    // If dragged conn is in a different group, move it first
+    const draggedInSameGroup = siblings.some(c => c.id === draggedId);
+    if (!draggedInSameGroup) {
+      // Find target's groupId
+      let targetGroupId: string | null = null;
+      function findGroupId(groupList: ConnectionGroup[], connId: string): string | null {
+        for (const g of groupList) {
+          if (g.connections.some(c => c.id === connId)) return g.id;
+          const found = findGroupId(g.children, connId);
+          if (found) return found;
+        }
+        return null;
+      }
+      targetGroupId = findGroupId(groups, targetId);
+
+      await fetch(`/api/v1/connections/${draggedId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ groupId: targetGroupId }),
+      });
+    }
+
+    // Build reordered list
+    const withoutDragged = siblings.filter(c => c.id !== draggedId);
+    const targetIdx = withoutDragged.findIndex(c => c.id === targetId);
+    const insertIdx = targetIdx === -1 ? withoutDragged.length : position === 'before' ? targetIdx : targetIdx + 1;
+    const reordered = [...withoutDragged.slice(0, insertIdx), { id: draggedId } as Connection, ...withoutDragged.slice(insertIdx)];
+
+    const items = reordered.map((c, i) => ({ id: c.id, sortOrder: i * 10 }));
+    await fetch('/api/v1/connections/reorder', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ items }),
+    });
+    fetchConnections();
+  }
+
   async function handleExport() {
     const res = await fetch('/api/v1/connections/export', { credentials: 'include' });
     if (!res.ok) return;
@@ -504,6 +561,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
     setDraggingGroupId(null);
     setDragOverId(null);
     setDropIndicator(null);
+    setConnDropIndicator(null);
   }
 
   function isAncestorOrSelf(candidateId: string, dragged: string, list: ConnectionGroup[]): boolean {
@@ -630,6 +688,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
     setDraggingGroupId(null);
     setDragOverId(null);
     setDropIndicator(null);
+    setConnDropIndicator(null);
   }
 
   function handleUngroupedDrop(e: React.DragEvent) {
@@ -640,6 +699,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
     setDraggingGroupId(null);
     setDragOverId(null);
     setDropIndicator(null);
+    setConnDropIndicator(null);
   }
 
   function handleConnContextMenu(e: RMouseEvent, conn: Connection) {
@@ -649,16 +709,49 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
 
   function renderConnection(conn: Connection) {
     const status = healthMap[conn.id];
+    const indicator = connDropIndicator?.id === conn.id ? connDropIndicator.position : null;
     return (
       <div
         key={conn.id}
         draggable
         onDragStart={(e) => handleDragStart(e, conn.id)}
         onDragEnd={handleDragEnd}
+        onDragOver={(e) => {
+          if (!draggingConnId || draggingConnId === conn.id) return;
+          e.preventDefault();
+          e.stopPropagation();
+          e.dataTransfer.dropEffect = 'move';
+          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+          const y = e.clientY - rect.top;
+          const pos = y < rect.height / 2 ? 'before' : 'after';
+          setConnDropIndicator({ id: conn.id, position: pos });
+          setDragOverId(null);
+        }}
+        onDragLeave={() => {
+          if (connDropIndicator?.id === conn.id) setConnDropIndicator(null);
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (draggingConnId && draggingConnId !== conn.id) {
+            const pos = connDropIndicator?.id === conn.id ? connDropIndicator.position : 'after';
+            reorderConnection(draggingConnId, conn.id, pos);
+          }
+          setDraggingConnId(null);
+          setConnDropIndicator(null);
+        }}
         onClick={() => onConnect(conn)}
         onContextMenu={(e) => handleConnContextMenu(e, conn)}
-        className="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-surface-hover rounded mx-1 group/conn"
+        className={`flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-surface-hover rounded mx-1 group/conn relative ${
+          indicator ? 'z-10' : ''
+        }`}
       >
+        {indicator === 'before' && (
+          <div className="absolute -top-px left-2 right-2 h-0.5 bg-accent rounded-full pointer-events-none" />
+        )}
+        {indicator === 'after' && (
+          <div className="absolute -bottom-px left-2 right-2 h-0.5 bg-accent rounded-full pointer-events-none" />
+        )}
         <span
           className={`w-1.5 h-1.5 rounded-full shrink-0 ${
             status === 'up' ? 'bg-green-500' :
