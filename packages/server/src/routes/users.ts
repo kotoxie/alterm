@@ -2,15 +2,15 @@ import { Router, type Request, type Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { v4 as uuid } from 'uuid';
 import { queryAll, queryOne, execute } from '../db/helpers.js';
-import { authRequired } from '../middleware/auth.js';
+import { authRequired, userCan } from '../middleware/auth.js';
 import { logAudit } from '../services/audit.js';
 
 const router = Router();
 router.use(authRequired);
 
-function requireAdmin(req: Request, res: Response): boolean {
-  if (req.user!.role !== 'admin') {
-    res.status(403).json({ error: 'Admin access required' });
+function requireManageUsers(req: Request, res: Response): boolean {
+  if (!userCan(req, 'users.manage')) {
+    res.status(403).json({ error: 'Insufficient permissions' });
     return false;
   }
   return true;
@@ -31,7 +31,7 @@ interface UserRow {
 
 // GET / — list all users
 router.get('/', (req: Request, res: Response) => {
-  if (!requireAdmin(req, res)) return;
+  if (!requireManageUsers(req, res)) return;
 
   const users = queryAll<UserRow>(
     `SELECT id, username, display_name, email, role, failed_login_count,
@@ -57,7 +57,7 @@ router.get('/', (req: Request, res: Response) => {
 
 // POST / — create user
 router.post('/', async (req: Request, res: Response) => {
-  if (!requireAdmin(req, res)) return;
+  if (!requireManageUsers(req, res)) return;
 
   const { username, password, displayName, email, role } = req.body as {
     username?: string;
@@ -116,7 +116,7 @@ router.post('/', async (req: Request, res: Response) => {
 
 // PUT /:id — update displayName, email, role
 router.put('/:id', (req: Request, res: Response) => {
-  if (!requireAdmin(req, res)) return;
+  if (!requireManageUsers(req, res)) return;
 
   const id = req.params.id as string;
   const { displayName, email, role } = req.body as {
@@ -176,7 +176,7 @@ router.put('/:id', (req: Request, res: Response) => {
 
 // DELETE /:id — delete user (cannot delete self)
 router.delete('/:id', (req: Request, res: Response) => {
-  if (!requireAdmin(req, res)) return;
+  if (!requireManageUsers(req, res)) return;
 
   const id = req.params.id as string;
 
@@ -206,7 +206,7 @@ router.delete('/:id', (req: Request, res: Response) => {
 
 // POST /:id/reset-password — admin resets a user's password
 router.post('/:id/reset-password', async (req: Request, res: Response) => {
-  if (!requireAdmin(req, res)) return;
+  if (!requireManageUsers(req, res)) return;
 
   const id = req.params.id as string;
   const { newPassword } = req.body as { newPassword?: string };
@@ -237,7 +237,7 @@ router.post('/:id/reset-password', async (req: Request, res: Response) => {
 
 // POST /:id/unlock — reset lockout
 router.post('/:id/unlock', (req: Request, res: Response) => {
-  if (!requireAdmin(req, res)) return;
+  if (!requireManageUsers(req, res)) return;
 
   const id = req.params.id as string;
 

@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import type { Request, Response, NextFunction } from 'express';
 import { verifyToken, type JwtPayload } from '../services/jwt.js';
 import { checkAndTouchSession } from '../services/loginSession.js';
+import { roleHasPermission, type PermissionKey } from '../services/permissions.js';
 
 declare global {
   namespace Express {
@@ -52,4 +53,31 @@ export function adminRequired(req: Request, res: Response, next: NextFunction): 
     }
     next();
   });
+}
+
+/**
+ * Middleware factory: require that the authenticated user's role includes
+ * the given permission key(s). Accepts a single key or an array (any match → pass).
+ */
+export function requirePermission(...perms: PermissionKey[]) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    authRequired(req, res, () => {
+      const role = req.user?.role;
+      if (!role) { res.status(403).json({ error: 'Forbidden' }); return; }
+      const has = perms.some(p => roleHasPermission(role, p));
+      if (!has) {
+        res.status(403).json({ error: 'Insufficient permissions' });
+        return;
+      }
+      next();
+    });
+  };
+}
+
+/**
+ * Inline permission check — useful inside handlers where middleware isn't enough.
+ * Returns true if the user's role has the permission.
+ */
+export function userCan(req: Request, perm: PermissionKey): boolean {
+  return !!req.user && roleHasPermission(req.user.role, perm);
 }

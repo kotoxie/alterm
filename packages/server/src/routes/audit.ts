@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { queryAll, queryOne } from '../db/helpers.js';
-import { authRequired } from '../middleware/auth.js';
+import { authRequired, userCan } from '../middleware/auth.js';
 
 const router = Router();
 router.use(authRequired);
@@ -19,7 +19,7 @@ interface AuditRow {
 
 // GET / — paginated audit log with filters
 router.get('/', (req: Request, res: Response) => {
-  const isAdmin = req.user!.role === 'admin';
+  const canViewAny = userCan(req, 'audit.view_any');
   const currentUserId = req.user!.userId;
 
   const search = typeof req.query.search === 'string' ? req.query.search : '';
@@ -35,8 +35,7 @@ router.get('/', (req: Request, res: Response) => {
   const conditions: string[] = [];
   const params: unknown[] = [];
 
-  // Non-admins only see their own logs
-  if (!isAdmin) {
+  if (!canViewAny) {
     conditions.push('a.user_id = ?');
     params.push(currentUserId);
   } else if (userId) {
@@ -119,10 +118,10 @@ router.get('/event-types', (_req: Request, res: Response) => {
   res.json({ eventTypes: rows.map((r) => r.event_type) });
 });
 
-// GET /users — admin only, distinct users with audit entries
+// GET /users — audit.view_any permission, distinct users with audit entries
 router.get('/users', (req: Request, res: Response) => {
-  if (req.user!.role !== 'admin') {
-    res.status(403).json({ error: 'Admin access required' });
+  if (!userCan(req, 'audit.view_any')) {
+    res.status(403).json({ error: 'Insufficient permissions' });
     return;
   }
 

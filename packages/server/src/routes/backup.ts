@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import fs from 'fs';
 import path from 'path';
-import { adminRequired } from '../middleware/auth.js';
+import { requirePermission } from '../middleware/auth.js';
 import { logAudit } from '../services/audit.js';
 import { createBackup, restoreBackup } from '../services/backup.js';
 import { setEncryptionKey } from '../services/encryption.js';
@@ -11,7 +11,7 @@ import { config } from '../config.js';
 const router = Router();
 
 // POST /export — create and download encrypted backup
-router.post('/export', adminRequired, (req: Request, res: Response) => {
+router.post('/export', requirePermission('settings.backup'), (req: Request, res: Response) => {
   const { password } = req.body as { password?: string };
   if (!password || password.length < 8) {
     res.status(400).json({ error: 'Backup password must be at least 8 characters' });
@@ -39,7 +39,7 @@ router.post('/export', adminRequired, (req: Request, res: Response) => {
 
 // POST /import — restore system from encrypted backup
 // Body: raw .aeb binary. Password in X-Backup-Password header.
-router.post('/import', adminRequired, (req: Request, res: Response) => {
+router.post('/import', requirePermission('settings.backup'), (req: Request, res: Response) => {
   const password = req.headers['x-backup-password'] as string | undefined;
   if (!password) {
     res.status(400).json({ error: 'X-Backup-Password header required' });
