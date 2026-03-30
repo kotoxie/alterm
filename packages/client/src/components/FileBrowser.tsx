@@ -30,6 +30,19 @@ function getTypeBadge(f: FileEntry): string {
   return ext ? ext.toUpperCase() : 'FILE';
 }
 
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function formatPermissions(mode: number): string {
+  const octal = '0' + (mode & 0o7777).toString(8);
+  const rwx = (m: number): string => (m & 4 ? 'r' : '-') + (m & 2 ? 'w' : '-') + (m & 1 ? 'x' : '-');
+  return `${octal} ${rwx((mode >> 6) & 7)}${rwx((mode >> 3) & 7)}${rwx(mode & 7)}`;
+}
+
 function FolderIcon({ size = 20 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className="text-amber-400 shrink-0">
@@ -100,6 +113,12 @@ export function FileBrowser({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: FileEntry } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'single'; name: string } | { type: 'multi'; count: number } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
+  const [renamingFile, setRenamingFile] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [clipboard, setClipboard] = useState<{ paths: string[]; operation: 'copy' | 'cut' } | null>(null);
+  const [infoFile, setInfoFile] = useState<{ filename: string; stats: any } | null>(null);
+  const [infoLoading, setInfoLoading] = useState(false);
+  const [chmodMode, setChmodMode] = useState('');
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -119,6 +138,17 @@ export function FileBrowser({
     };
   }, [contextMenu]);
 
+  useEffect(() => {
+    if (!clipboard) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape' && !contextMenu && !deleteConfirm && !renamingFile && !infoFile) {
+        setClipboard(null);
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [clipboard, contextMenu, deleteConfirm, renamingFile, infoFile]);
+
   // For SFTP/FTP (pathSep='/'), always produce absolute paths.
   // For SMB (pathSep='\\'), keep existing relative-join behaviour.
   const joinPath = (base: string, name: string) => {
@@ -131,6 +161,7 @@ export function FileBrowser({
     setError('');
     setContextMenu(null);
     setSelectedFiles(new Set());
+    setRenamingFile(null);
     const isInitialConnect = dirPath === '' || dirPath === '/';    try {
       const res = await fetch(`${apiBase}/${connectionId}/list`, {
         method: 'POST',
@@ -277,7 +308,144 @@ export function FileBrowser({
     });
   }
 
+  async function renameFileAction(oldName: string, newName: string) {
+    if (!newName.trim() || newName === oldName) {
+      setRenamingFile(null);
+      setRenameValue('');
+      return;
+    }
+    const oldPath = joinPath(path, oldName);
+    const newPath = joinPath(path, newName.trim());
+    try {
+      const res = await fetch(`${apiBase}/${connectionId}/rename`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(fileSessionId ? { 'X-File-Session-Id': fileSessionId } : {}) },
+        credentials: 'include',
+        body: JSON.stringify({ oldPath, newPath }),
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        setError(d.error || 'Rename failed');
+      } else {
+        listDir(path);
+      }
+    } catch {
+      setError('Rename failed');
+    }
+    setRenamingFile(null);
+    setRenameValue('');
+  }
+
+  function copyToClipboard(filenames: string[]) {
+    setClipboard({ paths: filenames.map(name => joinPath(path, name)), operation: 'copy' });
+  }
+
+  function cutToClipboard(filenames: string[]) {
+    setClipboard({ paths: filenames.map(name => joinPath(path, name)), operation: 'cut' });
+  }
+
+  async function pasteFromClipboard() {
+    if (!clipboard) return;
+    const isSftp = apiBase.includes('sftp');
+    for (const srcPath of clipboard.paths) {
+      const filename = srcPath.split(pathSep).filter(Boolean).pop() || srcPath.split('/').filter(Boolean).pop() || '';
+      const destPath = joinPath(path, filename);
+      if (clipboard.operation === 'copy') {
+        if (!isSftp) {
+          setError('Copy not supported for this protocol');
+          return;
+        }
+        try {
+          const res = await fetch(`${apiBase}/${connectionId}/copy`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...(fileSessionId ? { 'X-File-Session-Id': fileSessionId } : {}) },
+            credentials: 'include',
+            body: JSON.stringify({ srcPath, destPath }),
+          });
+          if (!res.ok) {
+            const d = await res.json();
+            setError(d.error || 'Copy failed');
+            return;
+          }
+        } catch {
+          setError('Copy failed');
+          return;
+        }
+      } else {
+        try {
+          const res = await fetch(`${apiBase}/${connectionId}/rename`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...(fileSessionId ? { 'X-File-Session-Id': fileSessionId } : {}) },
+            credentials: 'include',
+            body: JSON.stringify({ oldPath: srcPath, newPath: destPath }),
+          });
+          if (!res.ok) {
+            const d = await res.json();
+            setError(d.error || 'Move failed');
+            return;
+          }
+        } catch {
+          setError('Move failed');
+          return;
+        }
+      }
+    }
+    setClipboard(null);
+    listDir(path);
+  }
+
+  async function fetchFileInfo(filename: string) {
+    setInfoLoading(true);
+    setInfoFile({ filename, stats: null });
+    const filePath = joinPath(path, filename);
+    try {
+      const res = await fetch(`${apiBase}/${connectionId}/stat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(fileSessionId ? { 'X-File-Session-Id': fileSessionId } : {}) },
+        credentials: 'include',
+        body: JSON.stringify({ path: filePath }),
+      });
+      if (res.ok) {
+        const stats = await res.json();
+        setInfoFile({ filename, stats });
+        setChmodMode(stats.mode != null ? '0' + (stats.mode & 0o7777).toString(8) : '');
+      } else {
+        const d = await res.json();
+        setError(d.error || 'Failed to get file info');
+        setInfoFile(null);
+      }
+    } catch {
+      setError('Failed to get file info');
+      setInfoFile(null);
+    }
+    setInfoLoading(false);
+  }
+
+  async function applyChmod() {
+    if (!infoFile) return;
+    const mode = parseInt(chmodMode, 8);
+    if (isNaN(mode)) { setError('Invalid permission mode'); return; }
+    const filePath = joinPath(path, infoFile.filename);
+    try {
+      const res = await fetch(`${apiBase}/${connectionId}/chmod`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(fileSessionId ? { 'X-File-Session-Id': fileSessionId } : {}) },
+        credentials: 'include',
+        body: JSON.stringify({ path: filePath, mode }),
+      });
+      if (res.ok) {
+        fetchFileInfo(infoFile.filename);
+      } else {
+        const d = await res.json();
+        setError(d.error || 'chmod failed');
+      }
+    } catch {
+      setError('chmod failed');
+    }
+  }
+
   function handleRowClick(f: FileEntry) {
+    if (renamingFile) return;
     if (isDir(f)) navigateTo(f.filename);
   }
 
@@ -430,6 +598,22 @@ export function FileBrowser({
               Download {selectedFileCount} file{selectedFileCount !== 1 ? 's' : ''}
             </button>
           )}
+          <button onClick={() => copyToClipboard([...selectedFiles])}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border border-border text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+            </svg>
+            Copy
+          </button>
+          <button onClick={() => cutToClipboard([...selectedFiles])}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border border-border text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="6" cy="6" r="3" /><circle cx="6" cy="18" r="3" />
+              <line x1="20" y1="4" x2="8.12" y2="15.88" /><line x1="14.47" y1="14.48" x2="20" y2="20" /><line x1="8.12" y1="8.12" x2="12" y2="12" />
+            </svg>
+            Cut
+          </button>
           <button onClick={() => setDeleteConfirm({ type: 'multi', count: selectedFiles.size })}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-colors">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -491,7 +675,22 @@ export function FileBrowser({
                   <div className="shrink-0">
                     {isDir(f) ? <FolderIcon size={20} /> : <FileIcon category={category} size={20} />}
                   </div>
-                  <span className="flex-1 text-text-primary truncate text-sm leading-none">{f.filename}</span>
+                  {renamingFile === f.filename ? (
+                    <input
+                      autoFocus
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') renameFileAction(f.filename, renameValue);
+                        if (e.key === 'Escape') { setRenamingFile(null); setRenameValue(''); }
+                      }}
+                      onBlur={() => renameFileAction(f.filename, renameValue)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="flex-1 px-1 py-0 text-sm bg-surface border border-accent rounded text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+                    />
+                  ) : (
+                    <span className="flex-1 text-text-primary truncate text-sm leading-none">{f.filename}</span>
+                  )}
                   <span className="shrink-0 text-[10px] font-medium text-text-secondary/60 tracking-wide uppercase px-1.5 py-0.5 rounded bg-surface-hover/0 group-hover:bg-surface">
                     {badge}
                   </span>
@@ -505,7 +704,7 @@ export function FileBrowser({
       {contextMenu && (
         <div
           ref={contextMenuRef}
-          className="fixed z-50 min-w-[140px] py-1 bg-surface-alt border border-border/60 rounded-lg shadow-xl text-sm"
+          className="fixed z-50 min-w-[160px] py-1 bg-surface-alt border border-border/60 rounded-lg shadow-xl text-sm"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           {isDir(contextMenu.file) ? (
@@ -531,6 +730,58 @@ export function FileBrowser({
               Download
             </button>
           )}
+          <div className="my-1 border-t border-border/40" />
+          <button
+            onClick={() => { setRenamingFile(contextMenu.file.filename); setRenameValue(contextMenu.file.filename); setContextMenu(null); }}
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-text-primary hover:bg-surface-hover transition-colors"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+            </svg>
+            Rename
+          </button>
+          <button
+            onClick={() => { copyToClipboard([contextMenu.file.filename]); setContextMenu(null); }}
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-text-primary hover:bg-surface-hover transition-colors"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+            </svg>
+            Copy
+          </button>
+          <button
+            onClick={() => { cutToClipboard([contextMenu.file.filename]); setContextMenu(null); }}
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-text-primary hover:bg-surface-hover transition-colors"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="6" cy="6" r="3" /><circle cx="6" cy="18" r="3" />
+              <line x1="20" y1="4" x2="8.12" y2="15.88" /><line x1="14.47" y1="14.48" x2="20" y2="20" /><line x1="8.12" y1="8.12" x2="12" y2="12" />
+            </svg>
+            Cut
+          </button>
+          {clipboard && (
+            <button
+              onClick={() => { pasteFromClipboard(); setContextMenu(null); }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-text-primary hover:bg-surface-hover transition-colors"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+              </svg>
+              Paste
+            </button>
+          )}
+          <div className="my-1 border-t border-border/40" />
+          <button
+            onClick={() => { fetchFileInfo(contextMenu.file.filename); setContextMenu(null); }}
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-text-primary hover:bg-surface-hover transition-colors"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" />
+            </svg>
+            Info
+          </button>
           <div className="my-1 border-t border-border/40" />
           <button
             onClick={() => { setDeleteConfirm({ type: 'single', name: contextMenu.file.filename }); setContextMenu(null); }}
@@ -572,6 +823,109 @@ export function FileBrowser({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Info dialog */}
+      {infoFile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setInfoFile(null)}>
+          <div className="bg-surface border border-border rounded-lg p-5 max-w-md w-full shadow-xl space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-text-primary truncate">Info: {infoFile.filename}</h3>
+              <button onClick={() => setInfoFile(null)} className="text-text-secondary hover:text-text-primary transition-colors">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+            {infoLoading ? (
+              <div className="flex items-center justify-center py-6 text-text-secondary text-sm gap-2">
+                <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                </svg>
+                Loading...
+              </div>
+            ) : infoFile.stats ? (
+              <div className="space-y-2 text-xs">
+                <div className="flex justify-between py-1 border-b border-border/40">
+                  <span className="text-text-secondary">Name</span>
+                  <span className="text-text-primary font-medium truncate ml-4">{infoFile.filename}</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-border/40">
+                  <span className="text-text-secondary">Size</span>
+                  <span className="text-text-primary">{formatSize(infoFile.stats.size ?? 0)}</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-border/40">
+                  <span className="text-text-secondary">Modified</span>
+                  <span className="text-text-primary">
+                    {infoFile.stats.mtime
+                      ? new Date(typeof infoFile.stats.mtime === 'number' && infoFile.stats.mtime < 1e12 ? infoFile.stats.mtime * 1000 : infoFile.stats.mtime).toLocaleString()
+                      : 'N/A'}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-border/40">
+                  <span className="text-text-secondary">Directory</span>
+                  <span className="text-text-primary">{infoFile.stats.isDirectory ? 'Yes' : 'No'}</span>
+                </div>
+                {apiBase.includes('sftp') && infoFile.stats.mode != null && (
+                  <>
+                    <div className="flex justify-between py-1 border-b border-border/40">
+                      <span className="text-text-secondary">Permissions</span>
+                      <span className="text-text-primary font-mono">{formatPermissions(infoFile.stats.mode)}</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-border/40">
+                      <span className="text-text-secondary">Owner</span>
+                      <span className="text-text-primary">UID {infoFile.stats.uid ?? '?'} / GID {infoFile.stats.gid ?? '?'}</span>
+                    </div>
+                    <div className="flex items-center gap-2 pt-2">
+                      <span className="text-text-secondary text-xs">chmod</span>
+                      <input
+                        value={chmodMode}
+                        onChange={(e) => setChmodMode(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') applyChmod(); }}
+                        placeholder="0755"
+                        className="w-20 px-2 py-1 text-xs font-mono bg-surface-alt border border-border rounded text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+                      />
+                      <button
+                        onClick={applyChmod}
+                        className="px-2.5 py-1 text-xs bg-accent text-white rounded hover:bg-accent-hover transition-colors"
+                      >
+                        Apply
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      )}
+
+      {/* Clipboard bar */}
+      {clipboard && (
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-surface-alt border-t border-border/40 text-xs text-text-secondary shrink-0">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+            <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+          </svg>
+          <span>
+            {clipboard.paths.length} item{clipboard.paths.length !== 1 ? 's' : ''} {clipboard.operation === 'copy' ? 'copied' : 'cut'} — Paste here or press Escape to cancel
+          </span>
+          <div className="flex-1" />
+          <button
+            onClick={() => pasteFromClipboard()}
+            className="px-2.5 py-1 text-xs bg-accent text-white rounded hover:bg-accent-hover transition-colors"
+          >
+            Paste
+          </button>
+          <button
+            onClick={() => setClipboard(null)}
+            className="text-text-secondary hover:text-text-primary transition-colors"
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
         </div>
       )}
     </div>

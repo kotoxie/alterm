@@ -233,4 +233,24 @@ router.delete('/:connectionId/file', async (req: Request, res: Response) => {
   }
 });
 
+// POST /:connectionId/rename — rename a file or folder
+router.post('/:connectionId/rename', async (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const conn = await getConn(req.params.connectionId as string, userId, req.user!.role);
+  if (!conn) { res.status(404).json({ error: 'Connection not found' }); return; }
+
+  const { oldPath, newPath } = req.body as { oldPath?: string; newPath?: string };
+  if (!oldPath || !newPath) { res.status(400).json({ error: 'oldPath and newPath required' }); return; }
+
+  let smb: SMB2 | null = null;
+  try {
+    smb = makeSmbClient(conn);
+    await smbOp(() => smb!.rename(oldPath, newPath, { replace: false }));
+    logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'smb', action: 'rename', path: `${oldPath} → ${newPath}` });
+    res.json({ success: true });
+  } catch (e: unknown) {
+    res.status(500).json({ error: e instanceof Error ? e.message : 'SMB error' });
+  } finally { smb?.disconnect(); }
+});
+
 export default router;
