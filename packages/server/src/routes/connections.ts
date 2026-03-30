@@ -542,6 +542,21 @@ router.put('/groups/reorder', (req: Request, res: Response) => {
   res.json({ success: true });
 });
 
+// PUT /reorder — batch-update sort_order for connections within a folder
+router.put('/reorder', (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const { items } = req.body as { items?: { id: string; sortOrder: number }[] };
+  if (!Array.isArray(items)) { res.status(400).json({ error: 'items array is required' }); return; }
+  for (const item of items) {
+    const conn = queryOne<{ user_id: string }>(
+      'SELECT user_id FROM connections WHERE id = ?', [item.id],
+    );
+    if (!conn || (conn.user_id !== userId && !userCan(req, 'connections.edit_any'))) continue;
+    execute('UPDATE connections SET sort_order = ? WHERE id = ?', [item.sortOrder, item.id]);
+  }
+  res.json({ success: true });
+});
+
 router.post('/groups', (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const { name, parentId } = req.body;
