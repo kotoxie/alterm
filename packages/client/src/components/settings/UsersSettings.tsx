@@ -59,7 +59,7 @@ export function UsersSettings() {
   const [createDisplayName, setCreateDisplayName] = useState('');
   const [createEmail, setCreateEmail] = useState('');
   const [createPassword, setCreatePassword] = useState('');
-  const [createRole, setCreateRole] = useState<'user' | 'admin'>('user');
+  const [createRole, setCreateRole] = useState('user');
   const [createMsg, setCreateMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -74,7 +74,7 @@ export function UsersSettings() {
   const [editUser, setEditUser] = useState<UserRow | null>(null);
   const [editDisplayName, setEditDisplayName] = useState('');
   const [editEmail, setEditEmail] = useState('');
-  const [editRole, setEditRole] = useState<'user' | 'admin'>('user');
+  const [editRole, setEditRole] = useState('user');
   const [editMsg, setEditMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -82,7 +82,7 @@ export function UsersSettings() {
     setEditUser(u);
     setEditDisplayName(u.displayName);
     setEditEmail(u.email ?? '');
-    setEditRole(u.role as 'user' | 'admin');
+    setEditRole(u.role);
     setEditMsg(null);
   }
 
@@ -148,6 +148,15 @@ export function UsersSettings() {
   }
 
   useEffect(() => { loadUsers(); }, []);
+
+  // Load available roles for the role selector
+  const [availableRoles, setAvailableRoles] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    fetch('/api/v1/roles', { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setAvailableRoles(d.map((r: { id: string; name: string }) => ({ id: r.id, name: r.name }))); })
+      .catch(() => {});
+  }, []);
 
   function setRowMsg(id: string, msg: { type: 'success' | 'error'; text: string }) {
     setRowMsgs((prev) => ({ ...prev, [id]: msg }));
@@ -317,10 +326,9 @@ export function UsersSettings() {
             </div>
             <div>
               <label className="block text-xs text-text-secondary mb-1">Role</label>
-              <select value={createRole} onChange={(e) => setCreateRole(e.target.value as 'user' | 'admin')}
+              <select value={createRole} onChange={(e) => setCreateRole(e.target.value)}
                 className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm">
-                <option value="user">User</option>
-                <option value="admin">Admin</option>
+                {availableRoles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
               </select>
             </div>
           </div>
@@ -371,8 +379,7 @@ export function UsersSettings() {
                       onChange={(e) => handleRoleChange(u.id, e.target.value)}
                       className="px-2 py-1 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-1 focus:ring-accent text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <option value="user">User</option>
-                      <option value="admin">Admin</option>
+                      {availableRoles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
                     </select>
                   </td>
                   <td className="py-3 pr-4">
@@ -551,12 +558,11 @@ export function UsersSettings() {
                 <label className="block text-sm font-medium text-text-secondary mb-1">Role</label>
                 <select
                   value={editRole}
-                  onChange={(e) => setEditRole(e.target.value as 'user' | 'admin')}
+                  onChange={(e) => setEditRole(e.target.value)}
                   disabled={editUser.id === currentUser?.id}
                   className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <option value="user">User</option>
-                  <option value="admin">Admin</option>
+                  {availableRoles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
                 </select>
                 {editUser.id === currentUser?.id && (
                   <p className="text-xs text-text-secondary mt-1">You cannot change your own role.</p>
