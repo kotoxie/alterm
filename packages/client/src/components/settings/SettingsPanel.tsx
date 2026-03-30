@@ -22,7 +22,7 @@ type Section = 'profile' | 'ssh-prefs' | 'security' | 'users' | 'audit' | 'globa
 interface NavItem {
   id: Section;
   label: string;
-  permission?: string;
+  permission?: string | string[];
   icon: React.ReactNode;
 }
 
@@ -150,8 +150,8 @@ const ADMIN_NAV: NavItem[] = [
   { id: 'global', label: 'General', icon: <SlidersIcon />, permission: 'settings.manage' },
   { id: 'security', label: 'Security', icon: <ShieldIcon />, permission: 'settings.security' },
   { id: 'authentication', label: 'Authentication', icon: <KeyIcon />, permission: 'settings.auth_providers' },
-  { id: 'sessions', label: 'Recordings', icon: <HistoryIcon />, permission: 'sessions.view_any' },
-  { id: 'audit', label: 'Audit', icon: <ListIcon />, permission: 'audit.view_any' },
+  { id: 'sessions', label: 'Recordings', icon: <HistoryIcon />, permission: ['sessions.view_any', 'sessions.view_own'] },
+  { id: 'audit', label: 'Audit', icon: <ListIcon />, permission: ['audit.view_any', 'audit.view_own'] },
   { id: 'users', label: 'Users', icon: <UsersIcon />, permission: 'users.manage' },
   { id: 'roles', label: 'Roles', icon: <RolesIcon />, permission: 'roles.manage' },
   { id: 'backup', label: 'Backup & Restore', icon: <ArchiveIcon />, permission: 'settings.backup' },
@@ -177,7 +177,11 @@ export function SettingsPanel({ isOpen, onClose, initialSection }: SettingsPanel
   const { user } = useAuth();
   const perms = user?.permissions ?? [];
   const hasPerm = (p: string) => perms.includes(p);
-  const visibleAdminNav = ADMIN_NAV.filter(n => !n.permission || hasPerm(n.permission));
+  const visibleAdminNav = ADMIN_NAV.filter(n => {
+    if (!n.permission) return true;
+    if (Array.isArray(n.permission)) return n.permission.some(p => hasPerm(p));
+    return hasPerm(n.permission);
+  });
   const hasAnyAdminPerm = visibleAdminNav.length > 0;
   const [expanded, setExpanded] = useState(false);
   const [activeSection, setActiveSection] = useState<Section>(() => {
