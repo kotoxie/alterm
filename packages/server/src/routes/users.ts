@@ -77,8 +77,8 @@ router.post('/', async (req: Request, res: Response) => {
     return;
   }
 
-  const validRoles = ['admin', 'user'];
-  const userRole = validRoles.includes(role ?? '') ? role! : 'user';
+  const roleExists = queryOne('SELECT id FROM roles WHERE id = ?', [role ?? 'user']);
+  const userRole = roleExists ? (role ?? 'user') : 'user';
 
   const existing = queryOne('SELECT id FROM users WHERE username = ?', [username]);
   if (existing) {
@@ -139,7 +139,8 @@ router.put('/:id', (req: Request, res: Response) => {
   if (displayName !== undefined) { updates.push('display_name = ?'); params.push(displayName); }
   if (email !== undefined) { updates.push('email = ?'); params.push(email || null); }
   if (role !== undefined) {
-    if (!['admin', 'user'].includes(role)) {
+    const roleExists = queryOne('SELECT id FROM roles WHERE id = ?', [role]);
+    if (!roleExists) {
       res.status(400).json({ error: 'Invalid role' });
       return;
     }
