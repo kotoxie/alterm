@@ -175,6 +175,10 @@ router.post('/health-check', async (req: Request, res: Response) => {
 
 // GET /export — export all connections and groups as JSON (no passwords)
 router.get('/export', (req: Request, res: Response) => {
+  if (!userCan(req, 'connections.import_export')) {
+    res.status(403).json({ error: 'Insufficient permissions' });
+    return;
+  }
   const userId = req.user!.userId;
   const groups = queryAll<GroupRow>(
     'SELECT id, name, parent_id, sort_order FROM connection_groups WHERE user_id = ? ORDER BY sort_order',
@@ -204,6 +208,10 @@ router.get('/export', (req: Request, res: Response) => {
 
 // POST /import — import connections from JSON
 router.post('/import', (req: Request, res: Response) => {
+  if (!userCan(req, 'connections.import_export')) {
+    res.status(403).json({ error: 'Insufficient permissions' });
+    return;
+  }
   const userId = req.user!.userId;
   const { groups, connections } = req.body as {
     version?: number;
@@ -259,6 +267,12 @@ router.post('/import', (req: Request, res: Response) => {
 // Create connection
 router.post('/', (req: Request, res: Response) => {
   const userId = req.user!.userId;
+
+  if (!userCan(req, 'connections.create')) {
+    res.status(403).json({ error: 'Insufficient permissions' });
+    return;
+  }
+
   const { name, protocol, host, port, username, password, groupId, privateKey, extraConfig, shared, tunnels, tags } = req.body;
 
   if (!name || !protocol || !host || !port) {
@@ -330,6 +344,11 @@ router.put('/:id', (req: Request, res: Response) => {
 
   const isOwner = existing.user_id === userId;
   const canEditAny = userCan(req, 'connections.edit_any');
+  const canEditOwn = userCan(req, 'connections.edit_own');
+  if (isOwner && !canEditOwn && !canEditAny) {
+    res.status(403).json({ error: 'Not authorized' });
+    return;
+  }
   if (!isOwner && !canEditAny) {
     res.status(403).json({ error: 'Not authorized' });
     return;
@@ -402,7 +421,14 @@ router.delete('/:id', (req: Request, res: Response) => {
     res.status(404).json({ error: 'Connection not found' });
     return;
   }
-  if (conn.user_id !== userId && !userCan(req, 'connections.delete_any')) {
+  const isOwner = conn.user_id === userId;
+  const canDeleteAny = userCan(req, 'connections.delete_any');
+  const canDeleteOwn = userCan(req, 'connections.delete_own');
+  if (isOwner && !canDeleteOwn && !canDeleteAny) {
+    res.status(403).json({ error: 'Not authorized' });
+    return;
+  }
+  if (!isOwner && !canDeleteAny) {
     res.status(403).json({ error: 'Not authorized' });
     return;
   }
