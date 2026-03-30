@@ -25,6 +25,7 @@ export function RolesSettings() {
   const [selectedPerms, setSelectedPerms] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [resetConfirm, setResetConfirm] = useState(false);
 
   const loadRoles = useCallback(async () => {
     const res = await fetch('/api/v1/roles', { credentials: 'include' });
@@ -60,6 +61,7 @@ export function RolesSettings() {
     setEditing(null);
     setCreating(false);
     setError('');
+    setResetConfirm(false);
   }
 
   function togglePerm(key: string) {
@@ -114,9 +116,9 @@ export function RolesSettings() {
 
   async function handleReset() {
     if (!editing?.isBuiltin) return;
-    if (!confirm(`Reset "${editing.name}" role to its default permissions?`)) return;
     setSaving(true);
     setError('');
+    setResetConfirm(false);
     try {
       const res = await fetch(`/api/v1/roles/${editing.id}/reset`, {
         method: 'POST',
@@ -269,14 +271,32 @@ export function RolesSettings() {
 
           {/* Actions */}
           <div className="flex gap-2 justify-end pt-2">
-            {editing?.isBuiltin && (
+            {editing?.isBuiltin && !resetConfirm && (
               <button
-                onClick={handleReset}
+                onClick={() => setResetConfirm(true)}
                 disabled={saving}
                 className="px-3 py-1.5 text-xs border border-yellow-500/40 text-yellow-400 rounded hover:bg-yellow-500/10 font-medium disabled:opacity-50 mr-auto"
               >
                 Reset to Default
               </button>
+            )}
+            {editing?.isBuiltin && resetConfirm && (
+              <div className="flex items-center gap-2 mr-auto bg-yellow-500/10 border border-yellow-500/30 rounded px-3 py-1.5">
+                <span className="text-xs text-yellow-400">Reset "{editing.name}" to default permissions?</span>
+                <button
+                  onClick={handleReset}
+                  disabled={saving}
+                  className="px-2 py-0.5 text-xs bg-yellow-500 hover:bg-yellow-600 text-black rounded font-medium disabled:opacity-50"
+                >
+                  Confirm
+                </button>
+                <button
+                  onClick={() => setResetConfirm(false)}
+                  className="px-2 py-0.5 text-xs border border-yellow-500/40 text-yellow-400 rounded hover:bg-yellow-500/10"
+                >
+                  Cancel
+                </button>
+              </div>
             )}
             <button onClick={close} className="px-3 py-1.5 text-xs border border-border rounded text-text-secondary hover:bg-surface-hover">
               Cancel
