@@ -256,27 +256,23 @@ router.post('/:id/recording/finalize', (req: Request, res: Response) => {
 router.post('/:id/recording/events', (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const id = req.params.id as string;
-  console.log(`[rdp-events] POST received — session=${id}, bodyType=${typeof req.body}, isArray=${Array.isArray(req.body)}, len=${Array.isArray(req.body) ? req.body.length : 'N/A'}`);
   const session = queryOne<{ user_id: string }>('SELECT user_id FROM sessions WHERE id = ?', [id]);
-  if (!session) { console.log('[rdp-events] session not found'); res.status(404).json({ error: 'Session not found' }); return; }
-  if (session.user_id !== userId) { console.log('[rdp-events] forbidden'); res.status(403).json({ error: 'Forbidden' }); return; }
+  if (!session) { res.status(404).json({ error: 'Session not found' }); return; }
+  if (session.user_id !== userId) { res.status(403).json({ error: 'Forbidden' }); return; }
 
   const events = req.body as { elapsed: number; type: string }[];
-  if (!Array.isArray(events) || events.length === 0) { console.log('[rdp-events] empty/not-array, skipping'); res.json({ ok: true }); return; }
+  if (!Array.isArray(events) || events.length === 0) { res.json({ ok: true }); return; }
 
   try {
-    let inserted = 0;
     const stmt = 'INSERT INTO rdp_events (session_id, elapsed, event_type) VALUES (?, ?, ?)';
     for (const evt of events) {
       if (typeof evt.elapsed === 'number' && ['click', 'key', 'move'].includes(evt.type)) {
         execute(stmt, [id, evt.elapsed, evt.type]);
-        inserted++;
       }
     }
-    console.log(`[rdp-events] inserted ${inserted}/${events.length} events`);
     res.json({ ok: true });
   } catch (e) {
-    console.error('[rdp-events] insert FAILED:', e);
+    console.error('[sessions] Failed to insert RDP events:', e);
     res.status(500).json({ error: 'Failed to store events' });
   }
 });
@@ -294,7 +290,6 @@ router.get('/:id/recording/events', (req: Request, res: Response) => {
     'SELECT elapsed, event_type FROM rdp_events WHERE session_id = ? ORDER BY elapsed ASC',
     [id],
   );
-  console.log(`[rdp-events] GET — session=${id}, returning ${events.length} events`);
   res.json({ events });
 });
 
