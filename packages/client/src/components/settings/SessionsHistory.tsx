@@ -295,7 +295,7 @@ function VideoPlayer({
           />
         </div>
         {activityBuckets.length > 0 && (
-          <div className="flex items-end gap-px h-8 rounded overflow-hidden bg-[#1a1a1a] border border-[#2e2e2e]/50 relative group cursor-pointer"
+          <div className="flex items-end h-8 rounded overflow-hidden bg-[#1a1a1a] border border-[#2e2e2e]/50 relative group cursor-pointer"
             onClick={(e) => {
               const rect = e.currentTarget.getBoundingClientRect();
               const pct = (e.clientX - rect.left) / rect.width;
@@ -305,25 +305,26 @@ function VideoPlayer({
           >
             {/* Playhead */}
             <div className="absolute top-0 bottom-0 w-px bg-blue-400/80 z-10 pointer-events-none" style={{ left: `${progress}%` }} />
-            {activityBuckets.map((b, i) => {
-              const total = b.click + b.key + b.move;
-              if (total === 0) return <div key={i} className="flex-1 min-w-0" />;
+            {(() => {
               const maxPerBucket = Math.max(...activityBuckets.map(bk => bk.click + bk.key + bk.move));
-              const h = Math.max(12, (total / maxPerBucket) * 100);
-              // Color blend: clicks=blue, keys=green, moves=gray
-              const clickRatio = b.click / total;
-              const keyRatio = b.key / total;
-              const bg = clickRatio > 0.5
-                ? `rgba(59,130,246,${0.3 + 0.5 * (total / maxPerBucket)})`
-                : keyRatio > 0.5
-                  ? `rgba(34,197,94,${0.3 + 0.5 * (total / maxPerBucket)})`
-                  : `rgba(148,163,184,${0.2 + 0.4 * (total / maxPerBucket)})`;
-              return (
-                <div key={i} className="flex-1 min-w-0 flex items-end">
-                  <div className="w-full rounded-t-sm transition-all" style={{ height: `${h}%`, background: bg }} />
-                </div>
-              );
-            })}
+              return activityBuckets.map((b, i) => {
+                const total = b.click + b.key + b.move;
+                if (total === 0) return <div key={i} style={{ flex: 1 }} />;
+                const h = Math.max(3, Math.round((total / maxPerBucket) * 32));
+                const clickRatio = b.click / total;
+                const keyRatio = b.key / total;
+                const bg = clickRatio > 0.5
+                  ? `rgba(59,130,246,${0.3 + 0.5 * (total / maxPerBucket)})`
+                  : keyRatio > 0.5
+                    ? `rgba(34,197,94,${0.3 + 0.5 * (total / maxPerBucket)})`
+                    : `rgba(148,163,184,${0.2 + 0.4 * (total / maxPerBucket)})`;
+                return (
+                  <div key={i} style={{ flex: 1, display: 'flex', alignItems: 'flex-end', height: '100%' }}>
+                    <div style={{ width: '100%', height: `${h}px`, background: bg, borderRadius: '1px 1px 0 0' }} />
+                  </div>
+                );
+              });
+            })()}
             {/* Legend overlay on hover */}
             <div className="absolute top-0.5 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2 text-[9px] text-[#888] pointer-events-none">
               <span className="flex items-center gap-0.5"><span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />clicks</span>
