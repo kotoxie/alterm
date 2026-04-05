@@ -263,13 +263,18 @@ router.post('/:id/recording/events', (req: Request, res: Response) => {
   const events = req.body as { elapsed: number; type: string }[];
   if (!Array.isArray(events) || events.length === 0) { res.json({ ok: true }); return; }
 
-  const stmt = 'INSERT INTO rdp_events (session_id, elapsed, event_type) VALUES (?, ?, ?)';
-  for (const evt of events) {
-    if (typeof evt.elapsed === 'number' && ['click', 'key', 'move'].includes(evt.type)) {
-      execute(stmt, [id, evt.elapsed, evt.type]);
+  try {
+    const stmt = 'INSERT INTO rdp_events (session_id, elapsed, event_type) VALUES (?, ?, ?)';
+    for (const evt of events) {
+      if (typeof evt.elapsed === 'number' && ['click', 'key', 'move'].includes(evt.type)) {
+        execute(stmt, [id, evt.elapsed, evt.type]);
+      }
     }
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[sessions] Failed to insert RDP events:', e);
+    res.status(500).json({ error: 'Failed to store events' });
   }
-  res.json({ ok: true });
 });
 
 // GET /:id/recording/events — retrieve RDP input events for activity bar
