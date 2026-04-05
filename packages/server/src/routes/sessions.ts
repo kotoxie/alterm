@@ -82,6 +82,7 @@ router.delete('/', requirePermission('sessions.delete'), (req: Request, res: Res
   // Collect all recording file paths before deleting rows
   const rows = queryAll<{ recording_path: string | null }>('SELECT recording_path FROM sessions', []);
   const totalSessions = rows.length;
+  const totalFileSessions = queryAll<{ id: string }>('SELECT id FROM file_sessions', []).length;
 
   // Close any in-flight RDP recording writers
   for (const [sid, writer] of rdpWriters) {
@@ -100,15 +101,19 @@ router.delete('/', requirePermission('sessions.delete'), (req: Request, res: Res
   // Delete all session rows
   execute('DELETE FROM sessions', []);
 
+  // Delete all file activity sessions and their events
+  execute('DELETE FROM file_session_events', []);
+  execute('DELETE FROM file_sessions', []);
+
   logAudit({
     userId,
     eventType: 'admin.sessions.purge',
     target: 'all',
-    details: { deletedSessions: totalSessions, deletedRecordings },
+    details: { deletedSessions: totalSessions, deletedRecordings, deletedFileSessions: totalFileSessions },
     ipAddress: req.ip,
   });
 
-  res.json({ ok: true, deletedSessions: totalSessions, deletedRecordings });
+  res.json({ ok: true, deletedSessions: totalSessions, deletedRecordings, deletedFileSessions: totalFileSessions });
 });
 
 // GET /:id/recording — stream recording file (.cast or .webm) with Range support

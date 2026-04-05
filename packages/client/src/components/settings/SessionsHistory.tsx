@@ -785,6 +785,24 @@ function FileActivity() {
   const [viewingId, setViewingId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [protocolFilter, setProtocolFilter] = useState('all');
+  const [downloadMenuId, setDownloadMenuId] = useState<string | null>(null);
+
+  async function downloadFileSession(s: FileSessionRow, format: 'json' | 'csv') {
+    setDownloadMenuId(null);
+    try {
+      const res = await fetch(`/api/v1/file-sessions/${s.id}/export?format=${format}`, { credentials: 'include' });
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const ts = s.startedAt.replace(/[^0-9]/g, '').slice(0, 14);
+      const conn = (s.connectionName ?? 'unknown').replace(/[^a-z0-9]/gi, '_');
+      a.download = `file-activity_${conn}_${ts}.${format}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch { /* ignore */ }
+  }
 
   const load = useCallback(() => {
     setLoading(true);
@@ -846,7 +864,8 @@ function FileActivity() {
                 <th className="pb-2 pr-4 font-medium">Started</th>
                 <th className="pb-2 pr-4 font-medium">Duration</th>
                 <th className="pb-2 pr-4 font-medium">Events</th>
-                <th className="pb-2 font-medium">Timeline</th>
+                <th className="pb-2 pr-4 font-medium">Timeline</th>
+                <th className="pb-2 font-medium">Download</th>
               </tr>
             </thead>
             <tbody>
@@ -862,7 +881,7 @@ function FileActivity() {
                   <td className="py-2 pr-4 text-text-secondary text-xs">{formatDateTz(s.startedAt, timezone)}</td>
                   <td className="py-2 pr-4 text-xs text-text-secondary">{formatDuration(s.startedAt, s.endedAt)}</td>
                   <td className="py-2 pr-4 text-xs text-text-secondary">{s.eventCount}</td>
-                  <td className="py-2">
+                  <td className="py-2 pr-4">
                     <button onClick={() => setViewingId(s.id)}
                       className="px-2 py-1 text-xs bg-accent/10 text-accent rounded hover:bg-accent/20 border border-accent/20 flex items-center gap-1">
                       <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -870,6 +889,31 @@ function FileActivity() {
                       </svg>
                       View Timeline
                     </button>
+                  </td>
+                  <td className="py-2">
+                    <div className="relative">
+                      <button
+                        onClick={() => setDownloadMenuId(downloadMenuId === s.id ? null : s.id)}
+                        className="px-2 py-1 text-xs bg-surface border border-border rounded hover:bg-surface-hover text-text-secondary flex items-center gap-1"
+                      >
+                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+                        </svg>
+                        ▾
+                      </button>
+                      {downloadMenuId === s.id && (
+                        <div className="absolute right-0 top-full mt-1 z-50 bg-surface border border-border rounded shadow-lg min-w-[90px]">
+                          <button onClick={() => downloadFileSession(s, 'json')}
+                            className="block w-full text-left px-3 py-1.5 text-xs text-text-primary hover:bg-surface-hover">
+                            JSON
+                          </button>
+                          <button onClick={() => downloadFileSession(s, 'csv')}
+                            className="block w-full text-left px-3 py-1.5 text-xs text-text-primary hover:bg-surface-hover">
+                            CSV
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

@@ -68,6 +68,86 @@ router.get('/', (req: Request, res: Response) => {
   });
 });
 
+// GET /:id/export — download all file session events as JSON or CSV
+router.get('/:id/export', (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const canViewAny = userCan(req, 'sessions.view_any');
+  const sessionId = req.params.id as string;
+  const format = ((req.query.format as string) || 'json').toLowerCase();
+
+  interface SessionMeta {
+    user_id: string;
+    protocol: string;
+    started_at: string;
+    ended_at: string | null;
+    connection_name: string | null;
+    username: string | null;
+  }
+
+  const session = queryOne<SessionMeta>(
+    `SELECT fs.user_id, fs.protocol, fs.started_at, fs.ended_at,
+            c.name AS connection_name, u.username
+     FROM file_sessions fs
+     LEFT JOIN connections c ON c.id = fs.connection_id
+     LEFT JOIN users u ON u.id = fs.user_id
+     WHERE fs.id = ?`,
+    [sessionId],
+  );
+  if (!session) { res.status(404).json({ error: 'Session not found' }); return; }
+  if (!canViewAny && session.user_id !== userId) { res.status(403).json({ error: 'Forbidden' }); return; }
+
+  const events = queryAll<FileSessionEventRow>(
+    'SELECT id, session_id, timestamp, action, path, detail_json FROM file_session_events WHERE session_id = ? ORDER BY timestamp ASC',
+    [sessionId],
+  );
+
+  const ts = session.started_at.replace(/[^0-9]/g, '').slice(0, 14);
+  const connSlug = (session.connection_name ?? 'unknown').replace(/[^a-z0-9]/gi, '_');
+  const filename = `file-activity_${connSlug}_${ts}`;
+
+  if (format === 'csv') {
+    const header = 'session_id,connection,username,protocol,session_started,session_ended,timestamp,action,path,detail\n';
+    const rows = events.map((e) => {
+      const detail = e.detail_json ?? '';
+      return [
+        sessionId,
+        `"${(session.connection_name ?? '').replace(/"/g, '""')}"`,
+        `"${(session.username ?? '').replace(/"/g, '""')}"`,
+        session.protocol,
+        session.started_at,
+        session.ended_at ?? '',
+        e.timestamp,
+        e.action,
+        `"${e.path.replace(/"/g, '""')}"`,
+        `"${detail.replace(/"/g, '""')}"`,
+      ].join(',');
+    }).join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}.csv"`);
+    res.send(header + rows);
+  } else {
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}.json"`);
+    res.json({
+      session: {
+        id: sessionId,
+        connectionName: session.connection_name,
+        username: session.username,
+        protocol: session.protocol,
+        startedAt: session.started_at,
+        endedAt: session.ended_at,
+      },
+      events: events.map((e) => ({
+        id: e.id,
+        timestamp: e.timestamp,
+        action: e.action,
+        path: e.path,
+        detail: e.detail_json ? (JSON.parse(e.detail_json) as Record<string, unknown>) : null,
+      })),
+    });
+  }
+});
+
 // GET /:id/events — get events for a file session
 router.get('/:id/events', (req: Request, res: Response) => {
   const userId = req.user!.userId;

@@ -145,9 +145,10 @@ export function GlobalSettings() {
         method: 'DELETE',
         credentials: 'include',
       });
-      const d = await res.json() as { ok?: boolean; deletedSessions?: number; deletedRecordings?: number; error?: string };
+      const d = await res.json() as { ok?: boolean; deletedSessions?: number; deletedRecordings?: number; deletedFileSessions?: number; error?: string };
       if (res.ok) {
-        setPurgeMsg({ type: 'success', text: `Deleted ${d.deletedSessions ?? 0} sessions and ${d.deletedRecordings ?? 0} recordings.` });
+        const fileNote = (d.deletedFileSessions ?? 0) > 0 ? ` and ${d.deletedFileSessions} file activity session(s)` : '';
+        setPurgeMsg({ type: 'success', text: `Deleted ${d.deletedSessions ?? 0} sessions and ${d.deletedRecordings ?? 0} recordings${fileNote}.` });
         setShowPurgeConfirm(false);
         setStorageBytes(0);
       } else {
