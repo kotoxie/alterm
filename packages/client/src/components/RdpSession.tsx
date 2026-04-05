@@ -79,6 +79,8 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
   const sessionRef = useRef<any>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const rdpSessionIdRef = useRef<string | null>(null);
+  const pushEventRef = useRef<((type: 'click' | 'key' | 'move') => void) | null>(null);
+  const flushEventsRef = useRef<(() => void) | null>(null);
   const [status, setStatus] = useState<string>('Initializing...');
   const [disconnected, setDisconnected] = useState(false);
   const [disconnectMessage, setDisconnectMessage] = useState('');
@@ -505,11 +507,11 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
               }
               const eventFlushInterval = setInterval(flushEvents, 5000);
 
-              // Store helpers on the MediaRecorder for input handlers to call
+              // Store helpers in refs for input handlers to call
+              pushEventRef.current = pushEvent;
+              flushEventsRef.current = () => { clearInterval(eventFlushInterval); flushEvents(); };
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (mr as any)._pushEvent = pushEvent;
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (mr as any)._flushAndStop = () => { clearInterval(eventFlushInterval); flushEvents(); };
+              (mr as any)._flushAndStop = flushEventsRef.current;
 
               // Store cleanup refs on the mr object for teardown
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -557,8 +559,7 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
           // Throttled activity tracking for heatmap (every 500ms)
           const now = performance.now();
           if (now - lastMoveEventTime > 500) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (mediaRecorderRef.current as any)?._pushEvent?.('move');
+            pushEventRef.current?.('move');
             lastMoveEventTime = now;
           }
         };
@@ -571,8 +572,7 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
           // Record click ripple for the compositor
           const colorTpl = RIPPLE_COLORS[e.button] ?? RIPPLE_COLORS[0];
           clickRipples.push({ x: recMouseX, y: recMouseY, t: performance.now(), color: colorTpl });
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (mediaRecorderRef.current as any)?._pushEvent?.('click');
+          pushEventRef.current?.('click');
           if (e.button === 2) {
             syncHostClipboardToGuest();
           } else if (!clipboardPermissionRequested) {
@@ -614,8 +614,7 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
 
           const pressed = e.type === 'keydown';
           if (pressed) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (mediaRecorderRef.current as any)?._pushEvent?.('key');
+            pushEventRef.current?.('key');
           }
           const scancode = CODE_TO_SCANCODE[e.code];
           if (scancode !== undefined) {
@@ -718,8 +717,9 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
       mediaRecorderRef.current = null;
 
       // Flush remaining activity events before stopping
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (mr as any)?._flushAndStop?.();
+      flushEventsRef.current?.();
+      pushEventRef.current = null;
+      flushEventsRef.current = null;
 
       if (mr && mr.state !== 'inactive') {
         // Wire up onstop BEFORE calling stop() so it fires after the last chunk upload
