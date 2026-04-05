@@ -486,6 +486,31 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
               mr.start(5000);
               mediaRecorderRef.current = mr;
 
+              // ── Activity event capture for playback heatmap ──────────
+              const recStartTime = performance.now();
+              let eventBuffer: { elapsed: number; type: string }[] = [];
+              function pushEvent(type: 'click' | 'key' | 'move') {
+                eventBuffer.push({ elapsed: (performance.now() - recStartTime) / 1000, type });
+              }
+              function flushEvents() {
+                if (eventBuffer.length === 0 || !rdpSessionIdRef.current) return;
+                const batch = eventBuffer;
+                eventBuffer = [];
+                fetch(`/api/v1/sessions/${rdpSessionIdRef.current}/recording/events`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  credentials: 'include',
+                  body: JSON.stringify(batch),
+                }).catch(() => {});
+              }
+              const eventFlushInterval = setInterval(flushEvents, 5000);
+
+              // Store helpers on the MediaRecorder for input handlers to call
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              (mr as any)._pushEvent = pushEvent;
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              (mr as any)._flushAndStop = () => { clearInterval(eventFlushInterval); flushEvents(); };
+
               // Store cleanup refs on the mr object for teardown
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               (mr as any)._recRafId = recRafId;
@@ -517,6 +542,8 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { InputTransaction, DeviceEvent } = Backend as any;
 
+        let lastMoveEventTime = 0;
+
         const applyEvents = (...events: unknown[]) => {
           const tx = new InputTransaction();
           events.forEach((e) => tx.addEvent(e));
@@ -527,6 +554,13 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
           const scaleX = canvas.width / canvas.clientWidth;
           const scaleY = canvas.height / canvas.clientHeight;
           applyEvents(DeviceEvent.mouseMove(Math.round(e.offsetX * scaleX), Math.round(e.offsetY * scaleY)));
+          // Throttled activity tracking for heatmap (every 500ms)
+          const now = performance.now();
+          if (now - lastMoveEventTime > 500) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (mediaRecorderRef.current as any)?._pushEvent?.('move');
+            lastMoveEventTime = now;
+          }
         };
 
         let clipboardPermissionRequested = false;
@@ -537,6 +571,8 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
           // Record click ripple for the compositor
           const colorTpl = RIPPLE_COLORS[e.button] ?? RIPPLE_COLORS[0];
           clickRipples.push({ x: recMouseX, y: recMouseY, t: performance.now(), color: colorTpl });
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (mediaRecorderRef.current as any)?._pushEvent?.('click');
           if (e.button === 2) {
             syncHostClipboardToGuest();
           } else if (!clipboardPermissionRequested) {
@@ -577,6 +613,10 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
           if (!isBrowserClipboard) e.preventDefault();
 
           const pressed = e.type === 'keydown';
+          if (pressed) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (mediaRecorderRef.current as any)?._pushEvent?.('key');
+          }
           const scancode = CODE_TO_SCANCODE[e.code];
           if (scancode !== undefined) {
             applyEvents(pressed ? DeviceEvent.keyPressed(scancode) : DeviceEvent.keyReleased(scancode));
@@ -676,6 +716,10 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
 
       const mr = mediaRecorderRef.current;
       mediaRecorderRef.current = null;
+
+      // Flush remaining activity events before stopping
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (mr as any)?._flushAndStop?.();
 
       if (mr && mr.state !== 'inactive') {
         // Wire up onstop BEFORE calling stop() so it fires after the last chunk upload

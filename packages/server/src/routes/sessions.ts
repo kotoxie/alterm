@@ -252,6 +252,42 @@ router.post('/:id/recording/finalize', (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+// POST /:id/recording/events — batch-insert RDP input events (mouse/keyboard activity)
+router.post('/:id/recording/events', (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const id = req.params.id as string;
+  const session = queryOne<{ user_id: string }>('SELECT user_id FROM sessions WHERE id = ?', [id]);
+  if (!session) { res.status(404).json({ error: 'Session not found' }); return; }
+  if (session.user_id !== userId) { res.status(403).json({ error: 'Forbidden' }); return; }
+
+  const events = req.body as { elapsed: number; type: string }[];
+  if (!Array.isArray(events) || events.length === 0) { res.json({ ok: true }); return; }
+
+  const stmt = 'INSERT INTO rdp_events (session_id, elapsed, event_type) VALUES (?, ?, ?)';
+  for (const evt of events) {
+    if (typeof evt.elapsed === 'number' && ['click', 'key', 'move'].includes(evt.type)) {
+      execute(stmt, [id, evt.elapsed, evt.type]);
+    }
+  }
+  res.json({ ok: true });
+});
+
+// GET /:id/recording/events — retrieve RDP input events for activity bar
+router.get('/:id/recording/events', (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const canViewAny = userCan(req, 'sessions.view_any');
+  const id = req.params.id as string;
+  const session = queryOne<{ user_id: string }>('SELECT user_id FROM sessions WHERE id = ?', [id]);
+  if (!session) { res.status(404).json({ error: 'Session not found' }); return; }
+  if (!canViewAny && session.user_id !== userId) { res.status(403).json({ error: 'Forbidden' }); return; }
+
+  const events = queryAll<{ elapsed: number; event_type: string }>(
+    'SELECT elapsed, event_type FROM rdp_events WHERE session_id = ? ORDER BY elapsed ASC',
+    [id],
+  );
+  res.json({ events });
+});
+
 // GET /:id/commands — list SSH commands logged for a session
 router.get('/:id/commands', (req: Request, res: Response) => {
   const userId = req.user!.userId;
