@@ -72,7 +72,7 @@ function VideoPlayer({
   // the browser to discover the real duration of a MediaRecorder WebM file).
   const durationProbed = useRef(false);
   const pendingPlay = useRef(false);
-  const rawEventsRef = useRef<{ elapsed: number; event_type: string }[]>([]);
+  const [rawEvents, setRawEvents] = useState<{ elapsed: number; event_type: string }[]>([]);
 
   // Fetch recording blob
   useEffect(() => {
@@ -101,24 +101,24 @@ function VideoPlayer({
   useEffect(() => {
     fetch(`/api/v1/sessions/${sessionId}/recording/events`, { credentials: 'include' })
       .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.events) rawEventsRef.current = d.events; })
+      .then(d => { if (d?.events) setRawEvents(d.events); })
       .catch(() => {});
   }, [sessionId]);
 
-  // Recompute activity buckets when totalTime changes
+  // Recompute activity buckets when totalTime or events change
   useEffect(() => {
-    if (totalTime <= 0 || rawEventsRef.current.length === 0) { setActivityBuckets([]); return; }
+    if (totalTime <= 0 || rawEvents.length === 0) { setActivityBuckets([]); return; }
     const BUCKET_COUNT = 200;
     const bucketDur = totalTime / BUCKET_COUNT;
     const buckets = Array.from({ length: BUCKET_COUNT }, () => ({ click: 0, key: 0, move: 0 }));
-    for (const evt of rawEventsRef.current) {
+    for (const evt of rawEvents) {
       const idx = Math.min(Math.floor(evt.elapsed / bucketDur), BUCKET_COUNT - 1);
       if (evt.event_type === 'click') buckets[idx].click++;
       else if (evt.event_type === 'key') buckets[idx].key++;
       else if (evt.event_type === 'move') buckets[idx].move++;
     }
     setActivityBuckets(buckets);
-  }, [totalTime]);
+  }, [totalTime, rawEvents]);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
