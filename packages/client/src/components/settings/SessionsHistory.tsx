@@ -67,11 +67,14 @@ function VideoPlayer({
   const [currentTime, setCurrentTime] = useState(0);
   const [totalTime, setTotalTime] = useState(0);
   const [downloading, setDownloading] = useState(false);
+  const [activityBuckets, setActivityBuckets] = useState<{ click: number; key: number; move: number }[]>([]);
   // Tracks whether we've done the duration-probe seek (seek to 1e101 to force
   // the browser to discover the real duration of a MediaRecorder WebM file).
   const durationProbed = useRef(false);
   const pendingPlay = useRef(false);
+  const rawEventsRef = useRef<{ elapsed: number; event_type: string }[]>([]);
 
+  // Fetch recording blob
   useEffect(() => {
     let url: string | null = null;
     async function load() {
@@ -93,6 +96,29 @@ function VideoPlayer({
     load();
     return () => { if (url) URL.revokeObjectURL(url); };
   }, [sessionId]);
+
+  // Fetch activity events
+  useEffect(() => {
+    fetch(`/api/v1/sessions/${sessionId}/recording/events`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.events) rawEventsRef.current = d.events; })
+      .catch(() => {});
+  }, [sessionId]);
+
+  // Recompute activity buckets when totalTime changes
+  useEffect(() => {
+    if (totalTime <= 0 || rawEventsRef.current.length === 0) { setActivityBuckets([]); return; }
+    const BUCKET_COUNT = 200;
+    const bucketDur = totalTime / BUCKET_COUNT;
+    const buckets = Array.from({ length: BUCKET_COUNT }, () => ({ click: 0, key: 0, move: 0 }));
+    for (const evt of rawEventsRef.current) {
+      const idx = Math.min(Math.floor(evt.elapsed / bucketDur), BUCKET_COUNT - 1);
+      if (evt.event_type === 'click') buckets[idx].click++;
+      else if (evt.event_type === 'key') buckets[idx].key++;
+      else if (evt.event_type === 'move') buckets[idx].move++;
+    }
+    setActivityBuckets(buckets);
+  }, [totalTime]);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -268,6 +294,44 @@ function VideoPlayer({
             style={{ background: 'transparent' }}
           />
         </div>
+        {activityBuckets.length > 0 && (
+          <div className="flex items-end gap-px h-8 rounded overflow-hidden bg-[#1a1a1a] border border-[#2e2e2e]/50 relative group cursor-pointer"
+            onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const pct = (e.clientX - rect.left) / rect.width;
+              onSeek(pct * totalTime);
+            }}
+            title="Activity — Blue: clicks, Green: keyboard, Gray: mouse movement"
+          >
+            {/* Playhead */}
+            <div className="absolute top-0 bottom-0 w-px bg-blue-400/80 z-10 pointer-events-none" style={{ left: `${progress}%` }} />
+            {activityBuckets.map((b, i) => {
+              const total = b.click + b.key + b.move;
+              if (total === 0) return <div key={i} className="flex-1 min-w-0" />;
+              const maxPerBucket = Math.max(...activityBuckets.map(bk => bk.click + bk.key + bk.move));
+              const h = Math.max(12, (total / maxPerBucket) * 100);
+              // Color blend: clicks=blue, keys=green, moves=gray
+              const clickRatio = b.click / total;
+              const keyRatio = b.key / total;
+              const bg = clickRatio > 0.5
+                ? `rgba(59,130,246,${0.3 + 0.5 * (total / maxPerBucket)})`
+                : keyRatio > 0.5
+                  ? `rgba(34,197,94,${0.3 + 0.5 * (total / maxPerBucket)})`
+                  : `rgba(148,163,184,${0.2 + 0.4 * (total / maxPerBucket)})`;
+              return (
+                <div key={i} className="flex-1 min-w-0 flex items-end">
+                  <div className="w-full rounded-t-sm transition-all" style={{ height: `${h}%`, background: bg }} />
+                </div>
+              );
+            })}
+            {/* Legend overlay on hover */}
+            <div className="absolute top-0.5 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2 text-[9px] text-[#888] pointer-events-none">
+              <span className="flex items-center gap-0.5"><span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />clicks</span>
+              <span className="flex items-center gap-0.5"><span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />keys</span>
+              <span className="flex items-center gap-0.5"><span className="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block" />mouse</span>
+            </div>
+          </div>
+        )}
         <div className="flex items-center justify-center gap-2 pt-0.5">
           <button
             onClick={onPlayPause}

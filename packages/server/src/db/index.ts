@@ -393,6 +393,18 @@ function runMigrations() {
         // The existing values are already 'admin' or 'user' which match our role IDs
       },
     },
+    {
+      version: 7,
+      sql: `
+        CREATE TABLE IF NOT EXISTS rdp_events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+          elapsed REAL NOT NULL,
+          event_type TEXT NOT NULL CHECK(event_type IN ('click', 'key', 'move'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_rdp_events_session ON rdp_events(session_id);
+      `,
+    },
   ];
 
   for (const migration of migrations) {
