@@ -48,12 +48,12 @@ router.get('/', (req: Request, res: Response) => {
   const userId = req.user!.userId;
 
   const groups = queryAll<GroupRow>(
-    'SELECT id, name, parent_id, sort_order FROM connection_groups WHERE user_id = ? ORDER BY sort_order',
+    'SELECT id, name, parent_id, sort_order FROM connection_groups WHERE user_id = ? ORDER BY sort_order, name COLLATE NOCASE ASC',
     [userId],
   );
 
   const connections = queryAll<ConnectionRow>(
-    'SELECT id, name, protocol, host, port, group_id, username, sort_order, shared, tags FROM connections WHERE user_id = ? ORDER BY sort_order',
+    'SELECT id, name, protocol, host, port, group_id, username, sort_order, shared, tags FROM connections WHERE user_id = ? ORDER BY sort_order, name COLLATE NOCASE ASC',
     [userId],
   );
 
@@ -181,7 +181,7 @@ router.get('/export', (req: Request, res: Response) => {
   }
   const userId = req.user!.userId;
   const groups = queryAll<GroupRow>(
-    'SELECT id, name, parent_id, sort_order FROM connection_groups WHERE user_id = ? ORDER BY sort_order',
+    'SELECT id, name, parent_id, sort_order FROM connection_groups WHERE user_id = ? ORDER BY sort_order, name COLLATE NOCASE ASC',
     [userId],
   );
   interface ExportConn {
@@ -189,7 +189,7 @@ router.get('/export', (req: Request, res: Response) => {
     port: number; username: string | null; group_id: string | null; shared: number;
   }
   const connections = queryAll<ExportConn>(
-    'SELECT id, name, protocol, host, port, username, group_id, shared FROM connections WHERE user_id = ? ORDER BY sort_order',
+    'SELECT id, name, protocol, host, port, username, group_id, shared FROM connections WHERE user_id = ? ORDER BY sort_order, name COLLATE NOCASE ASC',
     [userId],
   );
   const payload = {
@@ -314,6 +314,22 @@ router.post('/', (req: Request, res: Response) => {
   res.status(201).json({
     id, name, protocol, host, port, username, groupId: groupId || null, shared: shared ? 1 : 0,
   });
+});
+
+// PUT /reorder — batch-update sort_order for connections within a folder
+// Must be defined before /:id to avoid Express matching "reorder" as an id param
+router.put('/reorder', (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const { items } = req.body as { items?: { id: string; sortOrder: number }[] };
+  if (!Array.isArray(items)) { res.status(400).json({ error: 'items array is required' }); return; }
+  for (const item of items) {
+    const conn = queryOne<{ user_id: string }>(
+      'SELECT user_id FROM connections WHERE id = ?', [item.id],
+    );
+    if (!conn || (conn.user_id !== userId && !userCan(req, 'connections.edit_any'))) continue;
+    execute('UPDATE connections SET sort_order = ? WHERE id = ?', [item.sortOrder, item.id]);
+  }
+  res.json({ success: true });
 });
 
 // Update connection
@@ -538,21 +554,6 @@ router.put('/groups/reorder', (req: Request, res: Response) => {
     );
     if (!group || (group.user_id !== userId && req.user!.role !== 'admin')) continue;
     execute('UPDATE connection_groups SET sort_order = ? WHERE id = ?', [item.sortOrder, item.id]);
-  }
-  res.json({ success: true });
-});
-
-// PUT /reorder — batch-update sort_order for connections within a folder
-router.put('/reorder', (req: Request, res: Response) => {
-  const userId = req.user!.userId;
-  const { items } = req.body as { items?: { id: string; sortOrder: number }[] };
-  if (!Array.isArray(items)) { res.status(400).json({ error: 'items array is required' }); return; }
-  for (const item of items) {
-    const conn = queryOne<{ user_id: string }>(
-      'SELECT user_id FROM connections WHERE id = ?', [item.id],
-    );
-    if (!conn || (conn.user_id !== userId && !userCan(req, 'connections.edit_any'))) continue;
-    execute('UPDATE connections SET sort_order = ? WHERE id = ?', [item.sortOrder, item.id]);
   }
   res.json({ success: true });
 });
