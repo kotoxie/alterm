@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { queryAll } from '../db/helpers.js';
 import { getSetting } from '../services/settings.js';
+import { logAudit } from '../services/audit.js';
 
 interface IpRuleRow {
   type: string;
@@ -39,6 +40,11 @@ export function ipRulesMiddleware(req: Request, res: Response, next: NextFunctio
       .filter((r) => r.type === 'allow')
       .some((r) => matchesCidr(clientIp, r.ip_cidr));
     if (!allowed) {
+      logAudit({
+        eventType: 'security.ip_blocked',
+        ipAddress: clientIp,
+        details: { reason: 'not_in_allowlist', path: req.path, method: req.method },
+      });
       res.status(403).json({ error: 'Access denied' });
       return;
     }
@@ -48,6 +54,11 @@ export function ipRulesMiddleware(req: Request, res: Response, next: NextFunctio
       .filter((r) => r.type === 'deny')
       .some((r) => matchesCidr(clientIp, r.ip_cidr));
     if (denied) {
+      logAudit({
+        eventType: 'security.ip_blocked',
+        ipAddress: clientIp,
+        details: { reason: 'in_denylist', path: req.path, method: req.method },
+      });
       res.status(403).json({ error: 'Access denied' });
       return;
     }
