@@ -164,6 +164,11 @@ function recordUnknownFail(username: string, maxFailed: number, lockoutMinutes: 
     const until = new Date();
     until.setMinutes(until.getMinutes() + lockoutMinutes);
     rec.lockedUntil = until;
+    logAudit({
+      eventType: 'security.account_locked',
+      target: username,
+      details: { reason: 'too_many_failed_logins', user_exists: false, locked_until: until.toISOString(), failed_count: rec.count },
+    });
   }
   unknownAttempts.set(username, rec);
 }
@@ -285,7 +290,15 @@ router.post('/login', async (req: Request, res: Response) => {
   // Check if account is locked
   // SQLite datetime() returns "YYYY-MM-DD HH:MM:SS" (space, not T) — add T+Z for correct UTC parsing
   if (user.locked_until && new Date(user.locked_until.replace(' ', 'T') + 'Z') > new Date()) {
-    const until = new Date(user.locked_until.replace(' ', 'T') + 'Z').toLocaleString();
+    const lockedUntilDate = new Date(user.locked_until.replace(' ', 'T') + 'Z');
+    logAudit({
+      userId: user.id,
+      eventType: 'security.locked_account_attempt',
+      target: username,
+      details: { locked_until: lockedUntilDate.toISOString() },
+      ipAddress: req.ip,
+    });
+    const until = lockedUntilDate.toLocaleString();
     res.status(429).json({ error: `Account locked until ${until}` });
     return;
   }
@@ -299,6 +312,14 @@ router.post('/login', async (req: Request, res: Response) => {
         `UPDATE users SET failed_login_count = ?, locked_until = datetime('now', '+' || CAST(? AS TEXT) || ' minutes'), updated_at = datetime('now') WHERE id = ?`,
         [newCount, lockoutMinutes, user.id],
       );
+      const lockedUntil = new Date(Date.now() + lockoutMinutes * 60 * 1000).toISOString();
+      logAudit({
+        userId: user.id,
+        eventType: 'security.account_locked',
+        target: username,
+        details: { reason: 'too_many_failed_logins', user_exists: true, locked_until: lockedUntil, failed_count: newCount },
+        ipAddress: req.ip,
+      });
     } else {
       execute(
         "UPDATE users SET failed_login_count = ?, updated_at = datetime('now') WHERE id = ?",

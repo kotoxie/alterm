@@ -102,6 +102,15 @@ const EVENT_GROUPS: { label: string; events: { value: string; label: string }[] 
       { value: 'settings.notification_rule_deleted', label: 'Notification rule deleted' },
     ],
   },
+  {
+    label: 'Security',
+    events: [
+      { value: 'security.*', label: 'Security — all' },
+      { value: 'security.ip_blocked', label: 'IP address blocked' },
+      { value: 'security.account_locked', label: 'Account locked (too many failed logins)' },
+      { value: 'security.locked_account_attempt', label: 'Login attempt on locked account' },
+    ],
+  },
 ];
 
 const CONDITION_FIELDS: { value: string; label: string }[] = [
