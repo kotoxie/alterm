@@ -195,13 +195,13 @@ export function NotifConfigTab() {
           </div>
           <div className="col-span-full space-y-1">
             <label className="block text-xs font-medium text-text-secondary">Default subject template</label>
-            <input type="text" value={cfg.smtp_default_subject ?? '[{{rule}}] {{event}}'} onChange={(e) => set('smtp_default_subject', e.target.value)}
+            <input type="text" value={cfg.smtp_default_subject ?? '{{severity}} [{{app_name}}] {{rule}} — {{event}}'} onChange={(e) => set('smtp_default_subject', e.target.value)}
               className="w-full px-3 py-1.5 text-sm rounded border border-border bg-surface text-text-primary focus:outline-none focus:border-accent" />
-            <p className="text-[11px] text-text-secondary/70">Variables: {'{{event}} {{user}} {{ip}} {{timestamp}} {{rule}} {{target}} {{details}}'}</p>
+            <p className="text-[11px] text-text-secondary/70">Variables: {'{{severity}} {{app_name}} {{event}} {{user}} {{ip}} {{timestamp}} {{rule}} {{target}} {{details}}'}</p>
           </div>
           <div className="col-span-full space-y-1">
             <label className="block text-xs font-medium text-text-secondary">Default body template</label>
-            <textarea rows={3} value={cfg.smtp_default_body ?? 'Event: {{event}}\nUser: {{user}}\nIP: {{ip}}\nTime: {{timestamp}}'}
+            <textarea rows={5} value={cfg.smtp_default_body ?? '{{severity}} [{{app_name}}] Security Alert\n━━━━━━━━━━━━━━━━━━━━━\nRule:      {{rule}}\nEvent:     {{event}}\nUser:      {{user}}\nIP:        {{ip}}\nTarget:    {{target}}\nTime:      {{timestamp}}\n━━━━━━━━━━━━━━━━━━━━━\nThis is an automated alert from {{app_name}}.'}
               onChange={(e) => set('smtp_default_body', e.target.value)}
               className="w-full px-3 py-1.5 text-sm rounded border border-border bg-surface text-text-primary focus:outline-none focus:border-accent resize-none" />
           </div>
@@ -215,10 +215,10 @@ export function NotifConfigTab() {
           <Field label="Default Chat ID" name="telegram_chat_id" value={cfg.telegram_chat_id ?? ''} onChange={(v) => set('telegram_chat_id', v)} placeholder="-1001234567890" />
           <div className="col-span-full space-y-1">
             <label className="block text-xs font-medium text-text-secondary">Default message template (Markdown)</label>
-            <textarea rows={3} value={cfg.telegram_default_template ?? '*{{rule}}*\nEvent: `{{event}}`\nUser: {{user}}\nIP: {{ip}}\nTime: {{timestamp}}'}
+            <textarea rows={5} value={cfg.telegram_default_template ?? '{{severity}} *[{{app_name}}]* {{rule}}\n`{{event}}`\n\n👤 User: `{{user}}`\n🌐 IP: `{{ip}}`\n🎯 Target: `{{target}}`\n🕐 Time: `{{timestamp}}`\n\n_Automated alert from {{app_name}}_'}
               onChange={(e) => set('telegram_default_template', e.target.value)}
               className="w-full px-3 py-1.5 text-sm rounded border border-border bg-surface text-text-primary focus:outline-none focus:border-accent resize-none font-mono text-xs" />
-            <p className="text-[11px] text-text-secondary/70">Variables: {'{{event}} {{user}} {{ip}} {{timestamp}} {{rule}} {{target}} {{details}}'}</p>
+            <p className="text-[11px] text-text-secondary/70">Variables: {'{{severity}} {{app_name}} {{event}} {{user}} {{ip}} {{timestamp}} {{rule}} {{target}} {{details}}'}</p>
           </div>
         </>)}
       </ProviderCard>
@@ -231,10 +231,10 @@ export function NotifConfigTab() {
           </div>
           <div className="col-span-full space-y-1">
             <label className="block text-xs font-medium text-text-secondary">Default message template</label>
-            <textarea rows={2} value={cfg.slack_default_template ?? '*{{rule}}* — `{{event}}`\nUser: {{user}} | IP: {{ip}} | {{timestamp}}'}
+            <textarea rows={4} value={cfg.slack_default_template ?? '{{severity}} *[{{app_name}}]* {{rule}}\n*Event:* `{{event}}` | *User:* `{{user}}` | *IP:* `{{ip}}`\n*Target:* `{{target}}` | *Time:* `{{timestamp}}`\n_Automated alert from {{app_name}}_'}
               onChange={(e) => set('slack_default_template', e.target.value)}
               className="w-full px-3 py-1.5 text-sm rounded border border-border bg-surface text-text-primary focus:outline-none focus:border-accent resize-none font-mono text-xs" />
-            <p className="text-[11px] text-text-secondary/70">Variables: {'{{event}} {{user}} {{ip}} {{timestamp}} {{rule}} {{target}} {{details}}'}</p>
+            <p className="text-[11px] text-text-secondary/70">Variables: {'{{severity}} {{app_name}} {{event}} {{user}} {{ip}} {{timestamp}} {{rule}} {{target}} {{details}}'}</p>
           </div>
         </>)}
       </ProviderCard>
@@ -253,7 +253,7 @@ export function NotifConfigTab() {
               onChange={(e) => set('webhook_default_template', e.target.value)}
               className="w-full px-3 py-1.5 text-sm rounded border border-border bg-surface text-text-primary focus:outline-none focus:border-accent resize-none font-mono text-xs"
               placeholder='{"event":"{{event}}","user":"{{user}}"}' />
-            <p className="text-[11px] text-text-secondary/70">Variables: {'{{event}} {{user}} {{ip}} {{timestamp}} {{rule}} {{target}} {{details}}'}</p>
+            <p className="text-[11px] text-text-secondary/70">Variables: {'{{severity}} {{app_name}} {{event}} {{user}} {{ip}} {{timestamp}} {{rule}} {{target}} {{details}}'}</p>
           </div>
         </>)}
       </ProviderCard>

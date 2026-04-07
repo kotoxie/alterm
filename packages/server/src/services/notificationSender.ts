@@ -1,5 +1,6 @@
 import { v4 as uuid } from 'uuid';
 import { execute, queryOne } from '../db/helpers.js';
+import { getSetting } from './settings.js';
 
 export interface ChannelConfig {
   // SMTP
@@ -57,6 +58,26 @@ export interface DispatchContext {
   timestamp: string;
 }
 
+/** Derive a severity emoji from the event type */
+function severityEmoji(eventType: string): string {
+  const t = eventType.toLowerCase();
+  if (
+    t.includes('fail') || t.includes('block') || t.includes('denied') ||
+    t.includes('locked') || t.includes('revoked') || t.includes('deleted') ||
+    t.includes('error') || t.includes('expired')
+  ) return '🔴';
+  if (
+    t.includes('warn') || t.includes('mfa') || t.includes('idle') ||
+    t.includes('attempt') || t.includes('invalid')
+  ) return '🟡';
+  return '🟢';
+}
+
+/** Get the configured app name (or fallback to "Alterm") */
+function appName(): string {
+  try { return getSetting('app.name') || 'Alterm'; } catch { return 'Alterm'; }
+}
+
 // Template variable substitution
 function renderTemplate(template: string, ctx: DispatchContext): string {
   return template
@@ -66,8 +87,11 @@ function renderTemplate(template: string, ctx: DispatchContext): string {
     .replace(/\{\{ip\}\}/g, ctx.ipAddress ?? '')
     .replace(/\{\{timestamp\}\}/g, ctx.timestamp)
     .replace(/\{\{rule\}\}/g, ctx.ruleName)
-    .replace(/\{\{details\}\}/g, ctx.details ? JSON.stringify(ctx.details) : '');
+    .replace(/\{\{details\}\}/g, ctx.details ? JSON.stringify(ctx.details) : '')
+    .replace(/\{\{app_name\}\}/g, appName())
+    .replace(/\{\{severity\}\}/g, severityEmoji(ctx.eventType));
 }
+
 
 function getChannelConfig(id: ChannelType): ChannelConfig {
   const row = queryOne<ChannelRow>(
@@ -103,8 +127,18 @@ async function sendSmtp(action: NotificationAction, cfg: ChannelConfig, ctx: Dis
     auth: cfg.smtp_user ? { user: cfg.smtp_user, pass: cfg.smtp_password } : undefined,
   });
 
-  const defaultSubject = cfg.smtp_default_subject ?? '[{{rule}}] {{event}}';
-  const defaultBody = cfg.smtp_default_body ?? 'Event: {{event}}\nUser: {{user}}\nIP: {{ip}}\nTime: {{timestamp}}';
+  const defaultSubject = cfg.smtp_default_subject ?? '{{severity}} [{{app_name}}] {{rule}} — {{event}}';
+  const defaultBody = cfg.smtp_default_body ??
+    '{{severity}} [{{app_name}}] Security Alert\n' +
+    '━━━━━━━━━━━━━━━━━━━━━\n' +
+    'Rule:      {{rule}}\n' +
+    'Event:     {{event}}\n' +
+    'User:      {{user}}\n' +
+    'IP:        {{ip}}\n' +
+    'Target:    {{target}}\n' +
+    'Time:      {{timestamp}}\n' +
+    '━━━━━━━━━━━━━━━━━━━━━\n' +
+    'This is an automated alert from {{app_name}}.';
   const subject = renderTemplate(action.subject ?? defaultSubject, ctx);
   const text = renderTemplate(action.body ?? defaultBody, ctx);
 
@@ -122,7 +156,14 @@ async function sendTelegram(action: NotificationAction, cfg: ChannelConfig, ctx:
   const chatId = action.chat_id ?? cfg.telegram_chat_id;
   if (!chatId) throw new Error('Telegram chat_id not configured');
 
-  const defaultTemplate = cfg.telegram_default_template ?? '*{{rule}}*\nEvent: `{{event}}`\nUser: {{user}}\nIP: {{ip}}\nTime: {{timestamp}}';
+  const defaultTemplate = cfg.telegram_default_template ??
+    '{{severity}} *[{{app_name}}]* {{rule}}\n' +
+    '`{{event}}`\n\n' +
+    '👤 User: `{{user}}`\n' +
+    '🌐 IP: `{{ip}}`\n' +
+    '🎯 Target: `{{target}}`\n' +
+    '🕐 Time: `{{timestamp}}`\n\n' +
+    '_Automated alert from {{app_name}}_';
   const text = renderTemplate(action.template ?? defaultTemplate, ctx);
 
   const resp = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
@@ -140,7 +181,11 @@ async function sendSlack(action: NotificationAction, cfg: ChannelConfig, ctx: Di
   const url = action.url ?? cfg.slack_webhook_url;
   if (!url) throw new Error('Slack webhook URL not configured');
 
-  const defaultTemplate = cfg.slack_default_template ?? '*{{rule}}* — `{{event}}`\nUser: {{user}} | IP: {{ip}} | {{timestamp}}';
+  const defaultTemplate = cfg.slack_default_template ??
+    '{{severity}} *[{{app_name}}]* {{rule}}\n' +
+    '*Event:* `{{event}}` | *User:* `{{user}}` | *IP:* `{{ip}}`\n' +
+    '*Target:* `{{target}}` | *Time:* `{{timestamp}}`\n' +
+    '_Automated alert from {{app_name}}_';
   const text = renderTemplate(action.template ?? defaultTemplate, ctx);
 
   const resp = await fetch(url, {

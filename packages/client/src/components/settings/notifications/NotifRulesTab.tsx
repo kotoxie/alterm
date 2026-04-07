@@ -457,7 +457,7 @@ function ActionCard({
   onChange: (p: Partial<Action>) => void;
   onRemove: () => void;
 }) {
-  const VARS = '{{event}} {{user}} {{ip}} {{timestamp}} {{rule}} {{target}} {{details}}';
+  const VARS = '{{severity}} {{app_name}} {{event}} {{user}} {{ip}} {{timestamp}} {{rule}} {{target}} {{details}}';
 
   return (
     <div className="border border-border rounded-lg p-3 space-y-2 bg-surface-alt">
