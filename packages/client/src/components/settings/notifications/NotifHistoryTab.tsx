@@ -180,7 +180,7 @@ export function NotifHistoryTab() {
                           {entry.error && (
                             <p className="text-red-500 mb-2"><strong>Error:</strong> {entry.error}</p>
                           )}
-                          {entry.payload && (
+                          {entry.payload !== null && entry.payload !== undefined && (
                             <pre className="text-text-secondary font-mono text-[11px] whitespace-pre-wrap break-all bg-surface border border-border rounded p-2 max-h-40 overflow-y-auto">
                               {JSON.stringify(entry.payload, null, 2)}
                             </pre>
