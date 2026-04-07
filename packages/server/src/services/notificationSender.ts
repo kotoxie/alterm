@@ -1,5 +1,5 @@
 import { v4 as uuid } from 'uuid';
-import { execute, queryOne } from '../db/helpers.js';
+import { execute, queryOne, queryAll } from '../db/helpers.js';
 import { getSetting } from './settings.js';
 
 export interface ChannelConfig {
@@ -37,7 +37,9 @@ export type ChannelType = 'smtp' | 'telegram' | 'slack' | 'webhook';
 export interface NotificationAction {
   channel: ChannelType;
   // SMTP overrides
-  to?: string;
+  to?: string;               // comma-separated custom email addresses
+  to_users?: string[];       // user IDs — emails resolved at send time
+  to_roles?: string[];       // role IDs — all users in role, emails resolved at send time
   subject?: string;
   body?: string;
   // Telegram overrides
@@ -117,6 +119,37 @@ function logResult(
   );
 }
 
+/** Resolve all recipient email addresses from user IDs, role IDs and a raw address list */
+function resolveRecipients(action: NotificationAction): string[] {
+  const addrs: string[] = [];
+
+  // Custom comma-separated addresses
+  if (action.to) {
+    addrs.push(...action.to.split(',').map((s) => s.trim()).filter(Boolean));
+  }
+
+  // Specific users by ID
+  if (action.to_users?.length) {
+    const rows = queryAll<{ email: string | null }>(
+      `SELECT email FROM users WHERE id IN (${action.to_users.map(() => '?').join(',')}) AND email IS NOT NULL AND email != ''`,
+      action.to_users,
+    );
+    addrs.push(...rows.map((r) => r.email as string));
+  }
+
+  // All users belonging to given roles
+  if (action.to_roles?.length) {
+    const rows = queryAll<{ email: string | null }>(
+      `SELECT email FROM users WHERE role IN (${action.to_roles.map(() => '?').join(',')}) AND email IS NOT NULL AND email != ''`,
+      action.to_roles,
+    );
+    addrs.push(...rows.map((r) => r.email as string));
+  }
+
+  // Deduplicate
+  return [...new Set(addrs)];
+}
+
 async function sendSmtp(action: NotificationAction, cfg: ChannelConfig, ctx: DispatchContext): Promise<void> {
   // Lazy-load nodemailer so the server starts even if the package isn't yet installed
   const nodemailer = await import('nodemailer');
@@ -142,9 +175,12 @@ async function sendSmtp(action: NotificationAction, cfg: ChannelConfig, ctx: Dis
   const subject = renderTemplate(action.subject ?? defaultSubject, ctx);
   const text = renderTemplate(action.body ?? defaultBody, ctx);
 
+  const recipients = resolveRecipients(action);
+  if (recipients.length === 0) throw new Error('No recipients resolved — add a To address, user, or role');
+
   await transporter.sendMail({
     from: cfg.smtp_from,
-    to: action.to,
+    to: recipients.join(', '),
     subject,
     text,
   });

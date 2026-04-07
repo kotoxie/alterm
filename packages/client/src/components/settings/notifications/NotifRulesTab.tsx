@@ -26,12 +26,14 @@ interface Cadence {
 
 interface Action {
   channel: ChannelType;
-  to?: string;         // smtp
-  subject?: string;    // smtp
-  body?: string;       // smtp / template override
-  chat_id?: string;    // telegram
-  template?: string;   // telegram / slack / webhook
-  url?: string;        // slack / webhook
+  to?: string;           // smtp — custom comma-separated addresses
+  to_users?: string[];   // smtp — user IDs
+  to_roles?: string[];   // smtp — role IDs
+  subject?: string;      // smtp
+  body?: string;         // smtp / template override
+  chat_id?: string;      // telegram
+  template?: string;     // telegram / slack / webhook
+  url?: string;          // slack / webhook
 }
 
 interface Rule {
@@ -151,6 +153,7 @@ function RuleEditor({
   const [actions, setActions] = useState<Action[]>(initial?.actions ?? []);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
+  const { users, roles } = useRecipients();
 
   // determine if the saved event is a custom string not in the catalogue
   const knownEvents = EVENT_GROUPS.flatMap((g) => g.events.map((e) => e.value));
@@ -414,6 +417,8 @@ function RuleEditor({
                   action={action}
                   onChange={(patch) => updateAction(i, patch)}
                   onRemove={() => removeAction(i)}
+                  users={users}
+                  roles={roles}
                 />
               ))}
 
@@ -450,12 +455,14 @@ function RuleEditor({
 }
 
 function ActionCard({
-  index, action, onChange, onRemove,
+  index, action, onChange, onRemove, users, roles,
 }: {
   index: number;
   action: Action;
   onChange: (p: Partial<Action>) => void;
   onRemove: () => void;
+  users: RecipientUser[];
+  roles: RecipientRole[];
 }) {
   const VARS = '{{severity}} {{app_name}} {{event}} {{user}} {{ip}} {{timestamp}} {{rule}} {{target}} {{details}}';
 
@@ -483,8 +490,30 @@ function ActionCard({
 
       {action.channel === 'smtp' && (
         <>
-          <input value={action.to ?? ''} onChange={(e) => onChange({ to: e.target.value })}
-            placeholder="To: recipient@example.com (leave empty for default)" className="w-full px-2 py-1 text-xs rounded border border-border bg-surface text-text-primary focus:outline-none focus:border-accent" />
+          <PillSelect
+            label="Send to users"
+            options={users.map((u) => ({
+              id: u.id,
+              label: u.username,
+              sub: u.email ?? 'no email set',
+              dimmed: !u.hasEmail,
+            }))}
+            selected={action.to_users ?? []}
+            onChange={(ids) => onChange({ to_users: ids })}
+          />
+          <PillSelect
+            label="Send to roles"
+            options={roles.map((r) => ({ id: r.id, label: r.name }))}
+            selected={action.to_roles ?? []}
+            onChange={(ids) => onChange({ to_roles: ids })}
+          />
+          <div className="space-y-1">
+            <label className="block text-xs font-medium text-text-secondary">Additional addresses</label>
+            <input value={action.to ?? ''} onChange={(e) => onChange({ to: e.target.value })}
+              placeholder="e.g. ops@example.com, alerts@example.com"
+              className="w-full px-2 py-1 text-xs rounded border border-border bg-surface text-text-primary focus:outline-none focus:border-accent" />
+            <p className="text-[11px] text-text-secondary/60">Comma-separated. Users without an email address are skipped automatically.</p>
+          </div>
           <input value={action.subject ?? ''} onChange={(e) => onChange({ subject: e.target.value })}
             placeholder="Subject (leave empty for default)" className="w-full px-2 py-1 text-xs rounded border border-border bg-surface text-text-primary focus:outline-none focus:border-accent" />
           <textarea rows={3} value={action.body ?? ''} onChange={(e) => onChange({ body: e.target.value })}
@@ -518,7 +547,71 @@ function ActionCard({
   );
 }
 
-// ─── Rules list ───────────────────────────────────────────────────────────────
+// ─── Recipients data ─────────────────────────────────────────────────────────
+
+interface RecipientUser { id: string; username: string; displayName: string | null; email: string | null; hasEmail: boolean; }
+interface RecipientRole { id: string; name: string; }
+
+function useRecipients() {
+  const [users, setUsers] = useState<RecipientUser[]>([]);
+  const [roles, setRoles] = useState<RecipientRole[]>([]);
+  useEffect(() => {
+    apiFetch('/recipients').then(({ ok, data }) => {
+      if (ok) {
+        setUsers(data.users as RecipientUser[]);
+        setRoles(data.roles as RecipientRole[]);
+      }
+    });
+  }, []);
+  return { users, roles };
+}
+
+/** Multi-select pill list for users or roles */
+function PillSelect({
+  label, options, selected, onChange, disabled,
+}: {
+  label: string;
+  options: { id: string; label: string; sub?: string; dimmed?: boolean }[];
+  selected: string[];
+  onChange: (ids: string[]) => void;
+  disabled?: boolean;
+}) {
+  function toggle(id: string) {
+    onChange(selected.includes(id) ? selected.filter((s) => s !== id) : [...selected, id]);
+  }
+  return (
+    <div className="space-y-1">
+      <label className="block text-xs font-medium text-text-secondary">{label}</label>
+      <div className="flex flex-wrap gap-1.5 p-2 border border-border rounded bg-surface min-h-[34px]">
+        {options.map((o) => {
+          const active = selected.includes(o.id);
+          return (
+            <button
+              key={o.id}
+              type="button"
+              disabled={disabled}
+              onClick={() => toggle(o.id)}
+              title={o.sub}
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-colors ${
+                active
+                  ? 'bg-accent text-white border-accent'
+                  : o.dimmed
+                  ? 'bg-surface-alt text-text-secondary/50 border-border'
+                  : 'bg-surface-alt text-text-secondary border-border hover:border-accent hover:text-text-primary'
+              }`}
+            >
+              {active && <span>✓</span>}
+              {o.label}
+            </button>
+          );
+        })}
+        {options.length === 0 && <span className="text-xs text-text-secondary/50">None available</span>}
+      </div>
+    </div>
+  );
+}
+
+// ─── Action Card ──────────────────────────────────────────────────────────────
 
 function formatRelativeTime(iso: string | null): string {
   if (!iso) return 'Never';

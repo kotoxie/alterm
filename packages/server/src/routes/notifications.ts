@@ -9,6 +9,30 @@ const router = Router();
 router.use(authRequired);
 router.use(requirePermission('settings.notifications'));
 
+// ─── Recipients (users + roles for rule builder UI) ──────────────────────────
+
+router.get('/recipients', (_req: Request, res: Response) => {
+  const users = queryAll<{ id: string; username: string; display_name: string | null; email: string | null; role: string }>(
+    `SELECT id, username, display_name, email, role FROM users ORDER BY username`,
+    [],
+  );
+  const roles = queryAll<{ id: string; name: string }>(
+    `SELECT id, name FROM roles ORDER BY name`,
+    [],
+  );
+  res.json({
+    users: users.map((u) => ({
+      id: u.id,
+      username: u.username,
+      displayName: u.display_name,
+      email: u.email,
+      role: u.role,
+      hasEmail: !!u.email,
+    })),
+    roles: roles.map((r) => ({ id: r.id, name: r.name })),
+  });
+});
+
 // ─── Channels ────────────────────────────────────────────────────────────────
 
 router.get('/channels', (_req: Request, res: Response) => {
