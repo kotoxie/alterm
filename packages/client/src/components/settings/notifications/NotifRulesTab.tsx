@@ -501,6 +501,25 @@ function ActionCard({
             selected={action.to_users ?? []}
             onChange={(ids) => onChange({ to_users: ids })}
           />
+          {/* Warn immediately when a selected user has no email */}
+          {(action.to_users ?? []).some((id) => users.find((u) => u.id === id && !u.hasEmail)) && (
+            <div className="flex items-start gap-2 px-2.5 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-xs text-yellow-600 dark:text-yellow-400">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 mt-0.5">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+              <span>
+                The following selected user{(action.to_users ?? []).filter((id) => users.find((u) => u.id === id && !u.hasEmail)).length > 1 ? 's have' : ' has'} no email address and will be skipped:{' '}
+                <strong>
+                  {(action.to_users ?? [])
+                    .filter((id) => users.find((u) => u.id === id && !u.hasEmail))
+                    .map((id) => users.find((u) => u.id === id)?.username)
+                    .join(', ')}
+                </strong>
+                . Set their email in <em>Settings → Users</em>.
+              </span>
+            </div>
+          )}
           <PillSelect
             label="Send to roles"
             options={roles.map((r) => ({ id: r.id, label: r.name }))}
