@@ -54,6 +54,7 @@ export interface DispatchContext {
   ruleName: string;
   eventType: string;
   userId?: string | null;
+  username?: string | null;   // resolved from users table — used in {{user}} template variable
   target?: string | null;
   ipAddress?: string | null;
   details?: Record<string, unknown>;
@@ -82,9 +83,16 @@ function appName(): string {
 
 // Template variable substitution
 function renderTemplate(template: string, ctx: DispatchContext): string {
+  // Resolve username from DB if userId looks like a UUID
+  let displayUser = ctx.userId ?? 'system';
+  if (displayUser && displayUser.includes('-')) {
+    const row = queryOne<{ username: string }>('SELECT username FROM users WHERE id = ?', [displayUser]);
+    if (row) displayUser = row.username;
+  }
+
   return template
     .replace(/\{\{event\}\}/g, ctx.eventType)
-    .replace(/\{\{user\}\}/g, ctx.userId ?? 'system')
+    .replace(/\{\{user\}\}/g, displayUser)
     .replace(/\{\{target\}\}/g, ctx.target ?? '')
     .replace(/\{\{ip\}\}/g, ctx.ipAddress ?? '')
     .replace(/\{\{timestamp\}\}/g, ctx.timestamp)
