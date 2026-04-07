@@ -40,7 +40,7 @@ interface Rule {
   id: string;
   name: string;
   enabled: boolean;
-  event: string;
+  events: string[];
   conditionLogic: 'AND' | 'OR';
   conditions: Condition[];
   cadence: Cadence;
@@ -142,6 +142,108 @@ const CHANNEL_OPTIONS: { value: ChannelType; label: string }[] = [
   { value: 'webhook', label: 'Webhook' },
 ];
 
+// ─── EventPicker (multi-select) ──────────────────────────────────────────────
+
+const ALL_EVENTS = EVENT_GROUPS.flatMap((g) => g.events);
+
+function getEventLabel(value: string): string {
+  return ALL_EVENTS.find((e) => e.value === value)?.label ?? value;
+}
+
+function EventPicker({ events, onChange }: { events: string[]; onChange: (v: string[]) => void }) {
+  const [open, setOpen] = useState(false);
+  const [customVal, setCustomVal] = useState('');
+
+  function toggle(value: string) {
+    onChange(events.includes(value) ? events.filter((e) => e !== value) : [...events, value]);
+  }
+
+  function addCustom() {
+    const v = customVal.trim();
+    if (v && !events.includes(v)) { onChange([...events, v]); }
+    setCustomVal('');
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-1.5 min-h-[28px]">
+        {events.map((ev) => (
+          <span key={ev} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-accent/15 text-accent border border-accent/30">
+            <span className="font-mono">{getEventLabel(ev)}</span>
+            <button type="button" onClick={() => toggle(ev)} className="hover:text-red-500 font-bold leading-none">×</button>
+          </span>
+        ))}
+        {events.length === 0 && (
+          <span className="text-xs text-text-secondary/50 italic">No events selected — rule won't trigger</span>
+        )}
+      </div>
+
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-border rounded bg-surface hover:bg-surface-hover text-text-secondary transition-colors"
+        >
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          Add event
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <polyline points={open ? '18 15 12 9 6 15' : '6 9 12 15 18 9'} />
+          </svg>
+        </button>
+
+        {open && (
+          <div className="absolute z-30 mt-1 w-80 bg-surface border border-border rounded-lg shadow-xl max-h-72 overflow-y-auto">
+            {EVENT_GROUPS.map((group) => (
+              <div key={group.label}>
+                <div className="sticky top-0 px-3 py-1.5 text-[10px] font-semibold text-text-secondary uppercase tracking-wider bg-surface-alt border-b border-border">
+                  {group.label}
+                </div>
+                {group.events.map((ev) => {
+                  const checked = events.includes(ev.value);
+                  return (
+                    <button
+                      key={ev.value}
+                      type="button"
+                      onClick={() => toggle(ev.value)}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-surface-alt transition-colors"
+                    >
+                      <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-accent border-accent' : 'border-border'}`}>
+                        {checked && (
+                          <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                        )}
+                      </span>
+                      <span className={checked ? 'text-accent font-medium' : 'text-text-primary'}>{ev.label}</span>
+                      <span className="ml-auto text-[10px] text-text-secondary/50 font-mono shrink-0">{ev.value}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+            <div className="sticky bottom-0 border-t border-border p-2 flex gap-1.5 bg-surface">
+              <input
+                value={customVal}
+                onChange={(e) => setCustomVal(e.target.value)}
+                placeholder="custom.event_type"
+                className="flex-1 px-2 py-1 text-xs rounded border border-border bg-surface-alt text-text-primary focus:outline-none focus:border-accent font-mono"
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustom(); } }}
+              />
+              <button
+                type="button"
+                onClick={addCustom}
+                className="px-2 py-1 text-xs bg-accent hover:bg-accent-hover text-white rounded transition-colors"
+              >Add</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Rule Editor slide-over ───────────────────────────────────────────────────
 
 function RuleEditor({
@@ -154,8 +256,7 @@ function RuleEditor({
   onClose: () => void;
 }) {
   const [name, setName] = useState(initial?.name ?? '');
-  const [event, setEvent] = useState(initial?.event ?? '*');
-  const [customEvent, setCustomEvent] = useState('');
+  const [events, setEvents] = useState<string[]>(initial?.events ?? ['*']);
   const [condLogic, setCondLogic] = useState<'AND' | 'OR'>(initial?.conditionLogic ?? 'AND');
   const [conditions, setConditions] = useState<Condition[]>(initial?.conditions ?? []);
   const [cadence, setCadence] = useState<Cadence>(initial?.cadence ?? { type: 'always' });
@@ -163,21 +264,6 @@ function RuleEditor({
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const { users, roles } = useRecipients();
-
-  // determine if the saved event is a custom string not in the catalogue
-  const knownEvents = EVENT_GROUPS.flatMap((g) => g.events.map((e) => e.value));
-  const [useCustomEvent, setUseCustomEvent] = useState(
-    !!initial && !knownEvents.includes(initial.event),
-  );
-
-  useEffect(() => {
-    if (initial && !knownEvents.includes(initial.event)) {
-      setCustomEvent(initial.event);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const effectiveEvent = useCustomEvent ? customEvent : event;
 
   function addCondition() {
     setConditions((c) => [...c, { field: 'user', operator: 'equals', value: '' }]);
@@ -205,13 +291,13 @@ function RuleEditor({
 
   async function save() {
     if (!name.trim()) { setErr('Rule name is required'); return; }
-    if (!effectiveEvent.trim()) { setErr('Event is required'); return; }
+    if (events.length === 0) { setErr('Select at least one event'); return; }
     if (actions.length === 0) { setErr('Add at least one action'); return; }
 
     setSaving(true); setErr('');
     const body = {
       name: name.trim(),
-      event: effectiveEvent.trim(),
+      events,
       conditionLogic: condLogic,
       conditions,
       cadence,
@@ -273,38 +359,9 @@ function RuleEditor({
               <span className="flex items-center justify-center w-5 h-5 rounded-full bg-accent text-white text-[10px] font-bold shrink-0">1</span>
               <span className="text-sm font-semibold text-text-primary">When</span>
             </div>
-            <div className="space-y-2 pl-7">
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-text-secondary shrink-0">Event:</label>
-                {!useCustomEvent ? (
-                  <select
-                    value={event}
-                    onChange={(e) => setEvent(e.target.value)}
-                    className="flex-1 px-2 py-1.5 text-sm rounded border border-border bg-surface text-text-primary focus:outline-none focus:border-accent"
-                  >
-                    {EVENT_GROUPS.map((g) => (
-                      <optgroup key={g.label} label={g.label}>
-                        {g.events.map((ev) => (
-                          <option key={ev.value} value={ev.value}>{ev.label}</option>
-                        ))}
-                      </optgroup>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    value={customEvent}
-                    onChange={(e) => setCustomEvent(e.target.value)}
-                    placeholder="e.g. custom.event_type"
-                    className="flex-1 px-2 py-1.5 text-sm rounded border border-border bg-surface text-text-primary focus:outline-none focus:border-accent font-mono"
-                  />
-                )}
-                <button
-                  onClick={() => setUseCustomEvent((u) => !u)}
-                  className="text-xs text-accent hover:underline shrink-0"
-                >
-                  {useCustomEvent ? 'Use picker' : 'Custom'}
-                </button>
-              </div>
+            <div className="pl-7 space-y-1">
+              <label className="block text-xs text-text-secondary mb-1">Trigger on these events:</label>
+              <EventPicker events={events} onChange={setEvents} />
             </div>
           </section>
 
@@ -712,7 +769,14 @@ export function NotifRulesTab() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-medium text-sm text-text-primary truncate">{rule.name}</span>
-                  <span className="text-xs bg-surface-hover border border-border rounded px-1.5 py-0.5 text-text-secondary font-mono shrink-0">{rule.event}</span>
+                  <div className="flex gap-1 flex-wrap shrink-0">
+                    {rule.events.slice(0, 3).map((ev) => (
+                      <span key={ev} className="text-xs bg-surface-hover border border-border rounded px-1.5 py-0.5 text-text-secondary font-mono">{getEventLabel(ev)}</span>
+                    ))}
+                    {rule.events.length > 3 && (
+                      <span className="text-xs text-text-secondary">+{rule.events.length - 3} more</span>
+                    )}
+                  </div>
                   {rule.conditions.length > 0 && (
                     <span className="text-xs text-text-secondary shrink-0">{rule.conditions.length} condition{rule.conditions.length > 1 ? 's' : ''} ({rule.conditionLogic})</span>
                   )}

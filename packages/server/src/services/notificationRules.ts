@@ -55,18 +55,23 @@ function evalCondition(cond: Condition, value: string): boolean {
   }
 }
 
+function patternMatches(pattern: string, eventType: string): boolean {
+  if (pattern === '*') return true;
+  if (pattern.endsWith('.*')) return eventType.startsWith(pattern.slice(0, -2) + '.');
+  return eventType === pattern;
+}
+
 function ruleMatches(rule: RuleRow, event: AuditEvent, now: Date): boolean {
-  // Event match — supports wildcard "*" and prefix wildcards like "auth.*"
-  if (rule.event !== '*') {
-    const pattern = rule.event.endsWith('.*')
-      ? rule.event.slice(0, -2)
-      : null;
-    if (pattern) {
-      if (!event.eventType.startsWith(pattern + '.')) return false;
-    } else {
-      if (event.eventType !== rule.event) return false;
-    }
+  // Event field: JSON array (new) or legacy single string
+  let patterns: string[] = [];
+  const raw = (rule.event ?? '*').trimStart();
+  if (raw.startsWith('[')) {
+    try { patterns = JSON.parse(raw) as string[]; } catch { patterns = [raw]; }
+  } else {
+    patterns = [raw];
   }
+
+  if (!patterns.some((p) => patternMatches(p, event.eventType))) return false;
 
   // Conditions
   let conditions: Condition[] = [];

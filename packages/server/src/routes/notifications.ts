@@ -1,9 +1,10 @@
 import { Router, type Request, type Response } from 'express';
 import { v4 as uuid } from 'uuid';
 import { authRequired, requirePermission } from '../middleware/auth.js';
-import { queryAll, queryOne, execute } from '../db/helpers.js';
+import { queryAll, queryOne, execute, getChanges } from '../db/helpers.js';
 import { sendTestNotification, type ChannelType, type ChannelRow } from '../services/notificationSender.js';
 import { logAudit } from '../services/audit.js';
+import { getSetting, setSetting } from '../services/settings.js';
 
 const router = Router();
 router.use(authRequired);
@@ -141,7 +142,8 @@ router.get('/rules', (_req: Request, res: Response) => {
 router.post('/rules', (req: Request, res: Response) => {
   const body = req.body as {
     name?: string;
-    event?: string;
+    events?: string[];
+    event?: string; // legacy single-event support
     conditionLogic?: string;
     conditions?: unknown[];
     cadence?: unknown;
@@ -149,8 +151,14 @@ router.post('/rules', (req: Request, res: Response) => {
     enabled?: boolean;
   };
 
-  if (!body.name?.trim() || !body.event?.trim()) {
-    res.status(400).json({ error: 'name and event are required' });
+  const eventsArr: string[] = body.events?.length
+    ? body.events
+    : body.event?.trim()
+    ? [body.event.trim()]
+    : [];
+
+  if (!body.name?.trim() || eventsArr.length === 0) {
+    res.status(400).json({ error: 'name and at least one event are required' });
     return;
   }
 
@@ -162,7 +170,7 @@ router.post('/rules', (req: Request, res: Response) => {
       id,
       body.name.trim(),
       body.enabled !== false ? 1 : 0,
-      body.event.trim(),
+      JSON.stringify(eventsArr),
       body.conditionLogic === 'OR' ? 'OR' : 'AND',
       JSON.stringify(body.conditions ?? []),
       JSON.stringify(body.cadence ?? { type: 'always' }),
@@ -188,13 +196,26 @@ router.put('/rules/:id', (req: Request, res: Response) => {
 
   const body = req.body as {
     name?: string;
-    event?: string;
+    events?: string[];
+    event?: string; // legacy
     conditionLogic?: string;
     conditions?: unknown[];
     cadence?: unknown;
     actions?: unknown[];
     enabled?: boolean;
   };
+
+  // Resolve events: new array field > legacy single field > keep existing
+  let eventsArr: string[];
+  if (body.events?.length) {
+    eventsArr = body.events;
+  } else if (body.event?.trim()) {
+    eventsArr = [body.event.trim()];
+  } else {
+    // Keep existing
+    const raw = (existing.event ?? '*').trimStart();
+    eventsArr = raw.startsWith('[') ? (JSON.parse(raw) as string[]) : [raw];
+  }
 
   execute(
     `UPDATE notification_rules SET
@@ -204,7 +225,7 @@ router.put('/rules/:id', (req: Request, res: Response) => {
     [
       body.name?.trim() ?? existing.name,
       body.enabled !== undefined ? (body.enabled ? 1 : 0) : existing.enabled,
-      body.event?.trim() ?? existing.event,
+      JSON.stringify(eventsArr),
       body.conditionLogic === 'OR' ? 'OR' : 'AND',
       JSON.stringify(body.conditions ?? safeJson(existing.conditions_json, [])),
       JSON.stringify(body.cadence ?? safeJson(existing.cadence_json, { type: 'always' })),
@@ -327,6 +348,77 @@ router.post('/log/:id/retry', async (req: Request, res: Response) => {
   }
 });
 
+// ─── Settings (retention) ─────────────────────────────────────────────────────
+
+router.get('/settings', (_req: Request, res: Response) => {
+  const retentionDays = parseInt(getSetting('notifications.log_retention_days') ?? '90', 10);
+  res.json({ retentionDays });
+});
+
+router.put('/settings', (req: Request, res: Response) => {
+  const { retentionDays } = req.body as { retentionDays?: number };
+  const days = parseInt(String(retentionDays ?? ''), 10);
+  if (!days || days < 1) {
+    res.status(400).json({ error: 'retentionDays must be a positive integer' });
+    return;
+  }
+  const old = parseInt(getSetting('notifications.log_retention_days') ?? '90', 10);
+  setSetting('notifications.log_retention_days', String(days));
+
+  logAudit({
+    userId: req.user!.userId,
+    eventType: 'settings.notifications_retention_changed',
+    details: { from: old, to: days },
+    ipAddress: req.ip,
+  });
+
+  res.json({ ok: true, retentionDays: days });
+});
+
+// ─── Delete log entries ───────────────────────────────────────────────────────
+
+router.delete('/log/:id', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const row = queryOne<{ rule_name: string; channel: string }>(
+    'SELECT rule_name, channel FROM notification_log WHERE id = ?', [id],
+  );
+  if (!row) { res.status(404).json({ error: 'Log entry not found' }); return; }
+
+  execute('DELETE FROM notification_log WHERE id = ?', [id]);
+
+  logAudit({
+    userId: req.user!.userId,
+    eventType: 'notifications.log_entry_deleted',
+    target: `${row.rule_name} (${row.channel})`,
+    ipAddress: req.ip,
+  });
+
+  res.json({ ok: true });
+});
+
+router.delete('/log', (req: Request, res: Response) => {
+  const { status, rule_id, before } = req.query as Record<string, string>;
+
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  if (status) { conditions.push('status = ?'); params.push(status); }
+  if (rule_id) { conditions.push('rule_id = ?'); params.push(rule_id); }
+  if (before) { conditions.push('sent_at < ?'); params.push(before); }
+
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  execute(`DELETE FROM notification_log ${where}`, params);
+  const deleted = getChanges();
+
+  logAudit({
+    userId: req.user!.userId,
+    eventType: 'notifications.log_cleared',
+    details: { deleted, filters: { status: status ?? null, rule_id: rule_id ?? null, before: before ?? null } },
+    ipAddress: req.ip,
+  });
+
+  res.json({ ok: true, deleted });
+});
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function safeJson<T>(raw: string, fallback: T): T {
@@ -334,11 +426,19 @@ function safeJson<T>(raw: string, fallback: T): T {
 }
 
 function formatRule(r: RuleRow) {
+  // Parse events: stored as JSON array (new) or legacy single string
+  let events: string[] = [];
+  const raw = (r.event ?? '*').trimStart();
+  if (raw.startsWith('[')) {
+    try { events = JSON.parse(raw) as string[]; } catch { events = [raw]; }
+  } else {
+    events = [raw];
+  }
   return {
     id: r.id,
     name: r.name,
     enabled: r.enabled === 1,
-    event: r.event,
+    events,
     conditionLogic: r.condition_logic,
     conditions: safeJson(r.conditions_json, []),
     cadence: safeJson(r.cadence_json, { type: 'always' }),
@@ -347,5 +447,25 @@ function formatRule(r: RuleRow) {
     lastTriggeredAt: r.last_triggered_at,
   };
 }
+
+export function purgeOldNotificationLogs(triggeredByUserId?: string): void {
+  const days = parseInt(getSetting('notifications.log_retention_days') ?? '90', 10);
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  execute('DELETE FROM notification_log WHERE sent_at < ?', [cutoff]);
+  const deleted = getChanges();
+  if (deleted > 0) {
+    logAudit({
+      userId: triggeredByUserId ?? 'system',
+      eventType: 'notifications.log_purged',
+      details: { deleted, retentionDays: days },
+    });
+  }
+}
+
+// Run purge on startup and then every 6 hours
+setTimeout(() => {
+  purgeOldNotificationLogs();
+  setInterval(() => purgeOldNotificationLogs(), 6 * 60 * 60 * 1000);
+}, 5000); // small delay to ensure DB is ready
 
 export default router;

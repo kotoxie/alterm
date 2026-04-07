@@ -11,6 +11,7 @@ const DEFAULTS: Record<string, string> = {
   'security.ip_rules_enabled': 'false',
   'security.ip_rules_mode': 'allowlist',
   'audit.retention_days': '90',
+  'notifications.log_retention_days': '90',
   'session.recording_enabled': 'false',
   'session.recording_retention_days': '90',
   'health_monitor.enabled': 'true',

@@ -81,6 +81,12 @@ export function NotifHistoryTab() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [retrying, setRetrying] = useState<string | null>(null);
   const [retryMsg, setRetryMsg] = useState<Record<string, string>>({});
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [retentionDays, setRetentionDays] = useState<number>(90);
+  const [editingRetention, setEditingRetention] = useState(false);
+  const [retentionInput, setRetentionInput] = useState('90');
+  const [savingRetention, setSavingRetention] = useState(false);
   const limit = 50;
 
   const load = useCallback(async () => {
@@ -97,19 +103,91 @@ export function NotifHistoryTab() {
 
   useEffect(() => { void load(); }, [load]);
 
+  useEffect(() => {
+    apiFetch('/settings').then(({ ok, data }) => {
+      if (ok) {
+        const days = (data as { retentionDays: number }).retentionDays;
+        setRetentionDays(days);
+        setRetentionInput(String(days));
+      }
+    });
+  }, []);
+
   async function retry(id: string) {
     setRetrying(id);
     const { ok, data } = await apiFetch(`/log/${id}/retry`, { method: 'POST' });
     setRetrying(null);
-    setRetryMsg((m) => ({ ...m, [id]: ok ? '✓ Resent' : (data.error ?? 'Failed') }));
+    setRetryMsg((m) => ({ ...m, [id]: ok ? '✓ Resent' : ((data as { error?: string }).error ?? 'Failed') }));
     if (ok) await load();
+  }
+
+  async function deleteEntry(id: string) {
+    setDeleting(id);
+    await apiFetch(`/log/${id}`, { method: 'DELETE' });
+    setDeleting(null);
+    await load();
+  }
+
+  async function clearAll() {
+    const qs = statusFilter ? `?status=${statusFilter}` : '';
+    await apiFetch(`/log${qs}`, { method: 'DELETE' });
+    setConfirmClear(false);
+    setPage(1);
+    await load();
+  }
+
+  async function saveRetention() {
+    const days = parseInt(retentionInput, 10);
+    if (!days || days < 1) return;
+    setSavingRetention(true);
+    const { ok } = await apiFetch('/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ retentionDays: days }),
+    });
+    setSavingRetention(false);
+    if (ok) { setRetentionDays(days); setEditingRetention(false); }
   }
 
   const pages = Math.max(1, Math.ceil(total / limit));
 
   return (
     <div className="space-y-4">
-      {/* Filters */}
+      {/* Retention setting */}
+      <div className="flex items-center gap-3 p-3 rounded-lg border border-border bg-surface-alt text-sm flex-wrap">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-text-secondary shrink-0">
+          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+        </svg>
+        <span className="text-text-secondary text-xs">Log retention:</span>
+        {editingRetention ? (
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min="1"
+              value={retentionInput}
+              onChange={(e) => setRetentionInput(e.target.value)}
+              className="w-20 px-2 py-1 text-xs rounded border border-border bg-surface text-text-primary focus:outline-none focus:border-accent"
+            />
+            <span className="text-xs text-text-secondary">days</span>
+            <button
+              onClick={() => { void saveRetention(); }}
+              disabled={savingRetention}
+              className="px-2 py-1 text-xs bg-accent hover:bg-accent-hover text-white rounded disabled:opacity-50 transition-colors"
+            >{savingRetention ? 'Saving…' : 'Save'}</button>
+            <button onClick={() => { setEditingRetention(false); setRetentionInput(String(retentionDays)); }}
+              className="px-2 py-1 text-xs border border-border rounded hover:bg-surface-hover text-text-secondary transition-colors">
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <>
+            <span className="text-xs font-medium text-text-primary">{retentionDays} days</span>
+            <button onClick={() => setEditingRetention(true)} className="text-xs text-accent hover:underline">Edit</button>
+          </>
+        )}
+      </div>
+
+      {/* Filters + actions */}
       <div className="flex items-center gap-3 flex-wrap">
         <select
           value={statusFilter}
@@ -120,11 +198,46 @@ export function NotifHistoryTab() {
           <option value="sent">Sent</option>
           <option value="failed">Failed</option>
         </select>
-        <button onClick={() => load()} className="px-3 py-1.5 text-sm border border-border rounded hover:bg-surface-hover text-text-primary transition-colors">
+        <button onClick={() => { void load(); }} className="px-3 py-1.5 text-sm border border-border rounded hover:bg-surface-hover text-text-primary transition-colors">
           Refresh
         </button>
-        <span className="text-xs text-text-secondary ml-auto">{total} total</span>
+        <span className="text-xs text-text-secondary">{total} total</span>
+        {total > 0 && (
+          <button
+            onClick={() => setConfirmClear(true)}
+            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 text-xs border border-red-500/40 rounded hover:bg-red-500/10 text-red-500 transition-colors"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+            </svg>
+            {statusFilter ? `Clear ${statusFilter}` : 'Clear all'}
+          </button>
+        )}
       </div>
+
+      {/* In-app confirm modal for Clear All */}
+      {confirmClear && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setConfirmClear(false)} />
+          <div className="relative bg-surface border border-border rounded-xl shadow-2xl p-6 w-full max-w-sm mx-4 space-y-4">
+            <h3 className="text-sm font-semibold text-text-primary">Clear notification history?</h3>
+            <p className="text-xs text-text-secondary">
+              This will permanently delete {statusFilter ? `all <strong>${statusFilter}</strong>` : 'all'} notification log entries{statusFilter ? ` with status "${statusFilter}"` : ''}.
+              This action is irreversible.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setConfirmClear(false)}
+                className="px-3 py-1.5 text-sm border border-border rounded hover:bg-surface-hover text-text-primary transition-colors">
+                Cancel
+              </button>
+              <button onClick={() => { void clearAll(); }}
+                className="px-4 py-1.5 text-sm bg-red-500 hover:bg-red-600 text-white rounded transition-colors">
+                Clear
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <p className="text-sm text-text-secondary">Loading…</p>
@@ -140,7 +253,7 @@ export function NotifHistoryTab() {
                   <th className="text-left px-3 py-2 text-xs font-medium text-text-secondary">Rule</th>
                   <th className="text-left px-3 py-2 text-xs font-medium text-text-secondary">Channel</th>
                   <th className="text-left px-3 py-2 text-xs font-medium text-text-secondary">Status</th>
-                  <th className="px-3 py-2" />
+                  <th className="px-3 py-2 text-right text-xs font-medium text-text-secondary">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -163,15 +276,31 @@ export function NotifHistoryTab() {
                         <StatusBadge status={entry.status} />
                       </td>
                       <td className="px-3 py-2.5 text-right">
-                        {entry.status === 'failed' && (
+                        <div className="flex items-center justify-end gap-2">
+                          {entry.status === 'failed' && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); void retry(entry.id); }}
+                              disabled={retrying === entry.id}
+                              className="text-xs text-accent hover:underline disabled:opacity-50"
+                            >
+                              {retrying === entry.id ? 'Retrying…' : retryMsg[entry.id] ?? 'Retry'}
+                            </button>
+                          )}
                           <button
-                            onClick={(e) => { e.stopPropagation(); void retry(entry.id); }}
-                            disabled={retrying === entry.id}
-                            className="text-xs text-accent hover:underline disabled:opacity-50"
+                            onClick={(e) => { e.stopPropagation(); void deleteEntry(entry.id); }}
+                            disabled={deleting === entry.id}
+                            title="Delete this log entry"
+                            className="text-text-secondary hover:text-red-500 disabled:opacity-40 transition-colors"
                           >
-                            {retrying === entry.id ? 'Retrying…' : retryMsg[entry.id] ?? 'Retry'}
+                            {deleting === entry.id ? (
+                              <span className="text-xs">…</span>
+                            ) : (
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+                              </svg>
+                            )}
                           </button>
-                        )}
+                        </div>
                       </td>
                     </tr>
                     {expanded === entry.id && (

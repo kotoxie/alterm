@@ -470,6 +470,23 @@ function runMigrations() {
         }
       },
     },
+    {
+      version: 10,
+      run: (database: Database) => {
+        // Migrate existing single-string event values to JSON arrays
+        const rows = database.exec(`SELECT id, event FROM notification_rules`);
+        if (!rows.length || !rows[0].values.length) return;
+        for (const [id, event] of rows[0].values as [string, string][]) {
+          const raw = (event ?? '*').trimStart();
+          if (!raw.startsWith('[')) {
+            database.run(
+              `UPDATE notification_rules SET event = ? WHERE id = ?`,
+              [JSON.stringify([raw]), id],
+            );
+          }
+        }
+      },
+    },
   ];
 
   for (const migration of migrations) {
