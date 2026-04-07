@@ -1,7 +1,8 @@
 import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
 import type { Request, Response, NextFunction } from 'express';
 import { verifyToken, type JwtPayload } from '../services/jwt.js';
-import { checkAndTouchSession } from '../services/loginSession.js';
+import { checkAndTouchSession, revokeSessionByHash } from '../services/loginSession.js';
 import { roleHasPermission, type PermissionKey } from '../services/permissions.js';
 
 declare global {
@@ -40,7 +41,17 @@ export function authRequired(req: Request, res: Response, next: NextFunction): v
 
     req.user = { ...payload, tokenHash };
     next();
-  } catch {
+  } catch (err) {
+    // If the JWT is merely expired (not tampered), auto-revoke its DB session so it
+    // no longer appears as "active" on the profile page.
+    if (err instanceof jwt.TokenExpiredError) {
+      try {
+        const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+        revokeSessionByHash(tokenHash);
+      } catch {
+        // Best-effort cleanup; do not block the 401 response.
+      }
+    }
     res.status(401).json({ error: 'Invalid or expired token' });
   }
 }

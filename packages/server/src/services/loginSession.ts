@@ -13,10 +13,25 @@ export function hashToken(token: string): string {
 export function createLoginSession(req: Request, userId: string, token: string): void {
   const { browser, os } = parseUA(req.headers['user-agent']);
   const ip = resolveClientIp(req);
+
+  // Revoke any existing active sessions from the same device (browser + OS + IP)
+  // so that re-authenticating from the same client replaces the old session instead
+  // of accumulating a ghost entry on the profile page.
+  execute(
+    `UPDATE login_sessions SET revoked = 1
+     WHERE user_id = ? AND browser IS ? AND os IS ? AND ip_address = ? AND revoked = 0`,
+    [userId, browser, os, ip],
+  );
+
   execute(
     `INSERT INTO login_sessions (id, user_id, token_hash, browser, os, ip_address) VALUES (?, ?, ?, ?, ?, ?)`,
     [uuid(), userId, hashToken(token), browser, os, ip],
   );
+}
+
+/** Revoke a session by its token hash. Used for best-effort cleanup (e.g. expired JWT). */
+export function revokeSessionByHash(tokenHash: string): void {
+  execute('UPDATE login_sessions SET revoked = 1 WHERE token_hash = ?', [tokenHash]);
 }
 
 interface SessionRow {
