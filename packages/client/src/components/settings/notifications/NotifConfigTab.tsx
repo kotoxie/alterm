@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import type React from 'react';
 
 interface ChannelData {
   id: string;
@@ -59,6 +60,49 @@ function StatusMsg({ msg }: { msg: MsgState }) {
   );
 }
 
+// ─── Channel logos ────────────────────────────────────────────────────────────
+
+function SmtpLogo() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-blue-400 shrink-0">
+      <rect x="2" y="4" width="20" height="16" rx="2" />
+      <path d="M22 7L12 13 2 7" />
+    </svg>
+  );
+}
+
+function TelegramLogo() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" className="text-sky-400 shrink-0">
+      <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.26 14.4l-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.888.159z"/>
+    </svg>
+  );
+}
+
+function SlackLogo() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" className="text-purple-400 shrink-0">
+      <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zm1.271 0a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zm0 1.271a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zm10.122 2.521a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zm-1.268 0a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zm-2.523 10.122a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zm0-1.268a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
+    </svg>
+  );
+}
+
+function WebhookLogo() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-orange-400 shrink-0">
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+    </svg>
+  );
+}
+
+const CHANNEL_LOGOS: Record<string, React.ReactNode> = {
+  smtp:     <SmtpLogo />,
+  telegram: <TelegramLogo />,
+  slack:    <SlackLogo />,
+  webhook:  <WebhookLogo />,
+};
+
 // ─── Provider Card ────────────────────────────────────────────────────────────
 
 function ProviderCard({
@@ -115,6 +159,7 @@ function ProviderCard({
         className="w-full flex items-center justify-between px-4 py-3 bg-surface-alt hover:bg-surface-hover text-left transition-colors"
       >
         <div className="flex items-center gap-3">
+          {CHANNEL_LOGOS[channelId] ?? null}
           <span className="text-sm font-medium text-text-primary">{title}</span>
           <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${enabled ? 'bg-green-500/15 text-green-500' : 'bg-surface-hover text-text-secondary'}`}>
             {enabled ? 'Enabled' : 'Disabled'}
