@@ -449,6 +449,27 @@ function runMigrations() {
         CREATE INDEX IF NOT EXISTS idx_notification_log_rule_id ON notification_log(rule_id);
       `,
     },
+    {
+      version: 9,
+      run: (database: Database) => {
+        // Add settings.notifications to the existing admin role's permissions_json.
+        // Migration v6 used INSERT OR IGNORE so existing rows were never updated.
+        const row = database.exec(
+          `SELECT permissions_json FROM roles WHERE id = 'admin'`,
+        );
+        if (!row.length || !row[0].values.length) return;
+        const raw = row[0].values[0][0] as string;
+        let perms: string[] = [];
+        try { perms = JSON.parse(raw) as string[]; } catch { return; }
+        if (!perms.includes('settings.notifications')) {
+          perms.push('settings.notifications');
+          database.run(
+            `UPDATE roles SET permissions_json = ? WHERE id = 'admin'`,
+            [JSON.stringify(perms)],
+          );
+        }
+      },
+    },
   ];
 
   for (const migration of migrations) {
