@@ -1,0 +1,215 @@
+import { useState, useEffect, useCallback } from 'react';
+
+const API = '/api/v1/notifications';
+
+async function apiFetch(path: string, opts?: RequestInit) {
+  const res = await fetch(API + path, { credentials: 'include', ...opts });
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok, data };
+}
+
+interface LogEntry {
+  id: string;
+  ruleId: string | null;
+  ruleName: string;
+  channel: string;
+  status: 'sent' | 'failed';
+  error: string | null;
+  payload: unknown;
+  sentAt: string;
+}
+
+const CHANNEL_ICONS: Record<string, React.ReactNode> = {
+  smtp: (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+      <polyline points="22,6 12,13 2,6" />
+    </svg>
+  ),
+  telegram: (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
+    </svg>
+  ),
+  slack: (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M14.5 10c-.83 0-1.5-.67-1.5-1.5v-5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5z" />
+      <path d="M20.5 10H19V8.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z" />
+      <path d="M9.5 14c.83 0 1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5S8 21.33 8 20.5v-5c0-.83.67-1.5 1.5-1.5z" />
+      <path d="M3.5 14H5v1.5c0 .83-.67 1.5-1.5 1.5S2 16.33 2 15.5 2.67 14 3.5 14z" />
+      <path d="M14 14.5c0-.83.67-1.5 1.5-1.5h5c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5h-5c-.83 0-1.5-.67-1.5-1.5z" />
+      <path d="M15.5 19H14v1.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5-.67-1.5-1.5-1.5z" />
+      <path d="M10 9.5C10 8.67 9.33 8 8.5 8h-5C2.67 8 2 8.67 2 9.5S2.67 11 3.5 11h5c.83 0 1.5-.67 1.5-1.5z" />
+      <path d="M8.5 5H10V3.5C10 2.67 9.33 2 8.5 2S7 2.67 7 3.5 7.67 5 8.5 5z" />
+    </svg>
+  ),
+  webhook: (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+    </svg>
+  ),
+};
+
+function formatDate(iso: string) {
+  return new Date(iso.includes('T') ? iso : iso + 'Z').toLocaleString();
+}
+
+function StatusBadge({ status }: { status: 'sent' | 'failed' }) {
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full font-medium ${
+      status === 'sent'
+        ? 'bg-green-500/15 text-green-500'
+        : 'bg-red-500/15 text-red-500'
+    }`}>
+      {status === 'sent' ? (
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12" /></svg>
+      ) : (
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+      )}
+      {status}
+    </span>
+  );
+}
+
+export function NotifHistoryTab() {
+  const [entries, setEntries] = useState<LogEntry[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState('');
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState<string | null>(null);
+  const [retryMsg, setRetryMsg] = useState<Record<string, string>>({});
+  const limit = 50;
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
+    if (statusFilter) qs.set('status', statusFilter);
+    const { ok, data } = await apiFetch(`/log?${qs.toString()}`);
+    if (ok) {
+      setEntries(data.entries as LogEntry[]);
+      setTotal(data.total as number);
+    }
+    setLoading(false);
+  }, [page, statusFilter]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  async function retry(id: string) {
+    setRetrying(id);
+    const { ok, data } = await apiFetch(`/log/${id}/retry`, { method: 'POST' });
+    setRetrying(null);
+    setRetryMsg((m) => ({ ...m, [id]: ok ? '✓ Resent' : (data.error ?? 'Failed') }));
+    if (ok) await load();
+  }
+
+  const pages = Math.max(1, Math.ceil(total / limit));
+
+  return (
+    <div className="space-y-4">
+      {/* Filters */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <select
+          value={statusFilter}
+          onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+          className="px-3 py-1.5 text-sm rounded border border-border bg-surface text-text-primary focus:outline-none focus:border-accent"
+        >
+          <option value="">All statuses</option>
+          <option value="sent">Sent</option>
+          <option value="failed">Failed</option>
+        </select>
+        <button onClick={() => load()} className="px-3 py-1.5 text-sm border border-border rounded hover:bg-surface-hover text-text-primary transition-colors">
+          Refresh
+        </button>
+        <span className="text-xs text-text-secondary ml-auto">{total} total</span>
+      </div>
+
+      {loading ? (
+        <p className="text-sm text-text-secondary">Loading…</p>
+      ) : entries.length === 0 ? (
+        <div className="text-center py-12 text-text-secondary text-sm">No notifications logged yet.</div>
+      ) : (
+        <>
+          <div className="border border-border rounded-lg overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-surface-alt border-b border-border">
+                <tr>
+                  <th className="text-left px-3 py-2 text-xs font-medium text-text-secondary">Time</th>
+                  <th className="text-left px-3 py-2 text-xs font-medium text-text-secondary">Rule</th>
+                  <th className="text-left px-3 py-2 text-xs font-medium text-text-secondary">Channel</th>
+                  <th className="text-left px-3 py-2 text-xs font-medium text-text-secondary">Status</th>
+                  <th className="px-3 py-2" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {entries.map((entry) => (
+                  <>
+                    <tr
+                      key={entry.id}
+                      className="hover:bg-surface-alt cursor-pointer transition-colors"
+                      onClick={() => setExpanded((e) => e === entry.id ? null : entry.id)}
+                    >
+                      <td className="px-3 py-2.5 text-xs text-text-secondary whitespace-nowrap">{formatDate(entry.sentAt)}</td>
+                      <td className="px-3 py-2.5 text-sm text-text-primary truncate max-w-[160px]">{entry.ruleName}</td>
+                      <td className="px-3 py-2.5">
+                        <span className="flex items-center gap-1.5 text-xs text-text-secondary">
+                          {CHANNEL_ICONS[entry.channel] ?? null}
+                          {entry.channel}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <StatusBadge status={entry.status} />
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        {entry.status === 'failed' && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); void retry(entry.id); }}
+                            disabled={retrying === entry.id}
+                            className="text-xs text-accent hover:underline disabled:opacity-50"
+                          >
+                            {retrying === entry.id ? 'Retrying…' : retryMsg[entry.id] ?? 'Retry'}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                    {expanded === entry.id && (
+                      <tr key={`${entry.id}-exp`} className="bg-surface-alt">
+                        <td colSpan={5} className="px-4 py-3 text-xs">
+                          {entry.error && (
+                            <p className="text-red-500 mb-2"><strong>Error:</strong> {entry.error}</p>
+                          )}
+                          {entry.payload && (
+                            <pre className="text-text-secondary font-mono text-[11px] whitespace-pre-wrap break-all bg-surface border border-border rounded p-2 max-h-40 overflow-y-auto">
+                              {JSON.stringify(entry.payload, null, 2)}
+                            </pre>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          {pages > 1 && (
+            <div className="flex items-center justify-center gap-2">
+              <button disabled={page === 1} onClick={() => setPage((p) => p - 1)}
+                className="px-3 py-1.5 text-xs border border-border rounded hover:bg-surface-hover disabled:opacity-40 transition-colors">
+                ← Prev
+              </button>
+              <span className="text-xs text-text-secondary">Page {page} / {pages}</span>
+              <button disabled={page === pages} onClick={() => setPage((p) => p + 1)}
+                className="px-3 py-1.5 text-xs border border-border rounded hover:bg-surface-hover disabled:opacity-40 transition-colors">
+                Next →
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}

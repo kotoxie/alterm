@@ -43,4 +43,12 @@ export function logAudit(event: AuditEvent): void {
   } catch (err) {
     console.error('[Audit] Failed to log event:', err);
   }
+
+  // Fire notification rules asynchronously — never blocks the request
+  import('./notificationRules.js').then(({ evaluateRules }) => {
+    evaluateRules(event).catch((err) => {
+      console.error('[Notifications] Rule evaluation error:', err);
+    });
+  }).catch(() => { /* module load failure — ignore */ });
 }
+

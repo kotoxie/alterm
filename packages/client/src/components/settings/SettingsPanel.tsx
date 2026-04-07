@@ -11,13 +11,15 @@ import { AuthProvidersSettings } from './AuthProvidersSettings';
 import { BackupSettings } from './BackupSettings';
 import { RolesSettings } from './RolesSettings';
 
-interface SettingsPanelProps {
+import { NotificationsSettings } from './NotificationsSettings';
+
+
   isOpen: boolean;
   onClose: () => void;
   initialSection?: string;
 }
 
-type Section = 'profile' | 'ssh-prefs' | 'security' | 'users' | 'audit' | 'global' | 'sessions' | 'authentication' | 'backup' | 'roles';
+type Section = 'profile' | 'ssh-prefs' | 'security' | 'users' | 'audit' | 'global' | 'sessions' | 'authentication' | 'backup' | 'roles' | 'notifications';
 
 interface NavItem {
   id: Section;
@@ -131,6 +133,15 @@ function ArchiveIcon() {
   );
 }
 
+function BellIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+    </svg>
+  );
+}
+
 function RolesIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -154,6 +165,7 @@ const ADMIN_NAV: NavItem[] = [
   { id: 'audit', label: 'Audit', icon: <ListIcon />, permission: ['audit.view_any', 'audit.view_own'] },
   { id: 'users', label: 'Users', icon: <UsersIcon />, permission: 'users.manage' },
   { id: 'roles', label: 'Roles', icon: <RolesIcon />, permission: 'roles.manage' },
+  { id: 'notifications', label: 'Notifications', icon: <BellIcon />, permission: 'settings.notifications' },
   { id: 'backup', label: 'Backup & Restore', icon: <ArchiveIcon />, permission: 'settings.backup' },
 ];
 
@@ -161,6 +173,7 @@ const ADMIN_NAV: NavItem[] = [
 const ALL_NAV: NavItem[] = [...MY_SETTINGS_NAV, ...ADMIN_NAV];
 
 const NAV_LABEL_MAP: Record<Section, string> = {
+  'notifications': 'Notifications',
   'profile': 'Profile',
   'ssh-prefs': 'SSH Terminal',
   'security': 'Security',
@@ -310,6 +323,7 @@ export function SettingsPanel({ isOpen, onClose, initialSection }: SettingsPanel
             {activeSection === 'sessions' && (hasPerm('sessions.view_any') || hasPerm('sessions.view_own')) && <SessionsHistory />}
             {activeSection === 'backup' && hasPerm('settings.backup') && <BackupSettings />}
             {activeSection === 'roles' && hasPerm('roles.manage') && <RolesSettings />}
+            {activeSection === 'notifications' && hasPerm('settings.notifications') && <NotificationsSettings />}
           </div>
         </div>
       </div>

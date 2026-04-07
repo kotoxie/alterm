@@ -6,7 +6,7 @@ export const ALL_PERMISSIONS = [
   'connections.edit_any', 'connections.delete_any', 'connections.share', 'connections.import_export',
   'sessions.view_own', 'sessions.view_any', 'sessions.delete',
   'audit.view_own', 'audit.view_any',
-  'users.manage', 'settings.manage', 'settings.auth_providers', 'settings.security', 'settings.backup',
+  'users.manage', 'settings.manage', 'settings.auth_providers', 'settings.security', 'settings.backup', 'settings.notifications',
   'roles.manage',
   'protocols.ssh', 'protocols.rdp', 'protocols.vnc', 'protocols.smb', 'protocols.ftp', 'protocols.telnet',
 ] as const;
@@ -61,6 +61,7 @@ export const PERMISSION_GROUPS: Record<string, { label: string; permissions: { k
       { key: 'settings.auth_providers', label: 'Auth providers' },
       { key: 'settings.security', label: 'Security settings' },
       { key: 'settings.backup', label: 'Backup & restore' },
+      { key: 'settings.notifications', label: 'Notifications' },
       { key: 'roles.manage', label: 'Manage roles' },
     ],
   },

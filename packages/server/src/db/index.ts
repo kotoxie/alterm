@@ -370,7 +370,7 @@ function runMigrations() {
           'connections.edit_any', 'connections.delete_any', 'connections.share', 'connections.import_export',
           'sessions.view_own', 'sessions.view_any', 'sessions.delete',
           'audit.view_own', 'audit.view_any',
-          'users.manage', 'settings.manage', 'settings.auth_providers', 'settings.security', 'settings.backup',
+          'users.manage', 'settings.manage', 'settings.auth_providers', 'settings.security', 'settings.backup', 'settings.notifications',
           'roles.manage',
           'protocols.ssh', 'protocols.rdp', 'protocols.vnc', 'protocols.smb', 'protocols.ftp', 'protocols.telnet',
         ]);
@@ -403,6 +403,50 @@ function runMigrations() {
           event_type TEXT NOT NULL CHECK(event_type IN ('click', 'key', 'move'))
         );
         CREATE INDEX IF NOT EXISTS idx_rdp_events_session ON rdp_events(session_id);
+      `,
+    },
+    {
+      version: 8,
+      sql: `
+        CREATE TABLE IF NOT EXISTS notification_channels (
+          id TEXT PRIMARY KEY,
+          enabled INTEGER NOT NULL DEFAULT 0,
+          config_json TEXT NOT NULL DEFAULT '{}',
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        INSERT OR IGNORE INTO notification_channels (id, enabled, config_json) VALUES
+          ('smtp',     0, '{}'),
+          ('telegram', 0, '{}'),
+          ('slack',    0, '{}'),
+          ('webhook',  0, '{}');
+
+        CREATE TABLE IF NOT EXISTS notification_rules (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          event TEXT NOT NULL,
+          condition_logic TEXT NOT NULL DEFAULT 'AND',
+          conditions_json TEXT NOT NULL DEFAULT '[]',
+          cadence_json TEXT NOT NULL DEFAULT '{"type":"always"}',
+          actions_json TEXT NOT NULL DEFAULT '[]',
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          last_triggered_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS notification_log (
+          id TEXT PRIMARY KEY,
+          rule_id TEXT,
+          rule_name TEXT NOT NULL,
+          channel TEXT NOT NULL,
+          status TEXT NOT NULL CHECK(status IN ('sent','failed')),
+          error TEXT,
+          payload_json TEXT,
+          sent_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_notification_log_sent_at ON notification_log(sent_at);
+        CREATE INDEX IF NOT EXISTS idx_notification_log_rule_id ON notification_log(rule_id);
       `,
     },
   ];
