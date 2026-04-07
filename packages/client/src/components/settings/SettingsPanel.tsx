@@ -13,7 +13,7 @@ import { RolesSettings } from './RolesSettings';
 
 import { NotificationsSettings } from './NotificationsSettings';
 
-
+interface SettingsPanelProps {
   isOpen: boolean;
   onClose: () => void;
   initialSection?: string;
