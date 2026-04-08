@@ -90,6 +90,7 @@ Here's how they compare.
 | **OpenID Connect SSO** | ✅ | ✅ |
 | **MFA (TOTP)** | ✅ | ✅ |
 | **IP access rules** | ✅ | ❌ |
+| **IP lockout audit log** | ✅ | ❌ |
 | **Brute-force lockout** | ✅ | ⚠️ Extension required |
 | **Idle timeout with countdown** | ✅ | ⚠️ Basic timeout only |
 | **Encryption key management** | ✅ | ❌ |
@@ -128,9 +129,29 @@ Here's how they compare.
 | **Connection import/export (JSON)** | ✅ | ❌ |
 | **Health check endpoint** | ✅ | ✅ |
 | **Version update notifications** | ✅ | ❌ |
-| **Audit trail with diffs** | ✅ | ⚠️ Connection logs only |
+| **Audit trail with diffs** | ✅ Field-level before/after | ⚠️ Connection logs only |
+| **Notification log retention** | ✅ Configurable (default 90d) | ❌ |
 
 > **Why it matters:** Backing up Guacamole means separately dumping the database, copying recording files, and managing config files across multiple containers. Alterm exports everything — database, recordings, and encryption key — into a single password-protected `.aeb` file. Restore is a one-click upload.
+
+---
+
+## 🔔 Notifications & Alerting
+
+| | Alterm | Guacamole |
+|---|---|---|
+| **Email / SMTP alerts** | ✅ | ❌ |
+| **Telegram alerts** | ✅ | ❌ |
+| **Slack alerts** | ✅ | ❌ |
+| **Webhook alerts** | ✅ | ❌ |
+| **No-code rule builder** | ✅ | ❌ |
+| **Multi-event triggers** | ✅ | ❌ |
+| **Alert on login / lockout / IP block** | ✅ | ❌ |
+| **Alert on config changes** | ✅ | ❌ |
+| **Delivery history & retry** | ✅ | ❌ |
+| **Configurable retention** | ✅ | ❌ |
+
+> **Why it matters:** Guacamole has no built-in alerting — you'd need to wire up external log shippers, SIEM integrations, or custom scripts to get notified when something important happens. Alterm includes a full no-code rule engine that lets you define exactly which events trigger which alerts, and deliver them to email, Telegram, Slack, or any webhook — no plugins required.
 
 ---
 
@@ -143,6 +164,7 @@ Apache Guacamole is a proven, reliable tool that has served the community well. 
 - 🏎️ **Faster setup** — one container, zero dependencies, running in under a minute
 - 📁 **Real file management** — not just a sidebar, but a full file browser across SFTP, SMB, and FTP
 - 🔍 **Deep audit trail** — every SSH command, every file operation, every login — all logged and searchable
+- 🔔 **Built-in alerting** — email, Telegram, Slack, and Webhook notifications with a no-code rule builder
 - 🔐 **Granular security** — 22 permissions, custom roles, per-protocol access, encrypted everything
 - ✨ **Modern UX** — tabs, split view, drag-and-drop, search, tags, dark theme
 

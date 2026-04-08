@@ -19,6 +19,14 @@
 - [Why Alterm?](#-why-alterm)
 - [Quick Start](#-quick-start)
 - [Features](#-features)
+  - [Protocols](#️-protocols)
+  - [Workspace](#️-workspace)
+  - [Connection Management](#-connection-management)
+  - [Security & Authentication](#-security--authentication)
+  - [Notifications & Alerting](#-notifications--alerting)
+  - [Backup & Restore](#-backup--restore)
+  - [Port-Forward Tunnels](#-port-forward-tunnels-ssh)
+  - [Multi-User Administration](#-multi-user-administration)
 - [Alterm vs Guacamole](COMPARISON.md) — see how Alterm compares to Apache Guacamole
 - [Configuration](#️-configuration)
 - [Updating](#-updating)
@@ -102,17 +110,26 @@ Open **`https://<YOUR_IP>:7443`** — on first launch you'll be prompted to crea
 - **OpenID Connect (SSO)** — sign in via Azure AD, Okta, Google, Keycloak, or any OIDC-compatible provider; auto-provision users on first login
 - **MFA (TOTP)** — per-user authenticator app support with trusted device cookies
 - **Authentication Providers** — admin UI to enable/disable local, LDAP, and SSO independently; optionally enforce SSO-only login
-- **IP Access Rules** — allowlist or denylist by CIDR range
+- **IP Access Rules** — allowlist or denylist by CIDR range; blocks are **audit logged** with the source IP and matched rule
+- **Brute-force lockout audit log** — failed login attempts that trigger a lockout are recorded in the audit trail with IP, username, and lockout duration
 - **Session recording** — SSH sessions (asciinema) and RDP sessions (WebM video) recorded and **encrypted at rest**, replayed in-browser; RDP recordings include **click ripple indicators** (color-coded: blue=left, red=right, gray=middle); files inaccessible without GUI authentication
 - **SSH command audit log** — every command typed in an SSH session is logged with timestamp and output preview, viewable alongside the recording playback; **passwords are automatically redacted** from the audit trail
-- **File activity recording** — SFTP, SMB, and FTP sessions log every file operation (browse, upload, download, delete, mkdir) in a searchable timeline
+- **File activity recording** — SFTP, SMB, and FTP sessions log every file operation (browse, upload, download, delete, mkdir) in a searchable timeline, with **JSON/CSV export and bulk purge**
 - **Folder delete cascade** — deleting a folder warns before recursively removing all connections inside
 - **Idle timeout** — real idle detection (heartbeats don't reset the clock); warning dialog with countdown before auto-logout
 - **Max session duration** — hard JWT expiry regardless of activity
-- **Audit trail** — every login, session, and config change logged with before/after diffs
+- **Audit trail** — every login, session, and config change logged with before/after diffs; notification rule and channel changes include field-level change detail
 - **TLS** — self-signed cert auto-generated on first launch; bring your own cert optionally
 - **Runs as non-root** — container drops to unprivileged `node` user at startup via `gosu`
 - **Encryption key via env** — `ALTERM_ENCRYPTION_KEY` keeps the key separate from data; falls back to auto-file with a prominent warning
+
+### 🔔 Notifications & Alerting
+- **Notification channels** — configure SMTP email, Telegram, Slack, and Webhook endpoints from the admin settings panel
+- **No-code rule builder** — create alerting rules with multi-select event triggers, AND/OR condition logic, per-field filters (user, IP, target), and cadence throttling to avoid alert fatigue
+- **User & role recipients** — send email alerts directly to users or roles defined in Alterm, in addition to custom addresses; warns if a selected user has no email set
+- **Delivery history** — searchable log of every notification sent, with status (delivered/failed), retry support, and configurable retention (default 90 days) with manual delete
+- **Branded templates** — default templates include emoji severity indicators and Alterm system branding; fully customizable per channel
+- **Audit-linked events** — notifications fire on any audit event: logins, lockouts, IP blocks, config changes, session starts, RBAC changes, and more
 
 ### 💾 Backup & Restore
 - **Full system backup** — exports entire database, all session recordings, and the encryption key into a single encrypted `.aeb` file
