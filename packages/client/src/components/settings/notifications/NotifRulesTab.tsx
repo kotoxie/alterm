@@ -100,7 +100,12 @@ const EVENT_GROUPS: { label: string; events: { value: string; label: string }[] 
       { value: 'settings.*', label: 'Settings — all' },
       { value: 'settings.updated', label: 'Settings changed' },
       { value: 'settings.notification_rule_created', label: 'Notification rule created' },
+      { value: 'settings.notification_rule_updated', label: 'Notification rule updated' },
+      { value: 'settings.notification_rule_enabled', label: 'Notification rule enabled' },
+      { value: 'settings.notification_rule_disabled', label: 'Notification rule disabled' },
       { value: 'settings.notification_rule_deleted', label: 'Notification rule deleted' },
+      { value: 'settings.notifications_channel_updated', label: 'Notification channel updated' },
+      { value: 'settings.notifications_retention_changed', label: 'Notification retention changed' },
     ],
   },
   {
@@ -847,6 +852,12 @@ export function NotifRulesTab() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Rule | 'new' | null>(null);
   const [deleting, setDeleting] = useState<Rule | null>(null);
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+
+  const showToast = useCallback((msg: string, type: 'success' | 'error' = 'success') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 2500);
+  }, []);
 
   const load = useCallback(async () => {
     const { ok, data } = await apiFetch('/rules');
@@ -857,7 +868,13 @@ export function NotifRulesTab() {
   useEffect(() => { void load(); }, [load]);
 
   async function toggleRule(rule: Rule) {
-    await apiFetch(`/rules/${rule.id}/toggle`, { method: 'PATCH' });
+    const { ok, data } = await apiFetch(`/rules/${rule.id}/toggle`, { method: 'PATCH' });
+    if (ok) {
+      const enabled = (data as { enabled: boolean }).enabled;
+      showToast(`"${rule.name}" ${enabled ? 'enabled' : 'disabled'}`);
+    } else {
+      showToast('Failed to toggle rule', 'error');
+    }
     await load();
   }
 
@@ -987,6 +1004,22 @@ export function NotifRulesTab() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Toast notification */}
+      {toast && (
+        <div className={`fixed bottom-6 right-6 z-[100] flex items-center gap-2 px-4 py-2.5 rounded-lg shadow-lg text-sm font-medium animate-[fadeIn_0.2s_ease-out] ${
+          toast.type === 'success'
+            ? 'bg-green-500 text-white'
+            : 'bg-red-500 text-white'
+        }`}>
+          {toast.type === 'success' ? (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          )}
+          {toast.msg}
         </div>
       )}
     </div>

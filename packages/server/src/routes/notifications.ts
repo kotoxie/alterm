@@ -61,7 +61,7 @@ router.put('/channels/:type', (req: Request, res: Response) => {
   const { enabled, config: newCfg } = req.body as { enabled?: boolean; config?: Record<string, unknown> };
 
   // Load existing config to preserve masked secrets
-  const row = queryOne<ChannelRow>('SELECT config_json FROM notification_channels WHERE id = ?', [type]);
+  const row = queryOne<ChannelRow>('SELECT enabled, config_json FROM notification_channels WHERE id = ?', [type]);
   let existing: Record<string, unknown> = {};
   try { existing = row ? JSON.parse(row.config_json) as Record<string, unknown> : {}; } catch { /* empty */ }
 
@@ -70,6 +70,26 @@ router.put('/channels/:type', (req: Request, res: Response) => {
   if (newCfg) {
     for (const [k, v] of Object.entries(newCfg)) {
       if (v !== '••••••••') merged[k] = v;
+    }
+  }
+
+  // Build change details for audit (mask secrets)
+  const changes: Record<string, { from: unknown; to: unknown }> = {};
+  const prevEnabled = row ? row.enabled === 1 : false;
+  if (enabled !== undefined && enabled !== prevEnabled) {
+    changes.enabled = { from: prevEnabled, to: enabled };
+  }
+  if (newCfg) {
+    for (const [k, v] of Object.entries(newCfg)) {
+      if (v === '••••••••') continue; // masked — not a real change
+      const prev = existing[k];
+      if (prev !== v) {
+        const isSecret = /password|token|secret|webhook_url/i.test(k);
+        changes[k] = {
+          from: isSecret && prev ? '••••••••' : prev ?? null,
+          to: isSecret ? '••••••••' : v,
+        };
+      }
     }
   }
 
@@ -82,6 +102,7 @@ router.put('/channels/:type', (req: Request, res: Response) => {
     userId: req.user!.userId,
     eventType: 'settings.notifications_channel_updated',
     target: type,
+    details: Object.keys(changes).length > 0 ? { changes } : undefined,
     ipAddress: req.ip,
   });
 
@@ -206,27 +227,48 @@ router.put('/rules/:id', (req: Request, res: Response) => {
     eventsArr = raw.startsWith('[') ? (JSON.parse(raw) as string[]) : [raw];
   }
 
+  // Build before/after diff for audit
+  const newName = body.name?.trim() ?? existing.name;
+  const newConditionLogic = body.conditionLogic === 'OR' ? 'OR' : 'AND';
+  const newConditions = body.conditions ?? safeJson(existing.conditions_json, []);
+  const newCadence = body.cadence ?? safeJson(existing.cadence_json, { type: 'always' });
+  const newActions = body.actions ?? safeJson(existing.actions_json, []);
+
   execute(
     `UPDATE notification_rules SET
        name = ?, enabled = ?, event = ?, condition_logic = ?,
        conditions_json = ?, cadence_json = ?, actions_json = ?
      WHERE id = ?`,
     [
-      body.name?.trim() ?? existing.name,
+      newName,
       body.enabled !== undefined ? (body.enabled ? 1 : 0) : existing.enabled,
       JSON.stringify(eventsArr),
-      body.conditionLogic === 'OR' ? 'OR' : 'AND',
-      JSON.stringify(body.conditions ?? safeJson(existing.conditions_json, [])),
-      JSON.stringify(body.cadence ?? safeJson(existing.cadence_json, { type: 'always' })),
-      JSON.stringify(body.actions ?? safeJson(existing.actions_json, [])),
+      newConditionLogic,
+      JSON.stringify(newConditions),
+      JSON.stringify(newCadence),
+      JSON.stringify(newActions),
       id,
     ],
   );
 
+  // Compute change details
+  const existingEvents = (() => {
+    const r = (existing.event ?? '*').trimStart();
+    return r.startsWith('[') ? safeJson<string[]>(r, [r]) : [r];
+  })();
+  const changes: Record<string, { from: unknown; to: unknown }> = {};
+  if (newName !== existing.name) changes.name = { from: existing.name, to: newName };
+  if (JSON.stringify(eventsArr) !== JSON.stringify(existingEvents)) changes.events = { from: existingEvents, to: eventsArr };
+  if (newConditionLogic !== existing.condition_logic) changes.conditionLogic = { from: existing.condition_logic, to: newConditionLogic };
+  if (JSON.stringify(newConditions) !== existing.conditions_json) changes.conditions = { from: safeJson(existing.conditions_json, []), to: newConditions };
+  if (JSON.stringify(newCadence) !== existing.cadence_json) changes.cadence = { from: safeJson(existing.cadence_json, {}), to: newCadence };
+  if (JSON.stringify(newActions) !== existing.actions_json) changes.actions = { from: '(previous)', to: '(updated)' };
+
   logAudit({
     userId: req.user!.userId,
     eventType: 'settings.notification_rule_updated',
-    target: body.name ?? existing.name,
+    target: newName,
+    details: Object.keys(changes).length > 0 ? { rule_id: id, changes } : { rule_id: id },
     ipAddress: req.ip,
   });
 
@@ -236,11 +278,20 @@ router.put('/rules/:id', (req: Request, res: Response) => {
 
 router.patch('/rules/:id/toggle', (req: Request, res: Response) => {
   const { id } = req.params;
-  const row = queryOne<{ enabled: number }>('SELECT enabled FROM notification_rules WHERE id = ?', [id]);
+  const row = queryOne<{ enabled: number; name: string }>('SELECT enabled, name FROM notification_rules WHERE id = ?', [id]);
   if (!row) { res.status(404).json({ error: 'Rule not found' }); return; }
 
   const newEnabled = row.enabled === 1 ? 0 : 1;
   execute('UPDATE notification_rules SET enabled = ? WHERE id = ?', [newEnabled, id]);
+
+  logAudit({
+    userId: req.user!.userId,
+    eventType: newEnabled === 1 ? 'settings.notification_rule_enabled' : 'settings.notification_rule_disabled',
+    target: row.name,
+    details: { rule_id: id, enabled: newEnabled === 1 },
+    ipAddress: req.ip,
+  });
+
   res.json({ ok: true, enabled: newEnabled === 1 });
 });
 
