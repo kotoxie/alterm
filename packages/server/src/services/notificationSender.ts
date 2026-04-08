@@ -103,13 +103,19 @@ function renderTemplate(template: string, ctx: DispatchContext): string {
 }
 
 
-function getChannelConfig(id: ChannelType): ChannelConfig {
+function getChannelRow(id: ChannelType): { enabled: boolean; config: ChannelConfig } {
   const row = queryOne<ChannelRow>(
-    'SELECT config_json FROM notification_channels WHERE id = ?',
+    'SELECT enabled, config_json FROM notification_channels WHERE id = ?',
     [id],
   );
-  if (!row) return {};
-  try { return JSON.parse(row.config_json) as ChannelConfig; } catch { return {}; }
+  if (!row) return { enabled: false, config: {} };
+  let config: ChannelConfig = {};
+  try { config = JSON.parse(row.config_json) as ChannelConfig; } catch { /* empty */ }
+  return { enabled: row.enabled === 1, config };
+}
+
+function getChannelConfig(id: ChannelType): ChannelConfig {
+  return getChannelRow(id).config;
 }
 
 function logResult(
@@ -270,7 +276,13 @@ async function sendWebhook(action: NotificationAction, cfg: ChannelConfig, ctx: 
 }
 
 export async function dispatch(action: NotificationAction, ctx: DispatchContext): Promise<void> {
-  const cfg = getChannelConfig(action.channel);
+  const { enabled, config: cfg } = getChannelRow(action.channel);
+
+  if (!enabled) {
+    // Channel is disabled — log as skipped but do not throw (rule should not fail)
+    logResult(ctx.ruleId, ctx.ruleName, action.channel, 'failed', { action, skipped: true }, `Channel "${action.channel}" is disabled`);
+    return;
+  }
 
   const payload = { action, event: ctx.eventType, user: ctx.userId, ip: ctx.ipAddress, timestamp: ctx.timestamp };
 
