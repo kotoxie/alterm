@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 
 const API = '/api/v1/notifications';
 
@@ -142,7 +143,7 @@ const CHANNEL_OPTIONS: { value: ChannelType; label: string }[] = [
   { value: 'webhook', label: 'Webhook' },
 ];
 
-// ─── EventPicker (multi-select) ──────────────────────────────────────────────
+// ─── EventPicker (combobox multi-select with portal dropdown) ────────────────
 
 const ALL_EVENTS = EVENT_GROUPS.flatMap((g) => g.events);
 
@@ -150,101 +151,228 @@ function getEventLabel(value: string): string {
   return ALL_EVENTS.find((e) => e.value === value)?.label ?? value;
 }
 
+// Category icon mapping for visual hierarchy
+const GROUP_ICONS: Record<string, string> = {
+  All: '🌐', Auth: '🔑', Sessions: '💻', Connections: '🔌',
+  Users: '👤', Settings: '⚙️', Security: '🛡️',
+};
+
 function EventPicker({ events, onChange }: { events: string[]; onChange: (v: string[]) => void }) {
   const [open, setOpen] = useState(false);
-  const [customVal, setCustomVal] = useState('');
+  const [search, setSearch] = useState('');
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 320 });
+
+  // Position dropdown relative to anchor via portal
+  useEffect(() => {
+    if (!open || !anchorRef.current) return;
+    const rect = anchorRef.current.getBoundingClientRect();
+    const dropH = 340;
+    const spaceBelow = window.innerHeight - rect.bottom - 8;
+    const top = spaceBelow >= dropH ? rect.bottom + 4 : rect.top - dropH - 4;
+    setPos({ top, left: rect.left, width: Math.max(rect.width, 360) });
+  }, [open]);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handle(e: MouseEvent) {
+      if (
+        anchorRef.current?.contains(e.target as Node) ||
+        dropRef.current?.contains(e.target as Node)
+      ) return;
+      setOpen(false);
+    }
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, [open]);
+
+  // Auto-focus search on open
+  useEffect(() => { if (open) inputRef.current?.focus(); }, [open]);
 
   function toggle(value: string) {
     onChange(events.includes(value) ? events.filter((e) => e !== value) : [...events, value]);
   }
 
   function addCustom() {
-    const v = customVal.trim();
-    if (v && !events.includes(v)) { onChange([...events, v]); }
-    setCustomVal('');
+    const v = search.trim();
+    if (v && !events.includes(v) && !ALL_EVENTS.some((e) => e.value === v)) {
+      onChange([...events, v]);
+    }
+    setSearch('');
   }
 
+  // Filter events by search term
+  const q = search.toLowerCase();
+  const filteredGroups = q
+    ? EVENT_GROUPS.map((g) => ({
+        ...g,
+        events: g.events.filter(
+          (ev) => ev.label.toLowerCase().includes(q) || ev.value.toLowerCase().includes(q),
+        ),
+      })).filter((g) => g.events.length > 0)
+    : EVENT_GROUPS;
+
+  const selectedCount = events.length;
+
   return (
-    <div className="space-y-2">
-      {/* Selected event pills */}
-      <div className="flex flex-wrap gap-1.5 min-h-[28px]">
-        {events.map((ev) => (
-          <span key={ev} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-accent/15 text-accent border border-accent/30">
-            <span className="font-mono">{getEventLabel(ev)}</span>
-            <button type="button" onClick={() => toggle(ev)} className="hover:text-red-500 font-bold leading-none">×</button>
-          </span>
-        ))}
-        {events.length === 0 && (
-          <span className="text-xs text-text-secondary/50 italic">No events selected — rule won't trigger</span>
-        )}
-      </div>
-
-      {/* Toggle button */}
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-border rounded bg-surface hover:bg-surface-hover text-text-secondary transition-colors"
+    <div ref={anchorRef}>
+      {/* ── Combobox trigger area ── */}
+      <div
+        className={`flex flex-wrap items-center gap-1.5 min-h-[38px] px-2.5 py-1.5 rounded-lg border cursor-text transition-colors ${
+          open
+            ? 'border-accent ring-1 ring-accent/30 bg-surface'
+            : 'border-border bg-surface hover:border-text-secondary/30'
+        }`}
+        onClick={() => { setOpen(true); inputRef.current?.focus(); }}
       >
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-        </svg>
-        {open ? 'Hide event picker' : 'Add events'}
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-          <polyline points={open ? '18 15 12 9 6 15' : '6 9 12 15 18 9'} />
-        </svg>
-      </button>
-
-      {/* Inline expandable catalogue — no absolute/fixed, won't be clipped */}
-      {open && (
-        <div className="border border-border rounded-lg bg-surface shadow-sm overflow-hidden">
-          <div className="max-h-64 overflow-y-auto">
-            {EVENT_GROUPS.map((group) => (
-              <div key={group.label}>
-                <div className="px-3 py-1.5 text-[10px] font-semibold text-text-secondary uppercase tracking-wider bg-surface-alt border-b border-border sticky top-0">
-                  {group.label}
-                </div>
-                <div className="divide-y divide-border/50">
-                  {group.events.map((ev) => {
-                    const checked = events.includes(ev.value);
-                    return (
-                      <button
-                        key={ev.value}
-                        type="button"
-                        onClick={() => toggle(ev.value)}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-surface-alt transition-colors"
-                      >
-                        <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-accent border-accent' : 'border-border'}`}>
-                          {checked && (
-                            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
-                              <polyline points="20 6 9 17 4 12" />
-                            </svg>
-                          )}
-                        </span>
-                        <span className={checked ? 'text-accent font-medium' : 'text-text-primary'}>{ev.label}</span>
-                        <span className="ml-auto text-[10px] text-text-secondary/50 font-mono shrink-0">{ev.value}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-          {/* Custom event input */}
-          <div className="border-t border-border p-2 flex gap-1.5 bg-surface">
-            <input
-              value={customVal}
-              onChange={(e) => setCustomVal(e.target.value)}
-              placeholder="custom.event_type"
-              className="flex-1 px-2 py-1 text-xs rounded border border-border bg-surface-alt text-text-primary focus:outline-none focus:border-accent font-mono"
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustom(); } }}
-            />
+        {/* Selected pills — compact, inline */}
+        {events.map((ev) => (
+          <span
+            key={ev}
+            className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-md text-xs font-medium bg-accent/10 text-accent border border-accent/20 max-w-[200px] group"
+          >
+            <span className="truncate">{getEventLabel(ev)}</span>
             <button
               type="button"
-              onClick={addCustom}
-              className="px-2 py-1 text-xs bg-accent hover:bg-accent-hover text-white rounded transition-colors"
-            >Add</button>
-          </div>
+              onClick={(e) => { e.stopPropagation(); toggle(ev); }}
+              className="flex items-center justify-center w-4 h-4 rounded hover:bg-accent/20 transition-colors"
+            >
+              <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </span>
+        ))}
+
+        {/* Inline search input */}
+        <input
+          ref={inputRef}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          onFocus={() => setOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === 'Backspace' && !search && events.length > 0) {
+              onChange(events.slice(0, -1));
+            }
+            if (e.key === 'Enter' && search.trim()) {
+              e.preventDefault();
+              // If exactly one filtered result, select it
+              const allFiltered = filteredGroups.flatMap((g) => g.events);
+              if (allFiltered.length === 1) { toggle(allFiltered[0].value); setSearch(''); }
+              else { addCustom(); }
+            }
+            if (e.key === 'Escape') { setOpen(false); setSearch(''); }
+          }}
+          placeholder={events.length === 0 ? 'Search events…' : ''}
+          className="flex-1 min-w-[80px] text-xs bg-transparent text-text-primary placeholder:text-text-secondary/40 focus:outline-none"
+        />
+
+        {/* Counter + chevron */}
+        <div className="flex items-center gap-1 ml-auto shrink-0">
+          {selectedCount > 0 && (
+            <span className="text-[10px] font-semibold text-accent bg-accent/10 rounded px-1.5 py-0.5">
+              {selectedCount}
+            </span>
+          )}
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-text-secondary/60">
+            <polyline points={open ? '18 15 12 9 6 15' : '6 9 12 15 18 9'} />
+          </svg>
         </div>
+      </div>
+
+      {/* ── Dropdown (rendered as portal so it floats above everything) ── */}
+      {open && createPortal(
+        <div
+          ref={dropRef}
+          className="fixed z-[9999] rounded-lg border border-border bg-surface shadow-2xl overflow-hidden"
+          style={{ top: pos.top, left: pos.left, width: pos.width }}
+        >
+          {/* Grouped event list */}
+          <div className="max-h-[280px] overflow-y-auto overscroll-contain">
+            {filteredGroups.length === 0 ? (
+              <div className="px-3 py-6 text-center text-xs text-text-secondary">
+                No events matching "<span className="font-medium text-text-primary">{search}</span>"
+                <br />
+                <button
+                  type="button"
+                  onClick={addCustom}
+                  className="mt-2 text-accent hover:underline"
+                >
+                  Add "{search.trim()}" as custom event
+                </button>
+              </div>
+            ) : (
+              filteredGroups.map((group) => (
+                <div key={group.label}>
+                  {/* Group header */}
+                  <div className="sticky top-0 z-10 flex items-center gap-1.5 px-3 py-1.5 bg-surface-alt/90 backdrop-blur-sm border-b border-border/60">
+                    <span className="text-xs">{GROUP_ICONS[group.label] ?? '📋'}</span>
+                    <span className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider">{group.label}</span>
+                    <span className="text-[10px] text-text-secondary/40 ml-auto">{group.events.filter((ev) => events.includes(ev.value)).length}/{group.events.length}</span>
+                  </div>
+                  {/* Event items — compact 2-col grid for small items, full-width for long names */}
+                  <div className="py-0.5">
+                    {group.events.map((ev) => {
+                      const checked = events.includes(ev.value);
+                      return (
+                        <button
+                          key={ev.value}
+                          type="button"
+                          onClick={() => { toggle(ev.value); inputRef.current?.focus(); }}
+                          className={`w-full flex items-center gap-2.5 px-3 py-[7px] text-xs text-left transition-colors ${
+                            checked
+                              ? 'bg-accent/5 hover:bg-accent/10'
+                              : 'hover:bg-surface-alt'
+                          }`}
+                        >
+                          {/* Checkbox */}
+                          <span className={`w-4 h-4 rounded flex items-center justify-center shrink-0 transition-all ${
+                            checked
+                              ? 'bg-accent border border-accent shadow-sm shadow-accent/30'
+                              : 'border border-border bg-surface'
+                          }`}>
+                            {checked && (
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
+                                <polyline points="20 6 9 17 4 12" />
+                              </svg>
+                            )}
+                          </span>
+                          {/* Label */}
+                          <span className={`flex-1 ${checked ? 'text-accent font-medium' : 'text-text-primary'}`}>
+                            {ev.label}
+                          </span>
+                          {/* Monospace event key */}
+                          <code className={`text-[10px] font-mono shrink-0 ${checked ? 'text-accent/60' : 'text-text-secondary/40'}`}>
+                            {ev.value}
+                          </code>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Footer: quick actions */}
+          <div className="flex items-center justify-between px-3 py-2 border-t border-border bg-surface-alt/50 text-[11px] text-text-secondary">
+            <span>{selectedCount} selected</span>
+            <div className="flex items-center gap-3">
+              {selectedCount > 0 && (
+                <button type="button" onClick={() => onChange([])} className="text-red-400 hover:text-red-500 transition-colors">
+                  Clear all
+                </button>
+              )}
+              <button type="button" onClick={() => { setOpen(false); setSearch(''); }} className="text-text-secondary hover:text-text-primary transition-colors">
+                Done
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
