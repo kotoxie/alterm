@@ -1,6 +1,6 @@
 {
   "name": "@alterm/client",
-  "version": "0.10.3",
+  "version": "0.11.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -31,5 +31,6 @@
     "vite": "^6.0.0"
   }
 }
+
 
 
