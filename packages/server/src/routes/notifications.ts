@@ -124,18 +124,7 @@ interface RuleRow {
 
 router.get('/rules', (_req: Request, res: Response) => {
   const rows = queryAll<RuleRow>('SELECT * FROM notification_rules ORDER BY created_at DESC', []);
-  const rules = rows.map((r) => ({
-    id: r.id,
-    name: r.name,
-    enabled: r.enabled === 1,
-    event: r.event,
-    conditionLogic: r.condition_logic,
-    conditions: safeJson(r.conditions_json, []),
-    cadence: safeJson(r.cadence_json, { type: 'always' }),
-    actions: safeJson(r.actions_json, []),
-    createdAt: r.created_at,
-    lastTriggeredAt: r.last_triggered_at,
-  }));
+  const rules = rows.map((r) => formatRule(r));
   res.json({ rules });
 });
 
