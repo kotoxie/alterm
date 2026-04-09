@@ -5,7 +5,7 @@ import { authRequired } from '../middleware/auth.js';
 import { logAudit } from '../services/audit.js';
 import { getSetting } from '../services/settings.js';
 import { getPermissionsForRole } from '../services/permissions.js';
-import { authenticator } from 'otplib';
+import { generateSecret as otpGenerateSecret, verifySync as otpVerify, generateURI as otpGenerateURI } from 'otplib';
 import QRCode from 'qrcode';
 import { encrypt, decrypt } from '../services/encryption.js';
 
@@ -184,10 +184,10 @@ router.post('/mfa/setup', async (req: Request, res: Response) => {
   const user = queryOne<UserRow>('SELECT username FROM users WHERE id = ?', [userId]);
   if (!user) { res.status(404).json({ error: 'User not found' }); return; }
 
-  const secret = authenticator.generateSecret();
+  const secret = otpGenerateSecret();
   const appName = getSetting('app.name') || 'Alterm';
   // Label format: "Alterm (+username)" so users can identify the account in their authenticator app
-  const otpUri = authenticator.keyuri(`${appName} (+${user.username})`, appName, secret);
+  const otpUri = otpGenerateURI({ issuer: appName, label: `${appName} (+${user.username})`, secret });
   const qrDataUrl = await QRCode.toDataURL(otpUri);
 
   execute('UPDATE users SET mfa_secret = ? WHERE id = ?', [encrypt(secret), userId]);
@@ -204,7 +204,7 @@ router.post('/mfa/verify', (req: Request, res: Response) => {
   const secret = user?.mfa_secret ? (() => { try { return decrypt(user.mfa_secret); } catch { return null; } })() : null;
   if (!secret) { res.status(400).json({ error: 'MFA setup not started' }); return; }
 
-  const isValid = authenticator.verify({ token, secret });
+  const { valid: isValid } = otpVerify({ token, secret });
   if (!isValid) { res.status(400).json({ error: 'Invalid verification code' }); return; }
 
   execute('UPDATE users SET mfa_enabled = 1 WHERE id = ?', [userId]);
