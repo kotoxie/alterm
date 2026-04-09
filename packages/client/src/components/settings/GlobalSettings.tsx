@@ -63,8 +63,10 @@ export function GlobalSettings() {
   const [recordingMsg, setRecordingMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [savingRecording, setSavingRecording] = useState(false);
 
-  // Audit retention (shown in General tab)
-  const [auditRetention, setAuditRetention] = useState('90');
+  // Version check preferences
+  const [versionAuditLog, setVersionAuditLog] = useState(true);
+  const [versionToast, setVersionToast] = useState(true);
+  const [versionNotify, setVersionNotify] = useState(false);
 
   // Purge session history
   const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);
@@ -80,6 +82,9 @@ export function GlobalSettings() {
     setLogoPreview(settings['app.logo'] ?? '');
     setAuditRetention(settings['audit.retention_days'] ?? '90');
     setHealthMonitorEnabled(settings['health_monitor.enabled'] !== 'false');
+    setVersionAuditLog(settings['version.audit_log_checks'] !== 'false');
+    setVersionToast(settings['version.toast_feedback'] !== 'false');
+    setVersionNotify(settings['version.notify_on_update'] === 'true');
     setRecordingEnabled(settings['session.recording_enabled'] === 'true');
     setRecordingRetention(settings['session.recording_retention_days'] ?? '90');
   }, [settings]);
@@ -119,6 +124,9 @@ export function GlobalSettings() {
         'app.logo': logoPreview,
         'audit.retention_days': auditRetention,
         'health_monitor.enabled': String(healthMonitorEnabled),
+        'version.audit_log_checks': String(versionAuditLog),
+        'version.toast_feedback': String(versionToast),
+        'version.notify_on_update': String(versionNotify),
       });
       setGeneralMsg(result.ok ? { type: 'success', text: 'Saved.' } : { type: 'error', text: result.error! });
     } catch {
@@ -258,6 +266,31 @@ export function GlobalSettings() {
             <div>
               <span className="text-sm text-text-secondary">Health monitor</span>
               <p className="text-xs text-text-secondary/60 mt-0.5">Periodically checks if connections are reachable and shows green/red dots in the sidebar.</p>
+            </div>
+          </div>
+
+          <div className="border-t border-border pt-4 space-y-3">
+            <p className="text-xs font-semibold text-text-secondary uppercase tracking-wide">Version Check Behaviour</p>
+            <div className="flex items-center gap-3">
+              <Toggle value={versionAuditLog} onChange={setVersionAuditLog} />
+              <div>
+                <span className="text-sm text-text-secondary">Log manual checks to audit trail</span>
+                <p className="text-xs text-text-secondary/60 mt-0.5">Writes an entry to the audit log each time someone clicks "Check for updates", including the result and any error.</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <Toggle value={versionToast} onChange={setVersionToast} />
+              <div>
+                <span className="text-sm text-text-secondary">Show toast after manual check</span>
+                <p className="text-xs text-text-secondary/60 mt-0.5">Displays a brief notification with the result — up to date, new version found, or unreachable.</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <Toggle value={versionNotify} onChange={setVersionNotify} />
+              <div>
+                <span className="text-sm text-text-secondary">Fire notification rule on update available</span>
+                <p className="text-xs text-text-secondary/60 mt-0.5">Emits a <code className="text-xs bg-surface px-1 rounded">system.update_available</code> event you can use in notification rules to send an alert via email, Telegram, Slack, etc.</p>
+              </div>
             </div>
           </div>
           {generalMsg && (
