@@ -25,9 +25,10 @@ const DEFAULTS: SshPrefs = {
  * The server merges global defaults with per-user overrides, so this always returns
  * a complete set of values ready to pass directly into xterm.js.
  */
-export function useSshPrefs(): SshPrefs {
+export function useSshPrefs(): SshPrefs & { loading: boolean } {
   const { token } = useAuth();
   const [prefs, setPrefs] = useState<SshPrefs>(DEFAULTS);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!token) return;
@@ -48,8 +49,9 @@ export function useSshPrefs(): SshPrefs {
           theme: (data.theme as SshThemeName) || DEFAULTS.theme,
         });
       })
-      .catch(() => {/* keep defaults on network error */});
+      .catch(() => {/* keep defaults on network error */})
+      .finally(() => setLoading(false));
   }, [token]);
 
-  return prefs;
+  return { ...prefs, loading };
 }
