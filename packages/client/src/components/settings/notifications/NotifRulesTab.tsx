@@ -403,7 +403,7 @@ function RuleEditor({
   onClose: () => void;
 }) {
   const [name, setName] = useState(initial?.name ?? '');
-  const [events, setEvents] = useState<string[]>(initial?.events ?? ['*']);
+  const [events, setEvents] = useState<string[]>(initial?.events ?? []);
   const [condLogic, setCondLogic] = useState<'AND' | 'OR'>(initial?.conditionLogic ?? 'AND');
   const [conditions, setConditions] = useState<Condition[]>(initial?.conditions ?? []);
   const [cadence, setCadence] = useState<Cadence>(initial?.cadence ?? { type: 'always' });
