@@ -9,7 +9,7 @@ import { getSetting } from '../services/settings.js';
 import { createLoginSession, hashToken } from '../services/loginSession.js';
 import { authRequired, adminRequired } from '../middleware/auth.js';
 import { getPermissionsForRole } from '../services/permissions.js';
-import { authenticator } from 'otplib';
+import { verifySync as otpVerify } from 'otplib';
 import { parseUA } from '../services/ua.js';
 import { issueWsTicket } from '../services/wsTicket.js';
 import { decrypt } from '../services/encryption.js';
@@ -410,7 +410,7 @@ router.post('/login/mfa', async (req: Request, res: Response) => {
     res.status(400).json({ error: 'MFA configuration error' });
     return;
   }
-  const isValid = authenticator.verify({ token: code, secret: decryptedSecret });
+  const { valid: isValid } = otpVerify({ token: code, secret: decryptedSecret });
   if (!isValid) {
     res.status(401).json({ error: 'Invalid verification code' });
     return;
