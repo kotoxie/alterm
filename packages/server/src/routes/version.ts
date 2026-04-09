@@ -59,7 +59,7 @@ function optionalUserId(req: Request): string | null {
     const header = req.headers.authorization;
     const token = (header?.startsWith('Bearer ') ? header.slice(7) : null) ?? req.cookies?.['alterm_token'];
     if (!token) return null;
-    return verifyToken(token).sub ?? null;
+    return verifyToken(token).userId ?? null;
   } catch {
     return null;
   }
