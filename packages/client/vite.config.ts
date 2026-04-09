@@ -1,5 +1,6 @@
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
 import { readFileSync } from 'fs';
 
@@ -27,7 +28,7 @@ function novncTopLevelAwaitShim(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [novncTopLevelAwaitShim(), react()],
+  plugins: [tailwindcss(), novncTopLevelAwaitShim(), react()],
   define: {
     __APP_VERSION__: JSON.stringify(version),
   },

@@ -786,7 +786,7 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
 
       {/* Flyout panel */}
       <div
-        className={`absolute right-5 top-1/2 -translate-y-1/2 z-20 w-52 bg-surface/95 backdrop-blur-sm border border-border rounded-xl shadow-2xl flex flex-col gap-1 p-3 transition-all duration-200 ${
+        className={`absolute right-5 top-1/2 -translate-y-1/2 z-20 w-52 bg-surface/95 backdrop-blur-xs border border-border rounded-xl shadow-2xl flex flex-col gap-1 p-3 transition-all duration-200 ${
           panelOpen ? 'opacity-100 translate-x-0 pointer-events-auto' : 'opacity-0 translate-x-4 pointer-events-none'
         }`}
       >

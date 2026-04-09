@@ -49,7 +49,7 @@ function IdleWarningDialog({ secondsLeft, onStayActive }: { secondsLeft: number;
   const label = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-xs">
       <div className="bg-surface border border-border rounded-xl shadow-2xl p-6 max-w-sm w-full mx-4 text-center">
         <div className="text-4xl mb-3">⏱️</div>
         <h2 className="text-lg font-semibold text-text-primary mb-2">Session expiring soon</h2>

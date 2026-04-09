@@ -246,7 +246,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
               onChange={(e) => setName(e.target.value)}
               required
               placeholder="My Server"
-              className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-hidden focus:ring-2 focus:ring-accent"
             />
           </div>
 
@@ -323,7 +323,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
                 onChange={(e) => setHost(e.target.value)}
                 required
                 placeholder="192.168.1.100"
-                className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-hidden focus:ring-2 focus:ring-accent"
               />
             </div>
             <div className="w-20">
@@ -333,7 +333,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
                 value={port}
                 onChange={(e) => setPort(Number(e.target.value))}
                 required
-                className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-hidden focus:ring-2 focus:ring-accent"
               />
             </div>
           </div>
@@ -346,7 +346,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="user"
-                className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-hidden focus:ring-2 focus:ring-accent"
               />
             </div>
             <div className="flex-1">
@@ -356,7 +356,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder={connection ? '(unchanged)' : ''}
-                className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-hidden focus:ring-2 focus:ring-accent"
               />
             </div>
           </div>
@@ -371,7 +371,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
                 onChange={(e) => setPrivateKey(e.target.value)}
                 rows={3}
                 placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
-                className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent font-mono text-xs resize-none"
+                className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-hidden focus:ring-2 focus:ring-accent font-mono text-xs resize-none"
               />
             </div>
           )}
@@ -389,7 +389,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
                       placeholder="Local"
                       value={t.localPort}
                       onChange={(e) => setTunnels((prev) => prev.map((x) => x.id === t.id ? { ...x, localPort: e.target.value } : x))}
-                      className="w-16 px-2 py-1 bg-surface border border-border rounded text-text-primary text-xs focus:outline-none focus:ring-1 focus:ring-accent"
+                      className="w-16 px-2 py-1 bg-surface border border-border rounded text-text-primary text-xs focus:outline-hidden focus:ring-1 focus:ring-accent"
                     />
                     <span className="text-text-secondary text-xs">→</span>
                     <input
@@ -397,7 +397,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
                       placeholder="Remote host"
                       value={t.remoteHost}
                       onChange={(e) => setTunnels((prev) => prev.map((x) => x.id === t.id ? { ...x, remoteHost: e.target.value } : x))}
-                      className="flex-1 px-2 py-1 bg-surface border border-border rounded text-text-primary text-xs focus:outline-none focus:ring-1 focus:ring-accent"
+                      className="flex-1 px-2 py-1 bg-surface border border-border rounded text-text-primary text-xs focus:outline-hidden focus:ring-1 focus:ring-accent"
                     />
                     <span className="text-text-secondary text-xs">:</span>
                     <input
@@ -405,7 +405,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
                       placeholder="Port"
                       value={t.remotePort}
                       onChange={(e) => setTunnels((prev) => prev.map((x) => x.id === t.id ? { ...x, remotePort: e.target.value } : x))}
-                      className="w-14 px-2 py-1 bg-surface border border-border rounded text-text-primary text-xs focus:outline-none focus:ring-1 focus:ring-accent"
+                      className="w-14 px-2 py-1 bg-surface border border-border rounded text-text-primary text-xs focus:outline-hidden focus:ring-1 focus:ring-accent"
                     />
                     <button
                       type="button"
@@ -435,7 +435,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
             <select
               value={groupId}
               onChange={(e) => setGroupId(e.target.value)}
-              className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-hidden focus:ring-2 focus:ring-accent"
             >
               <option value="">No Folder</option>
               {localGroups.map((g) => (
@@ -455,7 +455,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
                     if (e.key === 'Escape') { setShowNewFolder(false); setNewFolderName(''); }
                   }}
                   placeholder="Folder name"
-                  className="flex-1 min-w-0 px-2 py-1 text-sm bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+                  className="flex-1 min-w-0 px-2 py-1 text-sm bg-surface border border-border rounded text-text-primary focus:outline-hidden focus:ring-1 focus:ring-accent"
                 />
                 <button
                   type="button"
@@ -495,7 +495,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
                   onChange={(e) => setSmbShare(e.target.value)}
                   placeholder="share"
                   required
-                  className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent font-mono"
+                  className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-hidden focus:ring-2 focus:ring-accent font-mono"
                 />
               </div>
               <div className="flex-1">
@@ -507,7 +507,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
                   value={smbDomain}
                   onChange={(e) => setSmbDomain(e.target.value)}
                   placeholder="WORKGROUP"
-                  className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent font-mono"
+                  className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-hidden focus:ring-2 focus:ring-accent font-mono"
                 />
               </div>
             </div>

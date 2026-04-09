@@ -244,7 +244,7 @@ export function TabBar({
                 >
                   {/* Merge overlay */}
                   {isMergeTarget && (
-                    <div className="absolute inset-0 bg-accent/15 flex items-center justify-center pointer-events-none z-10 rounded-sm">
+                    <div className="absolute inset-0 bg-accent/15 flex items-center justify-center pointer-events-none z-10 rounded-xs">
                       <span className="text-accent text-base leading-none">⊞</span>
                     </div>
                   )}

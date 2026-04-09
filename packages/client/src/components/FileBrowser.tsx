@@ -552,7 +552,7 @@ export function FileBrowser({
               if (e.key === 'Escape') { setNewFolderMode(false); setNewFolderName(''); }
             }}
             placeholder="Folder name..."
-            className="flex-1 px-2 py-1 text-sm bg-surface border border-border rounded-md text-text-primary placeholder-text-secondary/50 focus:outline-none focus:ring-1 focus:ring-accent"
+            className="flex-1 px-2 py-1 text-sm bg-surface border border-border rounded-md text-text-primary placeholder-text-secondary/50 focus:outline-hidden focus:ring-1 focus:ring-accent"
           />
           <button onClick={createFolder} className="px-3 py-1 text-xs bg-accent text-white rounded-md hover:bg-accent-hover transition-colors">Create</button>
           <button onClick={() => { setNewFolderMode(false); setNewFolderName(''); }}
@@ -665,7 +665,7 @@ export function FileBrowser({
                   <div
                     className={`flex items-center justify-center w-4 h-4 rounded border-2 transition-all shrink-0 ${
                       isSelected
-                        ? 'bg-accent border-accent text-white shadow-sm'
+                        ? 'bg-accent border-accent text-white shadow-xs'
                         : 'border-border/60 text-transparent hover:border-accent/70'
                     }`}
                     onClick={(e) => { e.stopPropagation(); toggleSelect(f.filename); }}
@@ -686,7 +686,7 @@ export function FileBrowser({
                       }}
                       onBlur={() => renameFileAction(f.filename, renameValue)}
                       onClick={(e) => e.stopPropagation()}
-                      className="flex-1 px-1 py-0 text-sm bg-surface border border-accent rounded text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+                      className="flex-1 px-1 py-0 text-sm bg-surface border border-accent rounded text-text-primary focus:outline-hidden focus:ring-1 focus:ring-accent"
                     />
                   ) : (
                     <span className="flex-1 text-text-primary truncate text-sm leading-none">{f.filename}</span>
@@ -884,7 +884,7 @@ export function FileBrowser({
                         onChange={(e) => setChmodMode(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter') applyChmod(); }}
                         placeholder="0755"
-                        className="w-20 px-2 py-1 text-xs font-mono bg-surface-alt border border-border rounded text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+                        className="w-20 px-2 py-1 text-xs font-mono bg-surface-alt border border-border rounded text-text-primary focus:outline-hidden focus:ring-1 focus:ring-accent"
                       />
                       <button
                         onClick={applyChmod}

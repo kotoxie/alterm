@@ -46,7 +46,7 @@ export function SetupPage() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
-              className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-hidden focus:ring-2 focus:ring-accent"
             />
           </div>
           <div>
@@ -56,7 +56,7 @@ export function SetupPage() {
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               required
-              className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-hidden focus:ring-2 focus:ring-accent"
             />
           </div>
           <div>
@@ -67,7 +67,7 @@ export function SetupPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={8}
-              className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-hidden focus:ring-2 focus:ring-accent"
             />
           </div>
           <div>
@@ -77,7 +77,7 @@ export function SetupPage() {
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               required
-              className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-hidden focus:ring-2 focus:ring-accent"
             />
           </div>
           {error && <p className="text-red-500 text-sm">{error}</p>}
