@@ -1,13 +1,19 @@
 /**
- * SSH Command Tracker — accumulates user input, detects Enter key,
- * watches shell output for prompt patterns, and logs commands with timestamps.
+ * SSH Command Tracker — records commands from the server-side echo stream.
  *
  * Strategy:
- * - Buffer incoming keystrokes (from `type:'data'` messages)
- * - On Enter (`\r`), snapshot the input buffer as a candidate command
- * - Watch shell output for prompt patterns to mark previous command as "complete"
- * - Detect password prompts in output → redact the next Enter input
+ * - Run a minimal VT100 line buffer over the server output
+ * - Track "waiting for command" state (set after each prompt is detected)
+ * - Each \r\n while waiting = submitted command line → strip prompt → record
+ * - Watch for the next prompt to mark command complete and collect output preview
+ * - Detect password prompts in output → redact the next \r\n submission
  * - Persist each command to the ssh_commands table
+ *
+ * Accurately captures: directly typed commands, tab-completed commands,
+ * history-recalled commands (Up/Down arrow), pasted commands.
+ *
+ * Known limitation: multi-line constructs (heredocs, for-loops spanning
+ * multiple lines) are stored as separate per-line entries.
  */
 
 import { v4 as uuid } from 'uuid';
@@ -25,14 +31,94 @@ const PROMPT_RE = /[$#%>»]\s*$/;
 //   PIN:
 const PASSWORD_PROMPT_RE = /\bpassword\b[^:]*:\s*$|enter\s+passphrase\b[^:]*:\s*$|enter\s+password\s*:\s*$|\bpin\s*:\s*$/i;
 
+/**
+ * Minimal VT100 line buffer.
+ *
+ * Maintains the text currently on the active terminal line by processing
+ * the server-side echo stream.
+ *
+ * Handles the ANSI/readline sequences bash/zsh emit for:
+ *   - Normal char echo
+ *   - History navigation  (\r + \x1b[K + rewrite)
+ *   - Tab completion      (\x1b[nD + suffix, or full line rewrite)
+ *   - Backspace display   (\x08)
+ *   - Cursor movement     (\x1b[nD / \x1b[nC / \x1b[nG)
+ *   - Line erase          (\x1b[K / \x1b[2K)
+ *   - Char delete/insert  (\x1b[nP / \x1b[n@)
+ */
+class LineBuf {
+  private line = '';
+  private col = 0;
+  private inEsc = false;
+  private escBuf = '';
+
+  /**
+   * Feed a chunk of server output.
+   * Returns one entry per \r\n: the line content captured just before the break.
+   */
+  feed(data: string): string[] {
+    const completed: string[] = [];
+    for (const ch of data) {
+      if (this.inEsc) {
+        this.escBuf += ch;
+        if (/[A-Za-z~]/.test(ch)) {
+          this.applyEsc(this.escBuf);
+          this.inEsc = false;
+          this.escBuf = '';
+        }
+        continue;
+      }
+      if (ch === '\x1b') { this.inEsc = true; this.escBuf = ''; continue; }
+
+      if (ch === '\r') {
+        // Carriage return: move cursor to col 0 but keep content.
+        // A full-line rewrite (history/completion) always follows with \x1b[K.
+        this.col = 0;
+      } else if (ch === '\n') {
+        completed.push(this.line);
+        this.line = '';
+        this.col = 0;
+      } else if (ch === '\x08') {
+        if (this.col > 0) this.col--;
+      } else if (ch >= ' ') {
+        // Printable — overwrite at cursor position
+        if (this.col < this.line.length) {
+          this.line = this.line.slice(0, this.col) + ch + this.line.slice(this.col + 1);
+        } else {
+          this.line += ch;
+        }
+        this.col++;
+      }
+    }
+    return completed;
+  }
+
+  private applyEsc(seq: string): void {
+    if (!seq.startsWith('[')) return; // Only handle CSI sequences
+    const term = seq[seq.length - 1];
+    const inner = seq.slice(1, -1);
+    const n = Math.max(1, parseInt(inner || '1', 10));
+    const n0 = parseInt(inner || '0', 10); // for K where 0 has distinct meaning
+
+    switch (term) {
+      case 'K': // Erase in line: 0=to end, 1=to start, 2=whole
+        if (n0 === 0) this.line = this.line.slice(0, this.col);
+        else if (n0 === 1) this.line = ' '.repeat(this.col) + this.line.slice(this.col);
+        else { this.line = ''; this.col = 0; }
+        break;
+      case 'D': this.col = Math.max(0, this.col - n); break;                                // cursor back
+      case 'C': this.col = Math.min(this.line.length, this.col + n); break;                  // cursor forward
+      case 'G': this.col = Math.max(0, n - 1); break;                                        // cursor to column (1-based)
+      case 'P': this.line = this.line.slice(0, this.col) + this.line.slice(this.col + n); break; // delete n chars
+      case '@': this.line = this.line.slice(0, this.col) + ' '.repeat(n) + this.line.slice(this.col); break; // insert n blanks
+    }
+  }
+}
+
 export class CommandTracker {
   private sessionDbId: string;
   private castStart: number;
-
-  // Input accumulation
-  private inputBuf = '';
-  // Escape sequence consumer — true while we're inside an ANSI/VT100 escape sequence
-  private inEscapeSeq = false;
+  private lineBuf = new LineBuf();
 
   // Last command that was submitted (Enter pressed) but not yet stored
   private pendingCommand: string | null = null;
@@ -48,7 +134,10 @@ export class CommandTracker {
   // Track whether we've seen the first prompt (skip login banner)
   private seenFirstPrompt = false;
 
-  // Password prompt detection — next Enter input will be redacted
+  // True after a prompt is detected — next \r\n in echo stream is a command
+  private waitingForCommand = false;
+
+  // Password prompt detection — next \r\n will be redacted
   private awaitingPassword = false;
 
   // Flush timer — if no prompt detected within a timeout, store command anyway
@@ -60,162 +149,129 @@ export class CommandTracker {
     this.castStart = castStart;
   }
 
-  /** Feed user input data (keystrokes heading to SSH). */
+  /**
+   * Feed user keystrokes heading to the SSH server.
+   * Command detection is now driven by the server echo stream;
+   * only Ctrl+C needs handling here.
+   */
   feedInput(data: string): void {
-    for (const ch of data) {
-      // ── Escape-sequence consumer ─────────────────────────────────────────
-      // ANSI/VT100 sequences start with ESC (\x1b).  The chars that follow
-      // (e.g. "[A" for Up-arrow, "[1;5D" for Ctrl+Left, "OP" for F1) must be
-      // swallowed whole, otherwise they land in inputBuf as printable garbage.
-      if (ch === '\x1b') {
-        this.inEscapeSeq = true;
-        continue;
+    if (data.includes('\x03')) {
+      // Ctrl+C — cancel any pending command and return to waiting state
+      if (this.pendingCommand !== null) {
+        this.storeCommand('^C');
       }
-      if (this.inEscapeSeq) {
-        // Sequences terminate at a letter or '~'; also bail on unexpected
-        // control chars so we never get stuck in escape-seq mode.
-        if (/[a-zA-Z~]/.test(ch) || ch.charCodeAt(0) < 32 || ch === '\x7f') {
-          this.inEscapeSeq = false;
-        }
-        continue;
-      }
-      // ────────────────────────────────────────────────────────────────────
-
-      if (ch === '\r' || ch === '\n') {
-        this.onEnter();
-      } else if (ch === '\x7f' || ch === '\b') {
-        // Backspace — remove last char from buffer
-        this.inputBuf = this.inputBuf.slice(0, -1);
-      } else if (ch === '\x03') {
-        // Ctrl+C — clear input buffer and cancel password wait
-        this.inputBuf = '';
-        this.awaitingPassword = false;
-        // If there's a pending command waiting for output, store it now
-        if (this.pendingCommand !== null) {
-          this.storeCommand('^C');
-        }
-      } else if (ch === '\x15') {
-        // Ctrl+U — clear line
-        this.inputBuf = '';
-      } else if (ch === '\x17') {
-        // Ctrl+W — delete last word
-        this.inputBuf = this.inputBuf.replace(/\S+\s*$/, '');
-      } else if (ch.charCodeAt(0) >= 32) {
-        // Printable chars only.  Tab (\t = 0x09) is intentionally excluded:
-        // the shell may complete "./inst<Tab>" → "./install.sh", so adding \t
-        // to inputBuf would produce a truncated / incorrect command entry.
-        this.inputBuf += ch;
-      }
-      // Ignore remaining control chars (Ctrl+D, Ctrl+Z, etc.)
+      this.waitingForCommand = true;
     }
   }
 
-  /** Feed shell output data (from the remote server). */
+  /** Feed shell output data (arriving from the remote SSH server). */
   feedOutput(data: string): void {
+    // Step 1: run through the VT100 line buffer.
+    // completedLines contains the echo of each submitted command line.
+    const completedLines = this.lineBuf.feed(data);
+    for (const line of completedLines) {
+      this.onLineCompleted(line);
+    }
+
+    // Step 2: accumulate output preview for the active pending command.
+    // Done AFTER lineBuf processing so setPending() has already reset outputBuf.
     if (this.pendingCommand !== null) {
-      // Accumulate output for the pending command
       this.outputBuf += data;
       this.outputLines += (data.match(/\n/g) || []).length;
     }
 
-    // Check the tail of recent output for prompt or password-prompt patterns
+    // Step 3: detect next prompt or password prompt in the output tail
     const tail = (this.pendingCommand !== null ? this.outputBuf : data).slice(-400);
     const lastLine = tail.split('\n').pop() || '';
 
-    // Detect password prompts — flag next input as sensitive
     if (PASSWORD_PROMPT_RE.test(lastLine)) {
       this.awaitingPassword = true;
-      // Don't treat this as a normal prompt — return early
       return;
     }
 
     if (PROMPT_RE.test(lastLine)) {
       if (!this.seenFirstPrompt) {
         this.seenFirstPrompt = true;
+        this.waitingForCommand = true;
         return;
       }
-      // Prompt detected — store the pending command
       if (this.pendingCommand !== null) {
         this.storeCommand();
       }
+      this.waitingForCommand = true;
     }
   }
 
   /** Called when the session ends — flush any pending command. */
   flush(): void {
-    if (this.flushTimer) {
-      clearTimeout(this.flushTimer);
-      this.flushTimer = null;
-    }
-    if (this.pendingCommand !== null) {
-      this.storeCommand();
-    }
+    if (this.flushTimer) { clearTimeout(this.flushTimer); this.flushTimer = null; }
+    if (this.pendingCommand !== null) this.storeCommand();
   }
 
-  private onEnter(): void {
-    // If a password prompt was detected, discard the typed input and store a redacted marker
+  /**
+   * Called for each \r\n completed line in the server output.
+   * When waitingForCommand is true, this line is the echo of what the user submitted.
+   */
+  private onLineCompleted(line: string): void {
+    if (!this.seenFirstPrompt) return;
+
+    // Password submission takes priority — the echoed line is blank/masked
     if (this.awaitingPassword) {
-      this.inputBuf = '';
       this.awaitingPassword = false;
-      // Store a redacted entry so the audit log shows something happened
-      this.pendingCommand = '[password]';
-      this.pendingTimestamp = new Date().toISOString();
-      this.pendingElapsed = (Date.now() - this.castStart) / 1000;
-      this.outputBuf = '';
-      this.outputLines = 0;
-      if (this.flushTimer) clearTimeout(this.flushTimer);
-      this.flushTimer = setTimeout(() => {
-        if (this.pendingCommand !== null) this.storeCommand();
-      }, CommandTracker.FLUSH_TIMEOUT_MS);
+      this.waitingForCommand = false;
+      if (this.pendingCommand !== null) this.storeCommand();
+      this.setPending('[password]');
       return;
     }
 
-    const command = this.inputBuf.trim();
-    this.inputBuf = '';
+    if (!this.waitingForCommand) return;
 
+    const command = this.extractCommand(line);
     if (!command) return;
-    if (!this.seenFirstPrompt) return;
 
-    // Store previous pending command if still waiting
-    if (this.pendingCommand !== null) {
-      this.storeCommand();
-    }
+    this.waitingForCommand = false;
+    if (this.pendingCommand !== null) this.storeCommand();
+    this.setPending(command);
+  }
 
+  /**
+   * Strip the shell prompt prefix from an echoed input line.
+   * e.g. "user@host:~$ ./install.sh" → "./install.sh"
+   *      "root@box:/# ls -la"        → "ls -la"
+   * Returns empty string if no prompt pattern is found (not a command echo).
+   */
+  private extractCommand(line: string): string {
+    // Non-greedy match: anything up to and including the first prompt-ender + space
+    const m = line.match(/^.*?[$#%>»]\s+/);
+    if (!m) return '';
+    return line.slice(m[0].length).trim();
+  }
+
+  private setPending(command: string): void {
     this.pendingCommand = command;
     this.pendingTimestamp = new Date().toISOString();
     this.pendingElapsed = (Date.now() - this.castStart) / 1000;
     this.outputBuf = '';
     this.outputLines = 0;
-
-    // Start flush timer
     if (this.flushTimer) clearTimeout(this.flushTimer);
     this.flushTimer = setTimeout(() => {
-      if (this.pendingCommand !== null) {
-        this.storeCommand();
-      }
+      if (this.pendingCommand !== null) this.storeCommand();
     }, CommandTracker.FLUSH_TIMEOUT_MS);
   }
 
   private storeCommand(override?: string): void {
-    if (this.flushTimer) {
-      clearTimeout(this.flushTimer);
-      this.flushTimer = null;
-    }
+    if (this.flushTimer) { clearTimeout(this.flushTimer); this.flushTimer = null; }
 
     const command = override ?? this.pendingCommand;
     if (!command) { this.resetPending(); return; }
 
     // Build output preview — strip the first line (echo of the command itself)
     let preview = this.outputBuf;
-    // For redacted password entries, don't include any output preview
     if (command === '[password]') {
       preview = '';
     } else {
       const firstNewline = preview.indexOf('\n');
-      if (firstNewline !== -1) {
-        preview = preview.slice(firstNewline + 1);
-      }
-      // Trim to reasonable size
+      if (firstNewline !== -1) preview = preview.slice(firstNewline + 1);
       const lines = preview.split('\n');
       if (lines.length > CommandTracker.MAX_OUTPUT_PREVIEW_LINES) {
         preview = lines.slice(0, CommandTracker.MAX_OUTPUT_PREVIEW_LINES).join('\n') + '\n...';
