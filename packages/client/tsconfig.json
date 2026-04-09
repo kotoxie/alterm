@@ -9,8 +9,7 @@
       "@/*": ["./src/*"]
     },
     "declaration": false,
-    "declarationMap": false,
-    "allowArbitraryExtensions": true
+    "declarationMap": false
   },
   "include": ["src/**/*"]
 }
