@@ -163,7 +163,7 @@ export function LoginPage() {
                 autoFocus
                 placeholder="000000"
                 disabled={submitting}
-                className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-center text-xl tracking-widest disabled:opacity-60"
+                className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-hidden focus:ring-2 focus:ring-accent text-center text-xl tracking-widest disabled:opacity-60"
               />
               <p className="text-xs text-text-secondary mt-1">
                 {submitting ? 'Verifying…' : 'Enter the 6-digit code — it submits automatically.'}
@@ -251,7 +251,7 @@ export function LoginPage() {
                 onChange={(e) => setUsername(e.target.value)}
                 required
                 autoFocus
-                className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-hidden focus:ring-2 focus:ring-accent"
               />
             </div>
             <div>
@@ -261,7 +261,7 @@ export function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-hidden focus:ring-2 focus:ring-accent"
               />
             </div>
             <button
@@ -279,9 +279,9 @@ export function LoginPage() {
           <div>
             {showPasswordForm && (
               <div className="relative flex items-center my-4">
-                <div className="flex-grow border-t border-border" />
-                <span className="flex-shrink mx-4 text-xs text-text-secondary">or</span>
-                <div className="flex-grow border-t border-border" />
+                <div className="grow border-t border-border" />
+                <span className="shrink mx-4 text-xs text-text-secondary">or</span>
+                <div className="grow border-t border-border" />
               </div>
             )}
             <button

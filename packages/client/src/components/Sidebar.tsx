@@ -841,7 +841,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
             if (e.key === 'Escape') cancelInlineNewFolder();
           }}
           placeholder="Folder name…"
-          className="flex-1 min-w-0 px-1 py-0 text-sm bg-transparent text-text-primary focus:outline-none"
+          className="flex-1 min-w-0 px-1 py-0 text-sm bg-transparent text-text-primary focus:outline-hidden"
         />
         <button
           onMouseDown={e => { e.preventDefault(); void commitInlineNewFolder(); }}
@@ -943,7 +943,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
                 if (e.key === 'Escape') setRenamingGroupId(null);
               }}
               onBlur={() => renameGroup(group.id, renameValue)}
-              className="flex-1 px-1 py-0 text-sm bg-surface border border-accent rounded text-text-primary focus:outline-none"
+              className="flex-1 px-1 py-0 text-sm bg-surface border border-accent rounded text-text-primary focus:outline-hidden"
               onClick={(e) => e.stopPropagation()}
             />
           ) : (
@@ -1054,7 +1054,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
                 onChange={e => setSearchQuery(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Escape') setSearchQuery(''); }}
                 placeholder="Find connection..."
-                className="w-full pl-7 pr-6 py-1 text-xs bg-surface border border-border rounded text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent"
+                className="w-full pl-7 pr-6 py-1 text-xs bg-surface border border-border rounded text-text-primary placeholder:text-text-secondary focus:outline-hidden focus:border-accent"
               />
               {searchQuery && (
                 <button

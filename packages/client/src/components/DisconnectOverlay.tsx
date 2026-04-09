@@ -33,7 +33,7 @@ export function DisconnectOverlay({ show, message, onExit, onReconnect }: Discon
   const progress = (countdown / AUTO_CLOSE_SECONDS) * circumference;
 
   return (
-    <div className="absolute inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-20">
+    <div className="absolute inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-20">
       <div className="bg-surface border border-border rounded-xl p-6 shadow-2xl flex flex-col items-center gap-4 w-72">
         <div className="w-12 h-12 rounded-full bg-red-500/15 flex items-center justify-center">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-red-400">
