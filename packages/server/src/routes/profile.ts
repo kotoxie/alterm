@@ -186,8 +186,8 @@ router.post('/mfa/setup', async (req: Request, res: Response) => {
 
   const secret = otpGenerateSecret();
   const appName = getSetting('app.name') || 'Alterm';
-  // Label format: "Alterm (+username)" so users can identify the account in their authenticator app
-  const otpUri = otpGenerateURI({ issuer: appName, label: `${appName} (+${user.username})`, secret });
+  // Label format: "Alterm (username)" so users can identify the account in their authenticator app
+  const otpUri = otpGenerateURI({ issuer: appName, label: `${appName} (${user.username})`, secret });
   const qrDataUrl = await QRCode.toDataURL(otpUri);
 
   execute('UPDATE users SET mfa_secret = ? WHERE id = ?', [encrypt(secret), userId]);
