@@ -196,6 +196,10 @@ docker compose pull && docker compose up -d
 ## 🛠️ Building from Source
 
 ```bash
+# Clone & Open Folder
+git clone https://github.com/kotoxie/alterm
+cd alterm/
+
 # With Docker
 docker compose up --build -d
 
