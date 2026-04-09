@@ -19,7 +19,7 @@
     "jsonwebtoken": "^9.0.2",
     "otplib": "^13.4.0",
     "qrcode": "^1.5.4",
-    "nodemailer": "^6.10.0",
+    "nodemailer": "^8.0.5",
     "sql.js": "^1.14.1",
     "ldapts": "^4.2.6",
     "ssh2": "^1.16.0",
@@ -27,7 +27,7 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "@types/nodemailer": "^6.4.17",
+    "@types/nodemailer": "^8.0.0",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
