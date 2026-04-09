@@ -42,7 +42,8 @@ export function SshSession({ tab, isActive, paneWidth, paneHeight, onStatusChang
 
   // Destructure per-user SSH prefs (fetched from /api/v1/profile/ssh-prefs)
   const { fontSize: sshFontSize, fontFamily: sshFontFamily, scrollback: sshScrollback,
-          cursorStyle: sshCursorStyle, cursorBlink: sshCursorBlink, theme: sshThemeName } = sshPrefs;
+          cursorStyle: sshCursorStyle, cursorBlink: sshCursorBlink, theme: sshThemeName,
+          loading: sshPrefsLoading } = sshPrefs;
   const sshTheme = SSH_THEMES[sshThemeName] ?? SSH_THEMES['vscode-dark'];
 
   const handleReconnect = useCallback(() => {
@@ -85,7 +86,7 @@ export function SshSession({ tab, isActive, paneWidth, paneHeight, onStatusChang
   }, [isActive]);
 
   useEffect(() => {
-    if (!termRef.current || !token) return;
+    if (!termRef.current || !token || sshPrefsLoading) return;
     let cancelled = false;
 
     const term = new Terminal({
@@ -205,7 +206,7 @@ export function SshSession({ tab, isActive, paneWidth, paneHeight, onStatusChang
       fitAddonRef.current = null;
       wsRef.current = null;
     };
-  }, [tab.id, tab.connectionId, token, onStatusChange, reconnectCount, sshFontSize, sshFontFamily, sshScrollback, sshCursorStyle, sshCursorBlink, sshThemeName]);
+  }, [tab.id, tab.connectionId, token, onStatusChange, reconnectCount, sshFontSize, sshFontFamily, sshScrollback, sshCursorStyle, sshCursorBlink, sshThemeName, sshPrefsLoading]);
 
   return (
     <div
