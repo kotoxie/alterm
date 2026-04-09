@@ -13,7 +13,7 @@ function deriveKey(password: string, salt: Buffer): Buffer {
   return crypto.pbkdf2Sync(password, salt, KDF_ITERATIONS, KDF_KEYLEN, 'sha256');
 }
 
-export function createBackup(password: string, dbBytes: Buffer): Buffer {
+export function createBackup(password: string, dbBytes: Buffer, includeRecordings = false): Buffer {
   const kdfSalt = crypto.randomBytes(32);
   const hmacSalt = crypto.randomBytes(32);
   const iv = crypto.randomBytes(16);
@@ -22,7 +22,7 @@ export function createBackup(password: string, dbBytes: Buffer): Buffer {
 
   const recordings: Array<{ name: string; size: number }> = [];
   const recBuffers: Buffer[] = [];
-  if (fs.existsSync(config.recordingsDir)) {
+  if (includeRecordings && fs.existsSync(config.recordingsDir)) {
     for (const fname of fs.readdirSync(config.recordingsDir)) {
       const fp = path.join(config.recordingsDir, fname);
       try {
@@ -61,6 +61,22 @@ export function createBackup(password: string, dbBytes: Buffer): Buffer {
   const mac = hmac.digest();
 
   return Buffer.concat([header, encBody, mac]);
+}
+
+export function getRecordingsSizeInfo(): { recordingsSize: number; recordingCount: number } {
+  let recordingsSize = 0;
+  let recordingCount = 0;
+  if (fs.existsSync(config.recordingsDir)) {
+    for (const fname of fs.readdirSync(config.recordingsDir)) {
+      try {
+        const stat = fs.statSync(path.join(config.recordingsDir, fname));
+        if (!stat.isFile()) continue;
+        recordingsSize += stat.size;
+        recordingCount++;
+      } catch { /* skip */ }
+    }
+  }
+  return { recordingsSize, recordingCount };
 }
 
 export interface RestoreResult {
