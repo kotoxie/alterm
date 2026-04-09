@@ -37,17 +37,20 @@ export function Header({ onToggleSidebar, onOpenSettings }: HeaderProps) {
   const { current: appVersion, updateAvailable, latest, releaseUrl, checking, refresh: refreshVersion } = useVersionCheck();
   const [upToDate, setUpToDate] = useState(false);
 
-  // Show "Up to date" flash after a successful manual refresh that finds no update
+  // Show "Up to date" flash only when check completed, got a response, and no update found
   useEffect(() => {
-    if (!checking && upToDate) {
+    if (!checking && latest !== null && !updateAvailable) {
+      setUpToDate(true);
       const t = setTimeout(() => setUpToDate(false), 2500);
       return () => clearTimeout(t);
+    } else if (updateAvailable) {
+      setUpToDate(false);
     }
-  }, [checking, upToDate]);
+  }, [checking, latest, updateAvailable]);
 
   async function handleVersionClick() {
+    setUpToDate(false);
     await refreshVersion();
-    setUpToDate(true);
   }
 
   const appName = settings['app.name'] ?? 'Alterm';
