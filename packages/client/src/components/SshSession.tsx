@@ -205,7 +205,7 @@ export function SshSession({ tab, isActive, paneWidth, paneHeight, onStatusChang
       fitAddonRef.current = null;
       wsRef.current = null;
     };
-  }, [tab.id, tab.connectionId, token, onStatusChange, reconnectCount, sshFontSize, sshFontFamily, sshScrollback, sshCursorStyle]);
+  }, [tab.id, tab.connectionId, token, onStatusChange, reconnectCount, sshFontSize, sshFontFamily, sshScrollback, sshCursorStyle, sshCursorBlink, sshThemeName]);
 
   return (
     <div
