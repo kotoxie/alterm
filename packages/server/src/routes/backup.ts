@@ -3,29 +3,40 @@ import fs from 'fs';
 import path from 'path';
 import { requirePermission } from '../middleware/auth.js';
 import { logAudit } from '../services/audit.js';
-import { createBackup, restoreBackup } from '../services/backup.js';
+import { createBackup, restoreBackup, getRecordingsSizeInfo } from '../services/backup.js';
 import { setEncryptionKey } from '../services/encryption.js';
 import { getDb, restoreDbFromBytes } from '../db/index.js';
 import { config } from '../config.js';
 
 const router = Router();
 
+// GET /size — return estimated backup size breakdown
+router.get('/size', requirePermission('settings.backup'), (_req: Request, res: Response) => {
+  try {
+    const dbSize = Buffer.from(getDb().export()).length;
+    const { recordingsSize, recordingCount } = getRecordingsSizeInfo();
+    res.json({ dbSize, recordingsSize, recordingCount });
+  } catch (e) {
+    res.status(500).json({ error: `Size check failed: ${(e as Error).message}` });
+  }
+});
+
 // POST /export — create and download encrypted backup
 router.post('/export', requirePermission('settings.backup'), (req: Request, res: Response) => {
-  const { password } = req.body as { password?: string };
+  const { password, includeRecordings = false } = req.body as { password?: string; includeRecordings?: boolean };
   if (!password || password.length < 8) {
     res.status(400).json({ error: 'Backup password must be at least 8 characters' });
     return;
   }
   try {
     const dbBytes = Buffer.from(getDb().export());
-    const backupBuf = createBackup(password, dbBytes);
+    const backupBuf = createBackup(password, dbBytes, includeRecordings);
     const filename = `alterm-backup-${new Date().toISOString().slice(0, 10)}.aeb`;
     logAudit({
       userId: req.user!.userId,
       eventType: 'admin.backup.export',
       target: filename,
-      details: { sizeBytes: backupBuf.length },
+      details: { sizeBytes: backupBuf.length, includeRecordings },
       ipAddress: req.ip,
     });
     res.setHeader('Content-Type', 'application/octet-stream');
