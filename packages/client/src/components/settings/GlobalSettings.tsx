@@ -68,6 +68,9 @@ export function GlobalSettings() {
   const [versionToast, setVersionToast] = useState(true);
   const [versionNotify, setVersionNotify] = useState(false);
 
+  // Audit retention (shown in General tab)
+  const [auditRetention, setAuditRetention] = useState('90');
+
   // Purge session history
   const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);
   const [purging, setPurging] = useState(false);
