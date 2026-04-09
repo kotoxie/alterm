@@ -1,6 +1,6 @@
 {
   "name": "alterm",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "private": true,
   "workspaces": [
     "packages/server",
@@ -19,6 +19,7 @@
     "typescript": "^5.7.0"
   }
 }
+
 
 
 
