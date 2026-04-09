@@ -31,6 +31,8 @@ export class CommandTracker {
 
   // Input accumulation
   private inputBuf = '';
+  // Escape sequence consumer — true while we're inside an ANSI/VT100 escape sequence
+  private inEscapeSeq = false;
 
   // Last command that was submitted (Enter pressed) but not yet stored
   private pendingCommand: string | null = null;
@@ -61,6 +63,24 @@ export class CommandTracker {
   /** Feed user input data (keystrokes heading to SSH). */
   feedInput(data: string): void {
     for (const ch of data) {
+      // ── Escape-sequence consumer ─────────────────────────────────────────
+      // ANSI/VT100 sequences start with ESC (\x1b).  The chars that follow
+      // (e.g. "[A" for Up-arrow, "[1;5D" for Ctrl+Left, "OP" for F1) must be
+      // swallowed whole, otherwise they land in inputBuf as printable garbage.
+      if (ch === '\x1b') {
+        this.inEscapeSeq = true;
+        continue;
+      }
+      if (this.inEscapeSeq) {
+        // Sequences terminate at a letter or '~'; also bail on unexpected
+        // control chars so we never get stuck in escape-seq mode.
+        if (/[a-zA-Z~]/.test(ch) || ch.charCodeAt(0) < 32 || ch === '\x7f') {
+          this.inEscapeSeq = false;
+        }
+        continue;
+      }
+      // ────────────────────────────────────────────────────────────────────
+
       if (ch === '\r' || ch === '\n') {
         this.onEnter();
       } else if (ch === '\x7f' || ch === '\b') {
@@ -77,11 +97,16 @@ export class CommandTracker {
       } else if (ch === '\x15') {
         // Ctrl+U — clear line
         this.inputBuf = '';
-      } else if (ch.charCodeAt(0) >= 32 || ch === '\t') {
-        // Printable chars and tab
+      } else if (ch === '\x17') {
+        // Ctrl+W — delete last word
+        this.inputBuf = this.inputBuf.replace(/\S+\s*$/, '');
+      } else if (ch.charCodeAt(0) >= 32) {
+        // Printable chars only.  Tab (\t = 0x09) is intentionally excluded:
+        // the shell may complete "./inst<Tab>" → "./install.sh", so adding \t
+        // to inputBuf would produce a truncated / incorrect command entry.
         this.inputBuf += ch;
       }
-      // Ignore other control chars (arrows, escape sequences)
+      // Ignore remaining control chars (Ctrl+D, Ctrl+Z, etc.)
     }
   }
 
