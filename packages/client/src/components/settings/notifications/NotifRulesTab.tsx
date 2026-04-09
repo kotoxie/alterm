@@ -117,6 +117,14 @@ const EVENT_GROUPS: { label: string; events: { value: string; label: string }[] 
       { value: 'security.locked_account_attempt', label: 'Login attempt on locked account' },
     ],
   },
+  {
+    label: 'System',
+    events: [
+      { value: 'system.*', label: 'System — all' },
+      { value: 'system.update_available', label: 'New version available' },
+      { value: 'system.version_check', label: 'Manual version check' },
+    ],
+  },
 ];
 
 const CONDITION_FIELDS: { value: string; label: string }[] = [
@@ -159,7 +167,7 @@ function getEventLabel(value: string): string {
 // Category icon mapping for visual hierarchy
 const GROUP_ICONS: Record<string, string> = {
   All: '🌐', Auth: '🔑', Sessions: '💻', Connections: '🔌',
-  Users: '👤', Settings: '⚙️', Security: '🛡️',
+  Users: '👤', Settings: '⚙️', Security: '🛡️', System: '⚡',
 };
 
 function EventPicker({ events, onChange }: { events: string[]; onChange: (v: string[]) => void }) {

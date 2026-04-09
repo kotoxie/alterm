@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme } from '../hooks/useTheme';
 import { useSettings } from '../hooks/useSettings';
@@ -34,8 +34,15 @@ export function Header({ onToggleSidebar, onOpenSettings }: HeaderProps) {
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { settings } = useSettings();
-  const { current: appVersion, updateAvailable, latest, releaseUrl, checking, refresh: refreshVersion } = useVersionCheck();
+  const { current: appVersion, updateAvailable, latest, releaseUrl, fetchError, checking, refresh: refreshVersion } = useVersionCheck();
   const [upToDate, setUpToDate] = useState(false);
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' | 'warn' } | null>(null);
+  const wasManualCheck = useRef(false);
+
+  const showToast = useCallback((msg: string, type: 'success' | 'error' | 'warn' = 'success') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
+  }, []);
 
   // Show "Up to date" flash only when check completed, got a response, and no update found
   useEffect(() => {
@@ -48,8 +55,23 @@ export function Header({ onToggleSidebar, onOpenSettings }: HeaderProps) {
     }
   }, [checking, latest, updateAvailable]);
 
+  // Show toast after a manual check completes (respects version.toast_feedback setting)
+  useEffect(() => {
+    if (checking || !wasManualCheck.current) return;
+    if (settings['version.toast_feedback'] === 'false') { wasManualCheck.current = false; return; }
+    wasManualCheck.current = false;
+    if (fetchError) {
+      showToast(`Update check failed: ${fetchError}`, 'error');
+    } else if (updateAvailable && latest) {
+      showToast(`v${latest} is available!`, 'warn');
+    } else if (latest) {
+      showToast('You\'re on the latest version', 'success');
+    }
+  }, [checking, fetchError, updateAvailable, latest, settings, showToast]);
+
   async function handleVersionClick() {
     setUpToDate(false);
+    wasManualCheck.current = true;
     await refreshVersion();
   }
 
@@ -66,6 +88,7 @@ export function Header({ onToggleSidebar, onOpenSettings }: HeaderProps) {
   }, [appName]);
 
   return (
+    <>
     <header className="flex items-center justify-between h-12 px-4 bg-surface-alt border-b border-border shrink-0">
       <div className="flex items-center gap-3">
         <button
@@ -209,5 +232,26 @@ export function Header({ onToggleSidebar, onOpenSettings }: HeaderProps) {
         </div>
       </div>
     </header>
+
+    {/* Version check toast */}
+    {toast && (
+      <div className={`fixed bottom-6 right-6 z-[100] flex items-center gap-2 px-4 py-2.5 rounded-lg shadow-lg text-sm font-medium animate-[fadeIn_0.2s_ease-out] ${
+        toast.type === 'success' ? 'bg-green-500 text-white'
+        : toast.type === 'warn' ? 'bg-accent text-white'
+        : 'bg-red-500 text-white'
+      }`}>
+        {toast.type === 'success' && (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        )}
+        {toast.type === 'warn' && (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12l7-7 7 7"/></svg>
+        )}
+        {toast.type === 'error' && (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        )}
+        {toast.msg}
+      </div>
+    )}
+    </>
   );
 }

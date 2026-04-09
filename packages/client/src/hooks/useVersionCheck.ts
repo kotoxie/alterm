@@ -7,6 +7,7 @@ export interface VersionInfo {
   latest: string | null;
   updateAvailable: boolean;
   releaseUrl: string | null;
+  fetchError: string | null;
   checking: boolean;
   refresh: () => void;
 }
@@ -16,6 +17,7 @@ export function useVersionCheck(): VersionInfo {
   const [latest, setLatest] = useState<string | null>(null);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [releaseUrl, setReleaseUrl] = useState<string | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
 
   const check = useCallback(async (force = false) => {
@@ -28,10 +30,12 @@ export function useVersionCheck(): VersionInfo {
         latest: string | null;
         updateAvailable: boolean;
         releaseUrl: string | null;
+        fetchError: string | null;
       };
       setLatest(data.latest);
       setUpdateAvailable(data.updateAvailable);
       setReleaseUrl(data.releaseUrl);
+      setFetchError(data.fetchError ?? null);
     } catch {
       // network unavailable — silently ignore
     }
@@ -50,5 +54,5 @@ export function useVersionCheck(): VersionInfo {
     return () => clearInterval(timer);
   }, [check]);
 
-  return { current, latest, updateAvailable, releaseUrl, checking, refresh };
+  return { current, latest, updateAvailable, releaseUrl, fetchError, checking, refresh };
 }
