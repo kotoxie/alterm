@@ -23,8 +23,6 @@ interface ConnectionRow {
   recording_enabled: number;
 }
 
-const IAC = 0xFF; // Telnet Interpret As Command byte
-
 /** Write a credential string to a Telnet socket, escaping IAC bytes (C6 security fix).
  *  Without escaping, a 0xFF byte in username/password triggers Telnet command injection. */
 function writeTelnetCredential(socket: net.Socket, text: string): void {
