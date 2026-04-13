@@ -487,6 +487,13 @@ function runMigrations() {
         }
       },
     },
+    {
+      version: 11,
+      run: (database: Database) => {
+        // Add per-connection TLS cert validation toggle (C5 security fix)
+        try { database.run('ALTER TABLE connections ADD COLUMN skip_cert_validation INTEGER NOT NULL DEFAULT 0'); } catch { /* already exists */ }
+      },
+    },
   ];
 
   for (const migration of migrations) {

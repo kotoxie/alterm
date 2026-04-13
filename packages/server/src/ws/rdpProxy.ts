@@ -21,6 +21,7 @@ interface ConnectionRow {
   username: string | null;
   encrypted_password: string | null;
   name: string;
+  skip_cert_validation: number;
 }
 
 export function setupRdpProxy(server: https.Server): void {
@@ -201,11 +202,12 @@ export function setupRdpProxy(server: https.Server): void {
           if (ws.readyState !== WebSocket.OPEN) { cleanup(); return; }
 
           // Upgrade the raw TCP socket to TLS (Node.js/OpenSSL acts as TLS client)
+          // skip_cert_validation is a per-connection toggle (C5 security fix — default: validate)
           tlsTunnel = tls.connect({
             socket: tunnel!,
-            rejectUnauthorized: false,
+            rejectUnauthorized: conn.skip_cert_validation !== 1,
             host: conn.host,
-            checkServerIdentity: () => undefined,
+            ...(conn.skip_cert_validation === 1 ? { checkServerIdentity: () => undefined } : {}),
           });
 
           tlsTunnel.once('secureConnect', () => {

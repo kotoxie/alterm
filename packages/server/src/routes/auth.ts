@@ -40,6 +40,33 @@ setInterval(() => {
   }
 }, IP_RATE_WINDOW_MS);
 
+// ── Per-userId MFA brute-force protection ──────────────────────────────────────
+const mfaLoginAttempts = new Map<string, IpRecord>();
+const MFA_RATE_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+const MFA_RATE_MAX = 5; // max failed MFA attempts per userId per window
+
+function checkMfaRateLimit(userId: string): boolean {
+  const now = Date.now();
+  const rec = mfaLoginAttempts.get(userId);
+  if (!rec || now > rec.resetAt) {
+    mfaLoginAttempts.set(userId, { count: 1, resetAt: now + MFA_RATE_WINDOW_MS });
+    return true;
+  }
+  rec.count += 1;
+  return rec.count <= MFA_RATE_MAX;
+}
+
+function clearMfaAttempts(userId: string): void {
+  mfaLoginAttempts.delete(userId);
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, rec] of mfaLoginAttempts) {
+    if (now > rec.resetAt) mfaLoginAttempts.delete(id);
+  }
+}, MFA_RATE_WINDOW_MS);
+
 const TRUSTED_DEVICE_COOKIE = 'alterm_trusted_device';
 const TRUSTED_DEVICE_DAYS = 30;
 
@@ -395,6 +422,12 @@ router.post('/login/mfa', async (req: Request, res: Response) => {
     return;
   }
 
+  // MFA brute-force protection (C3)
+  if (!checkMfaRateLimit(userId)) {
+    res.status(429).json({ error: 'Too many MFA attempts. Please try again later.' });
+    return;
+  }
+
   const user = queryOne<UserRow>(
     'SELECT id, username, display_name, role, theme, mfa_secret, mfa_enabled, dismissed_warnings_json FROM users WHERE id = ?',
     [userId],
@@ -415,6 +448,8 @@ router.post('/login/mfa', async (req: Request, res: Response) => {
     res.status(401).json({ error: 'Invalid verification code' });
     return;
   }
+
+  clearMfaAttempts(userId);
 
   const maxSessionMinutes = parseInt(getSetting('security.max_session_minutes') ?? '0', 10);
   const token = signToken({ userId: user.id, username: user.username, role: user.role }, maxSessionMinutes || undefined);

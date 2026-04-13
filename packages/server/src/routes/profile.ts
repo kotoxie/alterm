@@ -12,6 +12,30 @@ import { encrypt, decrypt } from '../services/encryption.js';
 const router = Router();
 router.use(authRequired);
 
+// ── Per-userId MFA brute-force protection (C3) ───────────────────────────────
+interface MfaRecord { count: number; resetAt: number; }
+const mfaVerifyAttempts = new Map<string, MfaRecord>();
+const MFA_VERIFY_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+const MFA_VERIFY_MAX = 5;
+
+function checkMfaVerifyLimit(userId: string): boolean {
+  const now = Date.now();
+  const rec = mfaVerifyAttempts.get(userId);
+  if (!rec || now > rec.resetAt) {
+    mfaVerifyAttempts.set(userId, { count: 1, resetAt: now + MFA_VERIFY_WINDOW_MS });
+    return true;
+  }
+  rec.count += 1;
+  return rec.count <= MFA_VERIFY_MAX;
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, rec] of mfaVerifyAttempts) {
+    if (now > rec.resetAt) mfaVerifyAttempts.delete(id);
+  }
+}, MFA_VERIFY_WINDOW_MS);
+
 interface UserRow {
   id: string;
   username: string;
@@ -130,6 +154,9 @@ router.put('/password', async (req: Request, res: Response) => {
   const newHash = await bcrypt.hash(newPassword, 12);
   execute("UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?", [newHash, userId]);
 
+  // Revoke all other active sessions so compromised tokens can't persist (C4)
+  execute('DELETE FROM login_sessions WHERE user_id = ? AND token_hash != ?', [userId, req.user!.tokenHash]);
+
   logAudit({
     userId,
     eventType: 'auth.password_changed',
@@ -199,6 +226,12 @@ router.post('/mfa/verify', (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const { token } = req.body as { token?: string };
   if (!token) { res.status(400).json({ error: 'token is required' }); return; }
+
+  // Rate-limit MFA setup verification (C3)
+  if (!checkMfaVerifyLimit(userId)) {
+    res.status(429).json({ error: 'Too many attempts. Please wait before trying again.' });
+    return;
+  }
 
   const user = queryOne<UserRow>('SELECT mfa_secret FROM users WHERE id = ?', [userId]);
   const secret = user?.mfa_secret ? (() => { try { return decrypt(user.mfa_secret); } catch { return null; } })() : null;
