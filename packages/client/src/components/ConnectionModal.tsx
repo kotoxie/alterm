@@ -76,7 +76,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
   const [shareUsers, setShareUsers] = useState<{ id: string; username: string }[]>([]);
   const [selectedShareRoles, setSelectedShareRoles] = useState<string[]>([]);
   const [selectedShareUsers, setSelectedShareUsers] = useState<string[]>([]);
-  const [skipCertValidation, setSkipCertValidation] = useState(false);
+  const [skipCertValidation, setSkipCertValidation] = useState(true);
   const newFolderInputRef = useRef<HTMLInputElement>(null);
 
   // Load full details when editing an existing connection
@@ -382,21 +382,35 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
           )}
 
           {protocol === 'rdp' && (
-            <div className="flex items-start gap-3 p-2.5 rounded border border-yellow-500/30 bg-yellow-500/5">
-              <input
-                id="skipCertValidation"
-                type="checkbox"
-                checked={skipCertValidation}
-                onChange={(e) => setSkipCertValidation(e.target.checked)}
-                className="mt-0.5 rounded border-border accent-accent"
-              />
-              <div>
-                <label htmlFor="skipCertValidation" className="text-xs font-medium text-text-primary cursor-pointer">
-                  ⚠ Skip TLS certificate validation
-                </label>
-                <p className="text-xs text-text-secondary mt-0.5">
-                  Only enable for self-signed certs in trusted networks. Disabling certificate validation exposes connections to man-in-the-middle attacks.
-                </p>
+            <div>
+              <label className="block text-xs font-medium text-text-secondary mb-1">TLS Certificate</label>
+              <div
+                className={`flex items-center gap-2.5 px-3 py-2 rounded border cursor-pointer transition-colors ${
+                  skipCertValidation
+                    ? 'border-border bg-surface hover:bg-surface-hover'
+                    : 'border-green-500/40 bg-green-500/5'
+                }`}
+                onClick={() => setSkipCertValidation(!skipCertValidation)}
+              >
+                <div className={`relative w-8 h-[18px] rounded-full transition-colors ${skipCertValidation ? 'bg-zinc-600' : 'bg-green-500'}`}>
+                  <div className={`absolute top-[2px] h-[14px] w-[14px] rounded-full bg-white transition-transform ${skipCertValidation ? 'left-[2px]' : 'left-[16px]'}`} />
+                </div>
+                <div className="flex-1">
+                  <span className="text-xs font-medium text-text-primary">
+                    {skipCertValidation ? 'Certificate validation disabled' : 'Certificate validation enabled'}
+                  </span>
+                  <p className="text-[11px] text-text-secondary mt-0.5 leading-tight">
+                    {skipCertValidation
+                      ? 'Accepts any certificate — suitable for self-signed certs in trusted networks.'
+                      : 'Only connects if the server has a valid, trusted TLS certificate.'}
+                  </p>
+                </div>
+                {skipCertValidation && (
+                  <span className="text-amber-400 text-sm" title="Certificate validation is off">⚠</span>
+                )}
+                {!skipCertValidation && (
+                  <span className="text-green-400 text-sm" title="Certificate validation is on">🔒</span>
+                )}
               </div>
             </div>
           )}
