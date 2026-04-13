@@ -343,7 +343,7 @@ router.post('/:connectionId/chmod', async (req: Request, res: Response) => {
   } finally { ssh?.end(); }
 });
 
-// POST /:connectionId/copy — copy a file (server-side)
+// POST /:connectionId/copy — copy a file (server-side, uses SFTP-safe shell quoting)
 router.post('/:connectionId/copy', async (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const conn = getConn(req.params.connectionId as string, userId, req.user!.role);
@@ -352,13 +352,16 @@ router.post('/:connectionId/copy', async (req: Request, res: Response) => {
   const { srcPath, destPath } = req.body as { srcPath?: string; destPath?: string };
   if (!srcPath || !destPath) { res.status(400).json({ error: 'srcPath and destPath required' }); return; }
 
+  // Shell-safe single-quote escaping — prevents command injection via path names
+  const q = (s: string) => "'" + s.replace(/'/g, "'\\''") + "'";
+
   let ssh: SshClient | null = null;
   try {
     const result = await connectSftp(conn);
     ssh = result.ssh;
     // Use SSH exec for copy since SFTP has no native copy
     await new Promise<void>((resolve, reject) => {
-      ssh!.exec(`cp -r "${srcPath}" "${destPath}"`, (err, stream) => {
+      ssh!.exec(`cp -r ${q(srcPath)} ${q(destPath)}`, (err, stream) => {
         if (err) { reject(err); return; }
         let stderr = '';
         stream.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });

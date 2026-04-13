@@ -273,7 +273,7 @@ router.post('/', (req: Request, res: Response) => {
     return;
   }
 
-  const { name, protocol, host, port, username, password, groupId, privateKey, extraConfig, shared, tunnels, tags } = req.body;
+  const { name, protocol, host, port, username, password, groupId, privateKey, extraConfig, shared, tunnels, tags, skipCertValidation } = req.body;
 
   if (!name || !protocol || !host || !port) {
     res.status(400).json({ error: 'Name, protocol, host, and port are required' });
@@ -291,8 +291,8 @@ router.post('/', (req: Request, res: Response) => {
   const tagsStr = Array.isArray(tags) ? JSON.stringify(tags.map((t: string) => t.trim().toLowerCase()).filter(Boolean)) : null;
 
   execute(
-    `INSERT INTO connections (id, user_id, group_id, name, protocol, host, port, username, encrypted_password, private_key, extra_config_json, sort_order, shared, tunnels_json, tags)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO connections (id, user_id, group_id, name, protocol, host, port, username, encrypted_password, private_key, extra_config_json, sort_order, shared, tunnels_json, tags, skip_cert_validation)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id, userId, groupId || null, name, protocol, host, port,
       username || null, encryptedPassword, encryptedKey,
@@ -300,6 +300,7 @@ router.post('/', (req: Request, res: Response) => {
       shared ? 1 : 0,
       tunnels ? JSON.stringify(tunnels) : null,
       tagsStr,
+      skipCertValidation ? 1 : 0,
     ],
   );
 
@@ -379,7 +380,7 @@ router.put('/:id', (req: Request, res: Response) => {
     groupId: existing.group_id,
   };
 
-  const { name, protocol, host, port, username, password, groupId, privateKey, shared, tunnels, extraConfig, tags } = req.body;
+  const { name, protocol, host, port, username, password, groupId, privateKey, shared, tunnels, extraConfig, tags, skipCertValidation } = req.body;
 
   const updates: string[] = [];
   const params: unknown[] = [];
@@ -396,6 +397,7 @@ router.put('/:id', (req: Request, res: Response) => {
   if (tunnels !== undefined) { updates.push('tunnels_json = ?'); params.push(tunnels ? JSON.stringify(tunnels) : null); }
   if (extraConfig !== undefined) { updates.push('extra_config_json = ?'); params.push(extraConfig ? JSON.stringify(extraConfig) : null); }
   if (tags !== undefined) { updates.push('tags = ?'); params.push(Array.isArray(tags) ? JSON.stringify(tags.map((t: string) => t.trim().toLowerCase()).filter(Boolean)) : null); }
+  if (skipCertValidation !== undefined) { updates.push('skip_cert_validation = ?'); params.push(skipCertValidation ? 1 : 0); }
 
   if (updates.length === 0) {
     res.status(400).json({ error: 'No fields to update' });
@@ -511,6 +513,7 @@ router.get('/:id', (req: Request, res: Response) => {
     extraConfig,
     tags,
     shares,
+    skipCertValidation: conn.skip_cert_validation === 1,
   });
 });
 

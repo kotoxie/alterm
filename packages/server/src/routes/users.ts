@@ -226,6 +226,9 @@ router.post('/:id/reset-password', async (req: Request, res: Response) => {
   const passwordHash = await bcrypt.hash(newPassword, 12);
   execute("UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?", [passwordHash, id]);
 
+  // Revoke all sessions for this user so old password tokens become invalid (C4)
+  execute('DELETE FROM login_sessions WHERE user_id = ?', [id]);
+
   logAudit({
     userId: req.user!.userId,
     eventType: 'user.password_reset',

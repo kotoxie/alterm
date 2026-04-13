@@ -76,6 +76,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
   const [shareUsers, setShareUsers] = useState<{ id: string; username: string }[]>([]);
   const [selectedShareRoles, setSelectedShareRoles] = useState<string[]>([]);
   const [selectedShareUsers, setSelectedShareUsers] = useState<string[]>([]);
+  const [skipCertValidation, setSkipCertValidation] = useState(false);
   const newFolderInputRef = useRef<HTMLInputElement>(null);
 
   // Load full details when editing an existing connection
@@ -94,6 +95,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
         if (d.extraConfig?.share) setSmbShare(d.extraConfig.share as string);
         if (d.extraConfig?.domain) setSmbDomain(d.extraConfig.domain as string);
         if (d.tags && Array.isArray(d.tags)) setTags(d.tags);
+        if (d.skipCertValidation !== undefined) setSkipCertValidation(!!d.skipCertValidation);
         if (d.shares && Array.isArray(d.shares)) {
           setSelectedShareRoles(d.shares.filter((s: { shareType: string }) => s.shareType === 'role').map((s: { targetId: string }) => s.targetId));
           setSelectedShareUsers(d.shares.filter((s: { shareType: string }) => s.shareType === 'user').map((s: { targetId: string }) => s.targetId));
@@ -167,6 +169,9 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
       }
       if (protocol === 'smb') {
         body.extraConfig = { share: smbShare.trim(), ...(smbDomain.trim() ? { domain: smbDomain.trim() } : {}) };
+      }
+      if (protocol === 'rdp') {
+        body.skipCertValidation = skipCertValidation;
       }
       if (tags.length > 0) body.tags = tags;
       const url = connection ? `/api/v1/connections/${connection.id}` : '/api/v1/connections';
@@ -376,11 +381,27 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
             </div>
           )}
 
+          {protocol === 'rdp' && (
+            <div className="flex items-start gap-3 p-2.5 rounded border border-yellow-500/30 bg-yellow-500/5">
+              <input
+                id="skipCertValidation"
+                type="checkbox"
+                checked={skipCertValidation}
+                onChange={(e) => setSkipCertValidation(e.target.checked)}
+                className="mt-0.5 rounded border-border accent-accent"
+              />
+              <div>
+                <label htmlFor="skipCertValidation" className="text-xs font-medium text-text-primary cursor-pointer">
+                  ⚠ Skip TLS certificate validation
+                </label>
+                <p className="text-xs text-text-secondary mt-0.5">
+                  Only enable for self-signed certs in trusted networks. Disabling certificate validation exposes connections to man-in-the-middle attacks.
+                </p>
+              </div>
+            </div>
+          )}
+
           {protocol === 'ssh' && (
-            <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">
-                Port Forwards <span className="font-normal">(local→remote)</span>
-              </label>
               <div className="space-y-1">
                 {tunnels.map((t) => (
                   <div key={t.id} className="flex gap-1 items-center">

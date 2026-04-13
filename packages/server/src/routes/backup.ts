@@ -4,7 +4,6 @@ import path from 'path';
 import { requirePermission } from '../middleware/auth.js';
 import { logAudit } from '../services/audit.js';
 import { createBackup, restoreBackup, getRecordingsSizeInfo } from '../services/backup.js';
-import { setEncryptionKey } from '../services/encryption.js';
 import { getDb, restoreDbFromBytes } from '../db/index.js';
 import { config } from '../config.js';
 
@@ -64,20 +63,18 @@ router.post('/import', requirePermission('settings.backup'), (req: Request, res:
   try {
     const restored = restoreBackup(data, password);
 
-    // Restore recordings
+    // Restore recordings — sanitize filenames to prevent path traversal (C2)
     fs.mkdirSync(config.recordingsDir, { recursive: true });
     for (const f of fs.readdirSync(config.recordingsDir)) {
       try { fs.unlinkSync(path.join(config.recordingsDir, f)); } catch { /* ignore */ }
     }
     for (const rec of restored.recordings) {
-      fs.writeFileSync(path.join(config.recordingsDir, rec.name), rec.data);
-    }
-
-    // Restore encryption key
-    if (restored.encryptionKeyHex) {
-      setEncryptionKey(restored.encryptionKeyHex);
-      const keyPath = path.join(config.dataDir, 'encryption.key');
-      fs.writeFileSync(keyPath, restored.encryptionKeyHex, { mode: 0o600 });
+      const safeName = path.basename(rec.name);
+      if (!safeName || !/^[\w.\-]+$/.test(safeName)) {
+        console.warn(`[backup] Skipping recording with invalid filename: ${rec.name}`);
+        continue;
+      }
+      fs.writeFileSync(path.join(config.recordingsDir, safeName), rec.data);
     }
 
     // Hot-swap the database (last, so the audit log above isn't lost)

@@ -23,6 +23,21 @@ interface ConnectionRow {
   recording_enabled: number;
 }
 
+const IAC = 0xFF; // Telnet Interpret As Command byte
+
+/** Write a credential string to a Telnet socket, escaping IAC bytes (C6 security fix).
+ *  Without escaping, a 0xFF byte in username/password triggers Telnet command injection. */
+function writeTelnetCredential(socket: net.Socket, text: string): void {
+  const raw = Buffer.from(text, 'utf8');
+  const escaped: number[] = [];
+  for (const b of raw) {
+    escaped.push(b);
+    if (b === IAC) escaped.push(IAC); // RFC 854: double IAC to send literal 0xFF
+  }
+  escaped.push(0x0D, 0x0A); // \r\n
+  socket.write(Buffer.from(escaped));
+}
+
 interface TelnetCachedSession {
   socket: net.Socket;
   ws: WebSocket | null;
@@ -367,13 +382,13 @@ export function setupTelnetProxy(server: https.Server): void {
             const lower = loginBuffer.toLowerCase();
             if (!loginSent && (lower.includes('login:') || lower.includes('username:'))) {
               if (conn.username) {
-                socket.write(conn.username + '\r\n');
+                writeTelnetCredential(socket, conn.username);
                 loginSent = true;
                 loginBuffer = '';
               }
             } else if (loginSent && !passwordSent && lower.includes('password:')) {
               if (password) {
-                socket.write(password + '\r\n');
+                writeTelnetCredential(socket, password);
               }
               passwordSent = true;
               loginBuffer = '';
