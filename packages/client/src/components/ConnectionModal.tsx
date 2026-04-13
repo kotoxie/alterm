@@ -402,6 +402,10 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
           )}
 
           {protocol === 'ssh' && (
+            <div>
+              <label className="block text-xs font-medium text-text-secondary mb-1">
+                Port Forwards <span className="font-normal">(local→remote)</span>
+              </label>
               <div className="space-y-1">
                 {tunnels.map((t) => (
                   <div key={t.id} className="flex gap-1 items-center">
