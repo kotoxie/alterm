@@ -26,6 +26,7 @@ interface ConnectionRow {
   tunnels_json: string | null;
   extra_config_json: string | null;
   tags: string | null;
+  skip_cert_validation: number;
 }
 
 interface GroupRow {
