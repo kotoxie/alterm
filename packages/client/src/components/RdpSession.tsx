@@ -688,7 +688,25 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
             };
             const kindName = kindNames[kindNum] ?? `Unknown(${kindNum})`;
             const backtrace = typeof e.backtrace === 'function' ? e.backtrace() : '';
-            msg = `IronError [${kindName}]${backtrace ? ': ' + backtrace : ''}`;
+
+            // Translate internal error codes into user-friendly messages
+            if (kindNum === 4 /* RDCleanPath */) {
+              msg = 'Could not establish a secure connection to the remote host. '
+                + 'This usually means the server\'s TLS certificate is self-signed or untrusted. '
+                + 'Try editing the connection and disabling "Certificate validation".';
+            } else if (kindNum === 1 /* WrongPassword */) {
+              msg = 'Authentication failed — the username or password is incorrect.';
+            } else if (kindNum === 2 /* LogonFailure */) {
+              msg = 'Logon failed — check the credentials or verify the account is not locked.';
+            } else if (kindNum === 3 /* AccessDenied */) {
+              msg = 'Access denied — the account does not have permission to log on via RDP.';
+            } else if (kindNum === 5 /* ProxyConnect */) {
+              msg = 'Could not reach the remote host. Check that the hostname and port are correct and the server is online.';
+            } else if (kindNum === 6 /* NegotiationFailure */) {
+              msg = 'Protocol negotiation failed — the remote host may not support the required security level.';
+            } else {
+              msg = `Connection error [${kindName}]${backtrace ? ': ' + backtrace : ''}`;
+            }
           } else {
             msg = err instanceof Error ? err.message : String(err);
           }
