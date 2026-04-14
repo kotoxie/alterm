@@ -5,20 +5,8 @@ import { getAllSettings, getSetting, setSettings } from '../services/settings.js
 import { encrypt, usingFileKey } from '../services/encryption.js';
 
 const router = Router();
-router.use(authRequired);
 
-// GET / — return all settings (settings.manage permission)
-router.get('/', (req: Request, res: Response) => {
-  if (!userCan(req, 'settings.manage')) {
-    res.status(403).json({ error: 'Insufficient permissions' });
-    return;
-  }
-  const settings = getAllSettings();
-  settings['system.insecure_key'] = String(usingFileKey);
-  res.json({ settings });
-});
-
-// GET /public — return non-sensitive settings for all authenticated users
+// GET /public — unauthenticated, returns safe public settings needed before login
 router.get('/public', (_req: Request, res: Response) => {
   const PUBLIC_KEYS = [
     'app.name',
@@ -40,6 +28,20 @@ router.get('/public', (_req: Request, res: Response) => {
   for (const key of PUBLIC_KEYS) {
     settings[key] = getSetting(key);
   }
+  settings['system.insecure_key'] = String(usingFileKey);
+  res.json({ settings });
+});
+
+// All routes below require authentication
+router.use(authRequired);
+
+// GET / — return all settings (settings.manage permission)
+router.get('/', (req: Request, res: Response) => {
+  if (!userCan(req, 'settings.manage')) {
+    res.status(403).json({ error: 'Insufficient permissions' });
+    return;
+  }
+  const settings = getAllSettings();
   settings['system.insecure_key'] = String(usingFileKey);
   res.json({ settings });
 });
