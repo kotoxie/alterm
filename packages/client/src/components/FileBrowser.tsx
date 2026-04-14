@@ -193,8 +193,17 @@ export function FileBrowser({
     }
   }, [connectionId, apiBase, pathSep, onStatusChange, fileSessionId]);
 
+  const pathRef = useRef(path);
+  useEffect(() => { pathRef.current = path; }, [path]);
+  const statusRef = useRef(status);
+  useEffect(() => { statusRef.current = status; }, [status]);
+
   useEffect(() => {
-    if (isActive) listDir(pathSep === '/' ? '/' : '');
+    if (!isActive) return;
+    // If already connected and in a directory, reload the current path (don't reset to root on tab switch)
+    // Only go to root on initial connect (path is empty) or after a disconnect
+    const target = (statusRef.current === 'connected' && pathRef.current) ? pathRef.current : (pathSep === '/' ? '/' : '');
+    listDir(target);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connectionId, isActive]);
 
