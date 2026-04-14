@@ -454,19 +454,29 @@ export function FileBrowser({
     setContextMenu({ x: e.clientX, y: e.clientY, file: f });
   }
 
-  const pathParts = path ? path.split(pathSep).filter(Boolean) : [];
-  const anySelected = selectedFiles.size > 0;
-  const selectedFileCount = [...selectedFiles].filter((name) => {
-    const f = files.find((fi) => fi.filename === name);
-    return f && !isDir(f);
-  }).length;
-
   const sortedFiles = [...files].sort((a, b) => {
     const aDir = isDir(a), bDir = isDir(b);
     if (aDir && !bDir) return -1;
     if (!aDir && bDir) return 1;
     return a.filename.localeCompare(b.filename);
   });
+
+  const pathParts = path ? path.split(pathSep).filter(Boolean) : [];
+  const anySelected = selectedFiles.size > 0;
+  const allSelected = sortedFiles.length > 0 && selectedFiles.size === sortedFiles.length;
+  const someSelected = anySelected && !allSelected;
+  const selectedFileCount = [...selectedFiles].filter((name) => {
+    const f = files.find((fi) => fi.filename === name);
+    return f && !isDir(f);
+  }).length;
+
+  function toggleSelectAll() {
+    if (allSelected) {
+      setSelectedFiles(new Set());
+    } else {
+      setSelectedFiles(new Set(sortedFiles.map((f) => f.filename)));
+    }
+  }
 
   return (
     <div className="absolute inset-0 bg-surface flex flex-col font-sans text-sm select-none">
@@ -585,6 +595,9 @@ export function FileBrowser({
           <span className="inline-flex items-center gap-1.5 bg-accent/15 text-accent text-xs font-medium px-2 py-0.5 rounded-full">
             {selectedFiles.size} selected
           </span>
+          <button onClick={toggleSelectAll} className="text-xs text-accent hover:text-accent-hover transition-colors">
+            {allSelected ? 'Deselect all' : 'Select all'}
+          </button>
           <button onClick={() => setSelectedFiles(new Set())} className="text-xs text-text-secondary hover:text-text-primary transition-colors">Clear</button>
           <div className="flex-1" />
           {selectedFileCount > 0 && (
@@ -646,6 +659,26 @@ export function FileBrowser({
         )}
         {!loading && sortedFiles.length > 0 && (
           <div className="px-2 py-1.5">
+            {/* Select-all header row */}
+            <div
+              className="flex items-center gap-2 px-2 py-1.5 mb-0.5 rounded-md cursor-pointer text-text-secondary hover:bg-surface-hover transition-colors"
+              onClick={toggleSelectAll}
+            >
+              <div
+                className={`flex items-center justify-center w-4 h-4 rounded border-2 transition-all shrink-0 ${
+                  allSelected
+                    ? 'bg-accent border-accent text-white shadow-xs'
+                    : someSelected
+                      ? 'bg-accent/40 border-accent text-white'
+                      : 'border-border/60 text-transparent hover:border-accent/70'
+                }`}
+              >
+                {(allSelected || someSelected) && <CheckIcon />}
+              </div>
+              <span className="text-xs font-medium select-none">
+                {allSelected ? 'Deselect all' : `Select all (${sortedFiles.length})`}
+              </span>
+            </div>
             {sortedFiles.map((f) => {
               const isSelected = selectedFiles.has(f.filename);
               const category = isDir(f) ? 'other' : getFileCategory(f.filename);
