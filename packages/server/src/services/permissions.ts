@@ -17,7 +17,7 @@ export type PermissionKey = typeof ALL_PERMISSIONS[number];
 export const DEFAULT_BUILTIN_PERMISSIONS: Record<string, PermissionKey[]> = {
   admin: [...ALL_PERMISSIONS],
   user: [
-    'connections.create', 'connections.edit_own', 'connections.delete_own', 'connections.share',
+    'connections.create', 'connections.edit_own', 'connections.delete_own', 'connections.share', 'connections.import_export',
     'sessions.view_own',
     'audit.view_own',
     'protocols.ssh', 'protocols.rdp', 'protocols.vnc', 'protocols.smb', 'protocols.ftp', 'protocols.telnet',

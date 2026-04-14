@@ -216,6 +216,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
   const [newConnProtocol, setNewConnProtocol] = useState<string>('rdp');
   const [deleteFolderConfirm, setDeleteFolderConfirm] = useState<{ group: ConnectionGroup; connCount: number } | null>(null);
   const [showExportConfirm, setShowExportConfirm] = useState(false);
+  const [importResult, setImportResult] = useState<{ connectionsCreated: number; groupsCreated: number } | { error: string } | null>(null);
   const inlineNewGroupInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const folderMenuRef = useRef<HTMLDivElement>(null);
@@ -544,10 +545,19 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
         credentials: 'include',
         body: JSON.stringify(json),
       });
+      const data = await res.json() as { groupsCreated?: number; connectionsCreated?: number; newGroupIds?: string[]; error?: string };
       if (res.ok) {
         await fetchConnections();
+        if (data.newGroupIds?.length) {
+          setExpandedGroups(prev => persistExpandedGroups(new Set([...prev, ...data.newGroupIds!])));
+        }
+        setImportResult({ connectionsCreated: data.connectionsCreated ?? 0, groupsCreated: data.groupsCreated ?? 0 });
+      } else {
+        setImportResult({ error: data.error || 'Import failed. You may not have permission to import connections.' });
       }
-    } catch { /* ignore */ }
+    } catch {
+      setImportResult({ error: 'Failed to read or parse the file. Make sure it is a valid Alterm export file.' });
+    }
     // Reset so same file can be imported again
     e.target.value = '';
   }
@@ -1277,6 +1287,54 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
                 className="px-3 py-1.5 text-xs bg-accent hover:bg-accent-hover text-white rounded font-medium"
               >
                 Export connections
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import result dialog */}
+      {importResult && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
+          <div className="bg-surface-alt border border-border rounded-lg shadow-xl p-5 max-w-sm w-full mx-4">
+            <div className="flex items-start gap-3 mb-4">
+              {'error' in importResult ? (
+                <div className="shrink-0 w-9 h-9 rounded-full bg-red-500/15 flex items-center justify-center text-red-400">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
+                  </svg>
+                </div>
+              ) : (
+                <div className="shrink-0 w-9 h-9 rounded-full bg-green-500/15 flex items-center justify-center text-green-400">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                </div>
+              )}
+              <div>
+                {'error' in importResult ? (
+                  <>
+                    <h3 className="text-sm font-semibold text-text-primary mb-1">Import failed</h3>
+                    <p className="text-xs text-text-secondary leading-relaxed">{importResult.error}</p>
+                  </>
+                ) : (
+                  <>
+                    <h3 className="text-sm font-semibold text-text-primary mb-1">Import successful</h3>
+                    <p className="text-xs text-text-secondary leading-relaxed">
+                      Imported <span className="font-medium text-text-primary">{importResult.connectionsCreated} connection{importResult.connectionsCreated !== 1 ? 's' : ''}</span>
+                      {importResult.groupsCreated > 0 && <> in <span className="font-medium text-text-primary">{importResult.groupsCreated} folder{importResult.groupsCreated !== 1 ? 's' : ''}</span></>}.
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setImportResult(null)}
+                className="px-3 py-1.5 text-xs bg-accent hover:bg-accent-hover text-white rounded font-medium"
+              >
+                OK
               </button>
             </div>
           </div>
