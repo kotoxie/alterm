@@ -20,6 +20,7 @@ export function LoginPage() {
   const [insecureKey, setInsecureKey] = useState(false);
   const [keyWarnDismissed, setKeyWarnDismissed] = useState(false);
   const [appName, setAppName] = useState('Alterm');
+  const [appLogo, setAppLogo] = useState('');
 
   // MFA step
   const [mfaRequired, setMfaRequired] = useState(false);
@@ -56,6 +57,7 @@ export function LoginPage() {
       .then((d: { settings?: Record<string, string> }) => {
         if (d?.settings?.['system.insecure_key'] === 'true') setInsecureKey(true);
         if (d?.settings?.['app.name']) setAppName(d.settings['app.name']);
+        if (d?.settings?.['app.logo']) setAppLogo(d.settings['app.logo']);
       })
       .catch(() => {});
   }, []);
@@ -146,7 +148,11 @@ export function LoginPage() {
       <div className="flex items-center justify-center min-h-screen bg-surface">
         <div className="w-full max-w-md p-8 bg-surface-alt rounded-lg border border-border">
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-text-primary">{appName}</h1>
+            {appLogo ? (
+              <img src={appLogo} alt={appName} className="h-12 w-auto max-w-[180px] object-contain mx-auto mb-2" />
+            ) : (
+              <h1 className="text-3xl font-bold text-text-primary">{appName}</h1>
+            )}
             <p className="text-text-secondary mt-2">Two-factor authentication</p>
           </div>
           <form onSubmit={handleMfaSubmit} className="space-y-4">
@@ -217,7 +223,11 @@ export function LoginPage() {
       )}
       <div className="w-full max-w-md p-8 bg-surface-alt rounded-lg border border-border">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-text-primary">{appName}</h1>
+          {appLogo ? (
+            <img src={appLogo} alt={appName} className="h-12 w-auto max-w-[180px] object-contain mx-auto mb-2" />
+          ) : (
+            <h1 className="text-3xl font-bold text-text-primary">{appName}</h1>
+          )}
           <p className="text-text-secondary mt-2">Sign in to continue</p>
         </div>
 
