@@ -20,6 +20,7 @@ export interface SshCachedSession {
   ws: WebSocket | null;
   timer: NodeJS.Timeout | null;
   userId: string;
+  tokenHash: string; // H4: bind session to the token that created it
   sessionDbId: string;
   connectionId: string;
   cols: number;

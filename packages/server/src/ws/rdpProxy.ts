@@ -5,6 +5,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import type https from 'https';
 import { isSessionRevoked } from '../services/loginSession.js';
 import { registerWs, unregisterWs } from './wsRegistry.js';
+import { acquireConnection, releaseConnection } from './connectionLimits.js';
 import { redeemWsTicket } from '../services/wsTicket.js';
 import { userHasPermission, wsCanAccess } from '../services/permissions.js';
 import { queryOne, execute } from '../db/helpers.js';
@@ -157,7 +158,11 @@ export function setupRdpProxy(server: https.Server): void {
     if (!userHasPermission(userId, 'protocols.rdp')) { ws.close(4003, 'Protocol not permitted'); return; }
 
     registerWs(tokenHash, ws);
-    ws.once('close', () => unregisterWs(tokenHash, ws));
+    ws.once('close', () => { unregisterWs(tokenHash, ws); releaseConnection(userId); });
+
+    // Enforce per-user and global connection limits (H2)
+    const limit = acquireConnection(userId);
+    if (!limit.allowed) { ws.close(4008, limit.reason ?? 'Connection limit'); return; }
 
     const access = wsCanAccess(userId);
     const conn = queryOne<ConnectionRow>(

@@ -8,6 +8,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { hashToken, isSessionRevoked } from '../services/loginSession.js';
 import { registerWs, unregisterWs } from './wsRegistry.js';
+import { acquireConnection, releaseConnection } from './connectionLimits.js';
 import { queryOne, execute } from '../db/helpers.js';
 import { redeemWsTicket } from '../services/wsTicket.js';
 import { userHasPermission, wsCanAccess } from '../services/permissions.js';
@@ -79,6 +80,7 @@ function teardownSession(
     details: { connectionId, sessionId: sessionDbId }, ipAddress: clientIp,
   });
   removeSession(clientSessionId);
+  releaseConnection(userId);
 }
 
 function wireClientWs(
@@ -152,7 +154,7 @@ export function setupSshProxy(server: https.Server): void {
 
     // ── Reattach path ────────────────────────────────────────────────────────
     const cached = getSession(clientSessionId);
-    if (cached && cached.userId === userId && cached.connectionId === connectionId) {
+    if (cached && cached.userId === userId && cached.connectionId === connectionId && cached.tokenHash === tokenHash) {
       clearGrace(clientSessionId);
       cached.ws = ws;
       ws.send(JSON.stringify({ type: 'status', message: 'Reattached' }));
@@ -165,6 +167,10 @@ export function setupSshProxy(server: https.Server): void {
     }
 
     // ── New session path ─────────────────────────────────────────────────────
+    // Enforce per-user and global connection limits (H2)
+    const limit = acquireConnection(userId);
+    if (!limit.allowed) { ws.close(4008, limit.reason ?? 'Connection limit'); return; }
+
     const access = wsCanAccess(userId);
     const conn = queryOne<ConnectionRow>(
       `SELECT * FROM connections WHERE id = ? AND ${access.where}`,
@@ -295,7 +301,7 @@ export function setupSshProxy(server: https.Server): void {
           ssh, shellStream, tunnelServers,
           outputBuffer: [], outputBufferBytes: 0,
           ws, timer: null,
-          userId, sessionDbId, connectionId,
+          userId, tokenHash, sessionDbId, connectionId,
           cols, rows,
           castFile, castStart,
           cmdTracker: doRecord ? new CommandTracker(sessionDbId, castStart) : null,

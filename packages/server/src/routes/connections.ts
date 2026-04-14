@@ -556,7 +556,7 @@ router.put('/groups/reorder', (req: Request, res: Response) => {
     const group = queryOne<{ user_id: string }>(
       'SELECT user_id FROM connection_groups WHERE id = ?', [item.id],
     );
-    if (!group || (group.user_id !== userId && req.user!.role !== 'admin')) continue;
+    if (!group || (group.user_id !== userId && !userCan(req, 'connections.edit_any'))) continue;
     execute('UPDATE connection_groups SET sort_order = ? WHERE id = ?', [item.sortOrder, item.id]);
   }
   res.json({ success: true });
@@ -589,7 +589,7 @@ router.put('/groups/:id', (req: Request, res: Response) => {
     'SELECT user_id FROM connection_groups WHERE id = ?', [id],
   );
   if (!group) { res.status(404).json({ error: 'Group not found' }); return; }
-  if (group.user_id !== userId && req.user!.role !== 'admin') { res.status(403).json({ error: 'Not authorized' }); return; }
+  if (group.user_id !== userId && !userCan(req, 'connections.edit_any')) { res.status(403).json({ error: 'Not authorized' }); return; }
 
   const updates: string[] = [];
   const params: unknown[] = [];

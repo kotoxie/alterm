@@ -4,6 +4,7 @@ import { WebSocketServer } from 'ws';
 import { queryOne } from '../db/helpers.js';
 import { isSessionRevoked } from '../services/loginSession.js';
 import { registerWs, unregisterWs } from './wsRegistry.js';
+import { acquireConnection, releaseConnection } from './connectionLimits.js';
 import { redeemWsTicket } from '../services/wsTicket.js';
 import { userHasPermission, wsCanAccess } from '../services/permissions.js';
 import { logAudit } from '../services/audit.js';
@@ -45,6 +46,10 @@ export function setupVncProxy(server: Server): void {
     const clientIp = resolveClientIp(req);
 
     wss.handleUpgrade(req, socket as Parameters<typeof wss.handleUpgrade>[1], head, (ws) => {
+      // Enforce per-user and global connection limits (H2)
+      const limit = acquireConnection(userId);
+      if (!limit.allowed) { ws.close(4008, limit.reason ?? 'Connection limit'); return; }
+
       registerWs(vncTokenHash, ws);
 
       // VNC has no recording support — sessions are tracked via audit trail only
@@ -66,6 +71,7 @@ export function setupVncProxy(server: Server): void {
           ipAddress: clientIp,
         });
         unregisterWs(vncTokenHash, ws);
+        releaseConnection(userId);
       }
 
       ws.once('close', teardown);

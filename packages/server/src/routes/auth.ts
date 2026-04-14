@@ -510,42 +510,28 @@ router.post('/ws-ticket', authRequired, (req: Request, res: Response) => {
 });
 
 // Get current user
-router.get('/me', (req: Request, res: Response) => {
-  const header = req.headers.authorization;
-  const bearerToken = header?.startsWith('Bearer ') ? header.slice(7) : null;
-  const cookieToken = req.cookies?.['alterm_token'] as string | undefined;
-  const token = bearerToken ?? cookieToken ?? null;
-  if (!token) {
-    res.status(401).json({ error: 'Authentication required' });
+router.get('/me', authRequired, (req: Request, res: Response) => {
+  const user = queryOne<UserRow>(
+    'SELECT id, username, display_name, role, theme, dismissed_warnings_json FROM users WHERE id = ?',
+    [req.user!.userId],
+  );
+
+  if (!user) {
+    res.status(401).json({ error: 'User not found' });
     return;
   }
 
-  try {
-    const payload = verifyToken(token);
-    const user = queryOne<UserRow>(
-      'SELECT id, username, display_name, role, theme, dismissed_warnings_json FROM users WHERE id = ?',
-      [payload.userId],
-    );
-
-    if (!user) {
-      res.status(401).json({ error: 'User not found' });
-      return;
-    }
-
-    res.json({
-      user: {
-        id: user.id,
-        username: user.username,
-        displayName: user.display_name,
-        role: user.role,
-        theme: user.theme,
-        permissions: getPermissionsForRole(user.role),
-        dismissedWarnings: parseDismissedWarnings(user.dismissed_warnings_json),
-      },
-    });
-  } catch {
-    res.status(401).json({ error: 'Invalid token' });
-  }
+  res.json({
+    user: {
+      id: user.id,
+      username: user.username,
+      displayName: user.display_name,
+      role: user.role,
+      theme: user.theme,
+      permissions: getPermissionsForRole(user.role),
+      dismissedWarnings: parseDismissedWarnings(user.dismissed_warnings_json),
+    },
+  });
 });
 
 // POST /login/ldap — authenticate via LDAP/Active Directory
