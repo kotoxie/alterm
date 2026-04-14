@@ -215,6 +215,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
   const [newConnGroupId, setNewConnGroupId] = useState<string | null>(null);
   const [newConnProtocol, setNewConnProtocol] = useState<string>('rdp');
   const [deleteFolderConfirm, setDeleteFolderConfirm] = useState<{ group: ConnectionGroup; connCount: number } | null>(null);
+  const [showExportConfirm, setShowExportConfirm] = useState(false);
   const inlineNewGroupInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const folderMenuRef = useRef<HTMLDivElement>(null);
@@ -1019,7 +1020,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
           {/* Import/Export row */}
           <div className="flex gap-1">
             <button
-              onClick={handleExport}
+              onClick={() => setShowExportConfirm(true)}
               className="flex-1 py-1 px-2 text-xs border border-border rounded text-text-secondary hover:bg-surface-hover flex items-center justify-center gap-1"
               title="Export connections to JSON"
             >
@@ -1236,6 +1237,50 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
             fetchConnections();
           }}
         />
+      )}
+
+      {/* Export info popup */}
+      {showExportConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
+          <div className="bg-surface-alt border border-border rounded-lg shadow-xl p-5 max-w-sm w-full mx-4">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="shrink-0 w-9 h-9 rounded-full bg-accent/15 flex items-center justify-center text-accent">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-text-primary mb-1">Exporting connections</h3>
+                <p className="text-xs text-text-secondary leading-relaxed">
+                  This export only includes your <span className="font-medium text-text-primary">connection tree</span> (names, hosts, ports, usernames).
+                  Passwords and private keys are <span className="font-medium text-text-primary">not included</span>.
+                </p>
+                <p className="text-xs text-text-secondary leading-relaxed mt-2">
+                  If you need a full server backup including configuration, recordings and credentials, go to{' '}
+                  <span className="font-medium text-accent">Settings → Backup &amp; Restore</span>.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setShowExportConfirm(false)}
+                className="px-3 py-1.5 text-xs border border-border rounded text-text-secondary hover:bg-surface-hover"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowExportConfirm(false); handleExport(); }}
+                className="px-3 py-1.5 text-xs bg-accent hover:bg-accent-hover text-white rounded font-medium"
+              >
+                Export connections
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Delete folder confirmation dialog */}
