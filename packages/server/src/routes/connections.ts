@@ -262,7 +262,7 @@ router.post('/import', (req: Request, res: Response) => {
     ipAddress: req.ip,
   });
 
-  res.json({ groupsCreated, connectionsCreated });
+  res.json({ groupsCreated, connectionsCreated, newGroupIds: [...groupIdMap.values()] });
 });
 
 // Create connection

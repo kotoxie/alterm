@@ -494,6 +494,22 @@ function runMigrations() {
         try { database.run('ALTER TABLE connections ADD COLUMN skip_cert_validation INTEGER NOT NULL DEFAULT 1'); } catch { /* already exists */ }
       },
     },
+    {
+      version: 12,
+      run: (database: Database) => {
+        // Add connections.import_export to the existing user role's permissions_json.
+        // The user role was seeded in migration v6 without this permission.
+        const row = database.exec(`SELECT permissions_json FROM roles WHERE id = 'user'`);
+        if (!row.length || !row[0].values.length) return;
+        const raw = row[0].values[0][0] as string;
+        let perms: string[] = [];
+        try { perms = JSON.parse(raw) as string[]; } catch { return; }
+        if (!perms.includes('connections.import_export')) {
+          perms.push('connections.import_export');
+          database.run(`UPDATE roles SET permissions_json = ? WHERE id = 'user'`, [JSON.stringify(perms)]);
+        }
+      },
+    },
   ];
 
   for (const migration of migrations) {
