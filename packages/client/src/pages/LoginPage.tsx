@@ -19,6 +19,7 @@ export function LoginPage() {
   const [loginMethod, setLoginMethod] = useState<'local' | 'ldap'>('local');
   const [insecureKey, setInsecureKey] = useState(false);
   const [keyWarnDismissed, setKeyWarnDismissed] = useState(false);
+  const [appName, setAppName] = useState('Alterm');
 
   // MFA step
   const [mfaRequired, setMfaRequired] = useState(false);
@@ -54,6 +55,7 @@ export function LoginPage() {
       .then(r => r.json())
       .then((d: { settings?: Record<string, string> }) => {
         if (d?.settings?.['system.insecure_key'] === 'true') setInsecureKey(true);
+        if (d?.settings?.['app.name']) setAppName(d.settings['app.name']);
       })
       .catch(() => {});
   }, []);
@@ -144,7 +146,7 @@ export function LoginPage() {
       <div className="flex items-center justify-center min-h-screen bg-surface">
         <div className="w-full max-w-md p-8 bg-surface-alt rounded-lg border border-border">
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-text-primary">Alterm</h1>
+            <h1 className="text-3xl font-bold text-text-primary">{appName}</h1>
             <p className="text-text-secondary mt-2">Two-factor authentication</p>
           </div>
           <form onSubmit={handleMfaSubmit} className="space-y-4">
@@ -215,7 +217,7 @@ export function LoginPage() {
       )}
       <div className="w-full max-w-md p-8 bg-surface-alt rounded-lg border border-border">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-text-primary">Alterm</h1>
+          <h1 className="text-3xl font-bold text-text-primary">{appName}</h1>
           <p className="text-text-secondary mt-2">Sign in to continue</p>
         </div>
 
