@@ -55,7 +55,7 @@ export function initEncryption(): void {
   const X = '\x1b[0m';
   console.error('');
   console.error(`${R}╔══════════════════════════════════════════════════════════════════╗${X}`);
-  console.error(`${R}║       ⚠  SECURITY WARNING — INSECURE KEY STORAGE  ⚠             ║${X}`);
+  console.error(`${R}║       !!  SECURITY WARNING — INSECURE KEY STORAGE  !!            ║${X}`);
   console.error(`${R}║                                                                  ║${X}`);
   console.error(`${R}║  ALTERM_ENCRYPTION_KEY env variable is NOT set.                  ║${X}`);
   console.error(`${R}║  Using auto-generated key stored in /app/data/encryption.key     ║${X}`);
