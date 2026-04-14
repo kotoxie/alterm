@@ -118,6 +118,13 @@ export function restoreBackup(data: Buffer, password: string): RestoreResult {
 
   let pos = 0;
   const manifestLen = plaintext.readUInt32LE(pos); pos += 4;
+
+  // H3: cap manifest JSON size to prevent memory exhaustion from crafted backups
+  const MAX_MANIFEST_BYTES = 10 * 1024 * 1024; // 10 MB
+  if (manifestLen > MAX_MANIFEST_BYTES) {
+    throw new Error('Backup manifest exceeds maximum allowed size');
+  }
+
   const manifest = JSON.parse(plaintext.subarray(pos, pos + manifestLen).toString('utf8')) as {
     version: number;
     exportedAt: string;
@@ -127,10 +134,26 @@ export function restoreBackup(data: Buffer, password: string): RestoreResult {
   };
   pos += manifestLen;
 
+  // H3: validate recording count and total size
+  const MAX_RECORDINGS = 1000;
+  const MAX_TOTAL_RECORDING_BYTES = 50 * 1024 * 1024 * 1024; // 50 GB
+  if (manifest.recordings.length > MAX_RECORDINGS) {
+    throw new Error(`Backup contains ${manifest.recordings.length} recordings (max ${MAX_RECORDINGS})`);
+  }
+  let totalRecordingBytes = 0;
+  for (const rec of manifest.recordings) {
+    if (!rec.size || rec.size <= 0) continue;
+    totalRecordingBytes += rec.size;
+  }
+  if (totalRecordingBytes > MAX_TOTAL_RECORDING_BYTES) {
+    throw new Error('Backup recording data exceeds maximum allowed size');
+  }
+
   const dbBytes = plaintext.subarray(pos, pos + manifest.dbSize); pos += manifest.dbSize;
 
   const recordings: Array<{ name: string; data: Buffer }> = [];
   for (const rec of manifest.recordings) {
+    if (!rec.size || rec.size <= 0) continue;
     recordings.push({ name: rec.name, data: Buffer.from(plaintext.subarray(pos, pos + rec.size)) });
     pos += rec.size;
   }

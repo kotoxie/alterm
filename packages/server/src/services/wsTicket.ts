@@ -18,8 +18,12 @@ export function issueWsTicket(userId: string, tokenHash: string): string {
 export function redeemWsTicket(id: string): { userId: string; tokenHash: string } | null {
   const ticket = tickets.get(id);
   if (!ticket) return null;
+  // H8: check expiry before deleting to prevent race-condition double-consumption
+  if (Date.now() > ticket.expiresAt) {
+    tickets.delete(id);
+    return null;
+  }
   tickets.delete(id); // one-time use
-  if (Date.now() > ticket.expiresAt) return null;
   return { userId: ticket.userId, tokenHash: ticket.tokenHash };
 }
 

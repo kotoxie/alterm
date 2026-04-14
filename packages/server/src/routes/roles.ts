@@ -32,14 +32,14 @@ function parseRole(r: RoleRow) {
   };
 }
 
-// GET /roles — list all roles (any authenticated user can list for UI dropdowns)
-router.get('/', (_req: Request, res: Response) => {
+// GET /roles — list all roles (restricted to users with roles.manage permission — H6)
+router.get('/', requirePermission('roles.manage'), (_req: Request, res: Response) => {
   const rows = queryAll<RoleRow>('SELECT * FROM roles ORDER BY is_builtin DESC, name');
   res.json(rows.map(parseRole));
 });
 
-// GET /roles/permissions — list all permission keys grouped (for role editor UI)
-router.get('/permissions', (_req: Request, res: Response) => {
+// GET /roles/permissions — list all permission keys grouped (restricted — H6)
+router.get('/permissions', requirePermission('roles.manage'), (_req: Request, res: Response) => {
   res.json(PERMISSION_GROUPS);
 });
 
