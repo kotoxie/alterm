@@ -209,7 +209,7 @@ function runMigrations() {
         CREATE INDEX IF NOT EXISTS idx_trusted_devices_hash ON trusted_devices(token_hash);
 
         INSERT OR IGNORE INTO settings (key, value) VALUES
-          ('app.name', 'Alterm'),
+          ('app.name', 'Gatwy'),
           ('app.logo', ''),
           ('app.timezone', 'UTC'),
           ('security.session_timeout_minutes', '0'),

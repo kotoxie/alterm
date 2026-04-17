@@ -160,8 +160,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem('alterm-token');
-    localStorage.removeItem('alterm-sessions');
+    localStorage.removeItem('Gatwy-token');
+    localStorage.removeItem('gatwy-sessions');
     sessionStorage.clear();
     setToken(null);
     setUser(null);
@@ -180,8 +180,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Only act if we still have a token (avoid double-logout)
       if (token) logout();
     };
-    window.addEventListener('alterm:unauthorized', handler);
-    return () => window.removeEventListener('alterm:unauthorized', handler);
+    window.addEventListener('gatwy:unauthorized', handler);
+    return () => window.removeEventListener('gatwy:unauthorized', handler);
   }, [token, logout]);
 
   // Heartbeat — runs every 30 s.

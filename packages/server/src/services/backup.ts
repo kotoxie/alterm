@@ -88,7 +88,7 @@ export interface RestoreResult {
 export function restoreBackup(data: Buffer, password: string): RestoreResult {
   let offset = 0;
   const magic = data.subarray(offset, offset + BACKUP_MAGIC.length);
-  if (!magic.equals(BACKUP_MAGIC)) throw new Error('Invalid backup file — not an Alterm backup');
+  if (!magic.equals(BACKUP_MAGIC)) throw new Error('Invalid backup file — not an Gatwy backup');
   offset += BACKUP_MAGIC.length;
 
   const version = data[offset++];

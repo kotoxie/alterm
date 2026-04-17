@@ -76,9 +76,9 @@ function severityEmoji(eventType: string): string {
   return '🟢';
 }
 
-/** Get the configured app name (or fallback to "Alterm") */
+/** Get the configured app name (or fallback to "Gatwy") */
 function appName(): string {
-  try { return getSetting('app.name') || 'Alterm'; } catch { return 'Alterm'; }
+  try { return getSetting('app.name') || 'Gatwy'; } catch { return 'Gatwy'; }
 }
 
 // Template variable substitution

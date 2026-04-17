@@ -30,7 +30,7 @@ export function ensureTlsCerts(): { cert: string; key: string } {
   try {
     // Try openssl first
     execSync(
-      `openssl req -x509 -newkey rsa:2048 -keyout "${keyPath}" -out "${certPath}" -days 365 -nodes -subj "/CN=alterm/O=Alterm"`,
+      `openssl req -x509 -newkey rsa:2048 -keyout "${keyPath}" -out "${certPath}" -days 365 -nodes -subj "/CN=Gatwy/O=Gatwy"`,
       { stdio: 'pipe' },
     );
   } catch {
@@ -60,7 +60,7 @@ function generateSelfSignedCert(certPath: string, keyPath: string) {
   // Build a simple self-signed cert with the sign API
   // This is a simplified approach; the Docker image will have openssl
   const sign = createSign('SHA256');
-  sign.update('alterm-self-signed');
+  sign.update('gatwy-self-signed');
   const signature = sign.sign(privateKey, 'base64');
 
   // Write a placeholder — real cert generation happens via openssl in Docker

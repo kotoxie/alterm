@@ -13,7 +13,7 @@ const require = createRequire(import.meta.url);
 const rootPkg = require(path.resolve(__dirname, '../../../../package.json')) as { version: string };
 const CURRENT_VERSION: string = rootPkg.version;
 
-const GITHUB_REPO = 'kotoxie/alterm';
+const GITHUB_REPO = 'kotoxie/gatwy';
 const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
 interface CacheEntry {
@@ -33,7 +33,7 @@ let lastFetchError: string | null = null;
 async function fetchLatestRelease(): Promise<FetchResult> {
   try {
     const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
-      headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'alterm-server' },
+      headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'gatwy-server' },
       signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) return { entry: null, error: `GitHub API returned HTTP ${res.status}` };
@@ -57,7 +57,7 @@ function semverGt(a: string, b: string): boolean {
 function optionalUserId(req: Request): string | null {
   try {
     const header = req.headers.authorization;
-    const token = (header?.startsWith('Bearer ') ? header.slice(7) : null) ?? req.cookies?.['alterm_token'];
+    const token = (header?.startsWith('Bearer ') ? header.slice(7) : null) ?? req.cookies?.['gatwy_token'];
     if (!token) return null;
     return verifyToken(token).userId ?? null;
   } catch {

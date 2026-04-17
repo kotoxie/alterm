@@ -10,7 +10,7 @@ interface ThemeContextValue {
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 function getInitialTheme(): Theme {
-  const stored = localStorage.getItem('alterm-theme');
+  const stored = localStorage.getItem('gatwy-theme');
   if (stored === 'light' || stored === 'dark') return stored;
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
@@ -20,7 +20,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
-    localStorage.setItem('alterm-theme', theme);
+    localStorage.setItem('gatwy-theme', theme);
   }, [theme]);
 
   const toggleTheme = useCallback(() => {

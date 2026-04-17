@@ -48,7 +48,7 @@ export function GlobalSettings() {
   const [activeTab, setActiveTab] = useState<Tab>('general');
 
   // General
-  const [appName, setAppName] = useState('Alterm');
+  const [appName, setAppName] = useState('Gatwy');
   const [timezone, setTimezone] = useState('UTC');
   const [healthMonitorEnabled, setHealthMonitorEnabled] = useState(true);
   const [generalMsg, setGeneralMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -80,7 +80,7 @@ export function GlobalSettings() {
   const [storageBytes, setStorageBytes] = useState<number | null>(null);
 
   useEffect(() => {
-    setAppName(settings['app.name'] ?? 'Alterm');
+    setAppName(settings['app.name'] ?? 'Gatwy');
     setTimezone(settings['app.timezone'] ?? 'UTC');
     setLogoPreview(settings['app.logo'] ?? '');
     setAuditRetention(settings['audit.retention_days'] ?? '90');

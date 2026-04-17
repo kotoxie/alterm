@@ -19,7 +19,7 @@ export function LoginPage() {
   const [loginMethod, setLoginMethod] = useState<'local' | 'ldap'>('local');
   const [insecureKey, setInsecureKey] = useState(false);
   const [keyWarnDismissed, setKeyWarnDismissed] = useState(false);
-  const [appName, setAppName] = useState('Alterm');
+  const [appName, setAppName] = useState('Gatwy');
   const [appLogo, setAppLogo] = useState('');
 
   // MFA step
@@ -214,9 +214,9 @@ export function LoginPage() {
           <span className="text-xl shrink-0 mt-0.5">⚠</span>
           <div className="flex-1 text-sm">
             <span className="font-bold">Security Warning: </span>
-            ALTERM_ENCRYPTION_KEY is not set. Encryption key is stored alongside encrypted data.
+            GATWY_ENCRYPTION_KEY is not set. Encryption key is stored alongside encrypted data.
             Set this environment variable for production use.{' '}
-            <a href="https://github.com/kotoxie/alterm#encryption" target="_blank" rel="noreferrer" className="underline opacity-80 hover:opacity-100">Learn more</a>
+            <a href="https://github.com/kotoxie/gatwy#encryption" target="_blank" rel="noreferrer" className="underline opacity-80 hover:opacity-100">Learn more</a>
           </div>
           <button onClick={() => setKeyWarnDismissed(true)} className="shrink-0 text-white/70 hover:text-white text-2xl leading-none mt-[-2px]">×</button>
         </div>

@@ -138,7 +138,7 @@ export function MainLayout() {
   const insecureKey = settings['system.insecure_key'] === 'true';
   const permanentlyDismissed = user?.dismissedWarnings?.includes('insecure_key') ?? false;
   // Read directly from sessionStorage each render so logout (which clears the key) is reflected immediately
-  const remindLater = sessionStorage.getItem('alterm-key-warn-later') === '1';
+  const remindLater = sessionStorage.getItem('gatwy-key-warn-later') === '1';
   const [, forceUpdate] = useState(0);
   const showKeyBanner = insecureKey && !permanentlyDismissed && !remindLater;
 
@@ -152,7 +152,7 @@ export function MainLayout() {
   };
 
   const remindKeyLater = () => {
-    sessionStorage.setItem('alterm-key-warn-later', '1');
+    sessionStorage.setItem('gatwy-key-warn-later', '1');
     forceUpdate((n) => n + 1);
   };
   const hasRestoredRef = useRef(false);
@@ -489,7 +489,7 @@ export function MainLayout() {
     if (!user || hasRestoredRef.current) return;
     hasRestoredRef.current = true;
 
-    const saved = localStorage.getItem('alterm-sessions');
+    const saved = localStorage.getItem('gatwy-sessions');
     if (!saved) return;
 
     try {
@@ -527,7 +527,7 @@ export function MainLayout() {
         setActiveViewId(allNewViews[allNewViews.length - 1].id);
       }
     } catch {
-      localStorage.removeItem('alterm-sessions');
+      localStorage.removeItem('gatwy-sessions');
     }
   }, [user]);
 
@@ -535,7 +535,7 @@ export function MainLayout() {
   useEffect(() => {
     if (!hasRestoredRef.current) return;
     if (views.length === 0) {
-      localStorage.removeItem('alterm-sessions');
+      localStorage.removeItem('gatwy-sessions');
       return;
     }
     const saved = views
@@ -553,9 +553,9 @@ export function MainLayout() {
       .filter((group) => group.length > 0);
 
     if (saved.length > 0) {
-      localStorage.setItem('alterm-sessions', JSON.stringify(saved));
+      localStorage.setItem('gatwy-sessions', JSON.stringify(saved));
     } else {
-      localStorage.removeItem('alterm-sessions');
+      localStorage.removeItem('gatwy-sessions');
     }
   }, [views, tabs]);
 
@@ -587,10 +587,10 @@ export function MainLayout() {
           <span className="text-lg shrink-0 mt-0.5">⚠</span>
           <div className="flex-1">
             <span className="font-bold">Security Warning: </span>
-            <code className="bg-red-800 px-1 rounded text-xs">ALTERM_ENCRYPTION_KEY</code> is not set — the encryption key is stored alongside your data.
+            <code className="bg-red-800 px-1 rounded text-xs">GATWY_ENCRYPTION_KEY</code> is not set — the encryption key is stored alongside your data.
             Set this environment variable before going to production.{' '}
             <a
-              href="https://github.com/kotoxie/alterm#encryption-key"
+              href="https://github.com/kotoxie/gatwy#encryption-key"
               target="_blank"
               rel="noreferrer"
               className="underline opacity-80 hover:opacity-100"

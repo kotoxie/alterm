@@ -191,7 +191,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
   const tagDropdownRef = useRef<HTMLDivElement>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => {
     try {
-      const stored = localStorage.getItem('alterm-expanded-groups');
+      const stored = localStorage.getItem('gatwy-expanded-groups');
       return stored ? new Set<string>(JSON.parse(stored) as string[]) : new Set<string>();
     } catch { return new Set<string>(); }
   });
@@ -337,7 +337,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
   }, [inlineNewGroup]);
 
   function persistExpandedGroups(next: Set<string>) {
-    try { localStorage.setItem('alterm-expanded-groups', JSON.stringify([...next])); } catch { /* ignore */ }
+    try { localStorage.setItem('gatwy-expanded-groups', JSON.stringify([...next])); } catch { /* ignore */ }
     return next;
   }
 
@@ -528,7 +528,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `alterm-connections-${Date.now()}.json`;
+    a.download = `gatwy-connections-${Date.now()}.json`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -556,7 +556,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
         setImportResult({ error: data.error || 'Import failed. You may not have permission to import connections.' });
       }
     } catch {
-      setImportResult({ error: 'Failed to read or parse the file. Make sure it is a valid Alterm export file.' });
+      setImportResult({ error: 'Failed to read or parse the file. Make sure it is a valid Gatwy export file.' });
     }
     // Reset so same file can be imported again
     e.target.value = '';

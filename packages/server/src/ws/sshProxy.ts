@@ -45,7 +45,7 @@ const MAX_TUNNELS_PER_SESSION = 5;
 
 /** Block loopback and cloud metadata endpoints in tunnel remote hosts (C8 SSRF fix).
  *  RFC-1918 private ranges are intentionally allowed — tunnels to internal servers are a
- *  legitimate use case relative to the SSH target's network, not the Alterm server. */
+ *  legitimate use case relative to the SSH target's network, not the Gatwy server. */
 function isDangerousTunnelHost(host: string): boolean {
   const h = host.trim().toLowerCase();
   return (

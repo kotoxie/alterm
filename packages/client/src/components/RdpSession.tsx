@@ -160,7 +160,7 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
 
     // Suppress disconnect overlay when session is revoked (global handler redirects to login)
     const onRevoked = () => { sessionRevoked = true; };
-    window.addEventListener('alterm:unauthorized', onRevoked);
+    window.addEventListener('gatwy:unauthorized', onRevoked);
 
     const showDisconnect = (msg: string) => {
       if (sessionRevoked) return;
@@ -720,7 +720,7 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
 
     return () => {
       cancelled = true;
-      window.removeEventListener('alterm:unauthorized', onRevoked);
+      window.removeEventListener('gatwy:unauthorized', onRevoked);
       resizeObserver?.disconnect();
       canvasStyleGuard?.disconnect();
       if (resizeTimer) clearTimeout(resizeTimer);

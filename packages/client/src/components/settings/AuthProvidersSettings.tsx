@@ -159,7 +159,7 @@ export function AuthProvidersSettings() {
         <div className="flex items-center justify-between p-4 border rounded-lg">
           <div>
             <p className="font-medium">Enable local login</p>
-            <p className="text-sm text-muted-foreground">Users can sign in with their Alterm username and password</p>
+            <p className="text-sm text-muted-foreground">Users can sign in with their Gatwy username and password</p>
           </div>
           <button
             onClick={() => toggle('auth.local_enabled')}
@@ -228,7 +228,7 @@ export function AuthProvidersSettings() {
             </div>
 
             <Field label="Admin Group DN" hint="Optional: DN of group whose members are granted admin role">
-              <input className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm" value={settings['auth.ldap_admin_group_dn']} onChange={(e) => set('auth.ldap_admin_group_dn', e.target.value)} placeholder="cn=alterm-admins,ou=groups,dc=example,dc=com" />
+              <input className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm" value={settings['auth.ldap_admin_group_dn']} onChange={(e) => set('auth.ldap_admin_group_dn', e.target.value)} placeholder="cn=gatwy-admins,ou=groups,dc=example,dc=com" />
             </Field>
 
             <div className="flex items-center justify-between">
@@ -308,7 +308,7 @@ export function AuthProvidersSettings() {
                 <input className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm" value={settings['auth.oidc_admin_group_claim']} onChange={(e) => set('auth.oidc_admin_group_claim', e.target.value)} placeholder="groups" />
               </Field>
               <Field label="Admin Group Value" hint="Value in the claim that grants admin role">
-                <input className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm" value={settings['auth.oidc_admin_group_value']} onChange={(e) => set('auth.oidc_admin_group_value', e.target.value)} placeholder="alterm-admins" />
+                <input className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm" value={settings['auth.oidc_admin_group_value']} onChange={(e) => set('auth.oidc_admin_group_value', e.target.value)} placeholder="gatwy-admins" />
               </Field>
             </div>
 

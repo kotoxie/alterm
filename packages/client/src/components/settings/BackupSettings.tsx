@@ -48,7 +48,7 @@ export function BackupSettings() {
       if (!res.ok) { const d = await res.json() as { error: string }; setExportMsg({ type: 'error', text: d.error || 'Export failed.' }); return; }
       const blob = await res.blob();
       const cd = res.headers.get('Content-Disposition') ?? '';
-      const fname = cd.match(/filename="([^"]+)"/)?.[1] ?? 'alterm-backup.aeb';
+      const fname = cd.match(/filename="([^"]+)"/)?.[1] ?? 'gatwy-backup.geb';
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a'); a.href = url; a.download = fname; a.click();
       URL.revokeObjectURL(url);
@@ -163,13 +163,13 @@ export function BackupSettings() {
       <section>
         <h2 className="text-base font-semibold text-text-primary mb-1">Import / Restore Backup</h2>
         <p className="text-sm text-text-secondary mb-1">
-          Restores the system from a <code className="bg-surface-hover px-1 rounded text-xs">.aeb</code> backup file.
+          Restores the system from a <code className="bg-surface-hover px-1 rounded text-xs">.geb</code> backup file.
         </p>
         <p className="text-sm text-red-400 font-medium mb-4">⚠ This overwrites ALL current data — users, connections, and recordings.</p>
         <div className="space-y-3">
           <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1">Backup file (.aeb)</label>
-            <input ref={fileRef} type="file" accept=".aeb" onChange={e => setImportFile(e.target.files?.[0] ?? null)}
+            <label className="block text-sm font-medium text-text-secondary mb-1">Backup file (.geb)</label>
+            <input ref={fileRef} type="file" accept=".geb" onChange={e => setImportFile(e.target.files?.[0] ?? null)}
               className="w-full text-sm text-text-secondary file:mr-3 file:py-1.5 file:px-3 file:rounded file:border file:border-border file:bg-surface-hover file:text-text-primary file:cursor-pointer hover:file:bg-surface" />
           </div>
           <div>

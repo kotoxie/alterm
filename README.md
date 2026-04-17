@@ -1,13 +1,13 @@
 <div align="center">
 
-# ⚡ Alterm
+# ⚡ Gatwy
 
 ### Lightning-fast, self-hosted remote access — RDP, SSH, VNC, Telnet, SMB, SFTP & FTP in one Docker container.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Image size](https://ghcr-badge.egpl.dev/kotoxie/alterm/size)](https://github.com/kotoxie/alterm/releases/latest)
-[![Latest Release](https://img.shields.io/github/v/release/kotoxie/alterm?label=release)](https://github.com/kotoxie/alterm/releases/latest)
-[![Docker Image](https://img.shields.io/badge/ghcr.io-kotoxie%2Falterm-blue?logo=docker)](https://ghcr.io/kotoxie/alterm)
+[![Image size](https://ghcr-badge.egpl.dev/kotoxie/gatwy/size)](https://github.com/kotoxie/gatwy/releases/latest)
+[![Latest Release](https://img.shields.io/github/v/release/kotoxie/gatwy?label=release)](https://github.com/kotoxie/gatwy/releases/latest)
+[![Docker Image](https://img.shields.io/badge/ghcr.io-kotoxie%2Fgatwy-blue?logo=docker)](https://ghcr.io/kotoxie/gatwy)
 
 **No Web-sockets. No middleware. No Java. Just raw WebAssembly RDP at full speed.**
 
@@ -17,7 +17,7 @@
 
 ## 📋 Table of Contents
 
-- [Why Alterm?](#-why-alterm)
+- [Why Gatwy?](#-why-Gatwy)
 - [Quick Start](#-quick-start)
 - [Features](#-features)
   - [Protocols](#️-protocols)
@@ -28,7 +28,7 @@
   - [Backup & Restore](#-backup--restore)
   - [Port-Forward Tunnels](#-port-forward-tunnels-ssh)
   - [Multi-User Administration](#-multi-user-administration)
-- [Alterm vs Guacamole](COMPARISON.md) — see how Alterm compares to Apache Guacamole
+- [Gatwy vs Guacamole](COMPARISON.md) — see how Gatwy compares to Apache Guacamole
 - [Configuration](#️-configuration)
 - [Updating](#-updating)
 - [Building from Source](#️-building-from-source)
@@ -36,9 +36,9 @@
 
 ---
 
-## 🚀 Why Alterm?
+## 🚀 Why Gatwy?
 
-Most browser-based remote access tools relay your display through a server-side engine, adding latency and complexity. Alterm's RDP client runs **entirely in your browser** using WebAssembly — pixel-perfect, low-latency RDP with no middleware, no Java, and no extra containers.
+Most browser-based remote access tools relay your display through a server-side engine, adding latency and complexity. Gatwy's RDP client runs **entirely in your browser** using WebAssembly — pixel-perfect, low-latency RDP with no middleware, no Java, and no extra containers.
 
 One container. Zero dependencies. Open your browser and connect.
 
@@ -49,16 +49,16 @@ One container. Zero dependencies. Open your browser and connect.
 ```yaml
 # docker-compose.yml
 services:
-  alterm:
-    image: ghcr.io/kotoxie/alterm:latest
-    container_name: alterm
+  gatwy:
+    image: ghcr.io/kotoxie/gatwy:latest
+    container_name: gatwy
     restart: unless-stopped
     ports:
       - '7443:7443'
     volumes:
       - ./data:/app/data
     environment:
-      - ALTERM_ENCRYPTION_KEY=your-64-char-hex-key  # openssl rand -hex 32
+      - GATWY_ENCRYPTION_KEY=your-64-char-hex-key  # openssl rand -hex 32
 ```
 
 ```bash
@@ -122,20 +122,20 @@ Open **`https://<YOUR_IP>:7443`** — on first launch you'll be prompted to crea
 - **Audit trail** — every login, session, and config change logged with before/after diffs; notification rule and channel changes include field-level change detail
 - **TLS** — self-signed cert auto-generated on first launch; bring your own cert optionally
 - **Runs as non-root** — container drops to unprivileged `node` user at startup via `gosu`
-- **Encryption key via env** — `ALTERM_ENCRYPTION_KEY` keeps the key separate from data; falls back to auto-file with a prominent warning
+- **Encryption key via env** — `GATWY_ENCRYPTION_KEY` keeps the key separate from data; falls back to auto-file with a prominent warning
 
 ### 🔔 Notifications & Alerting
 - **Notification channels** — configure SMTP email, Telegram, Slack, and Webhook endpoints from the admin settings panel
 - **No-code rule builder** — create alerting rules with multi-select event triggers, AND/OR condition logic, per-field filters (user, IP, target), and cadence throttling to avoid alert fatigue
-- **User & role recipients** — send email alerts directly to users or roles defined in Alterm, in addition to custom addresses; warns if a selected user has no email set
+- **User & role recipients** — send email alerts directly to users or roles defined in Gatwy, in addition to custom addresses; warns if a selected user has no email set
 - **Delivery history** — searchable log of every notification sent, with status (delivered/failed), retry support, and configurable retention (default 90 days) with manual delete
-- **Branded templates** — default templates include emoji severity indicators and Alterm system branding; fully customizable per channel
+- **Branded templates** — default templates include emoji severity indicators and Gatwy system branding; fully customizable per channel
 - **Audit-linked events** — notifications fire on any audit event: logins, lockouts, IP blocks, config changes, session starts, RBAC changes, and more
 
 ### 💾 Backup & Restore
-- **Full system backup** — exports entire database, all session recordings, and the encryption key into a single encrypted `.aeb` file
+- **Full system backup** — exports entire database, all session recordings, and the encryption key into a single encrypted `.geb` file
 - **Dedicated backup password** — backups are protected with AES-256-CTR + PBKDF2 (200 000 iterations) + HMAC-SHA256; separate from the login password
-- **One-click restore** — upload a `.aeb` file, enter the password, and the system hot-swaps the database and recordings without a restart
+- **One-click restore** — upload a `.geb` file, enter the password, and the system hot-swaps the database and recordings without a restart
 - **Destructive-action confirmation** — restore requires an explicit confirmation step before overwriting data
 
 ### 🔌 Port-Forward Tunnels (SSH)
@@ -164,7 +164,7 @@ All configuration is via environment variables:
 | Variable | Default | Description |
 |---|---|---|
 | `PORT` | `7443` | HTTPS port |
-| `ALTERM_ENCRYPTION_KEY` | *(auto-generated file)* | 64-char hex AES-256 key for encrypting credentials and recordings. **Set this in production.** Generate with `openssl rand -hex 32` |
+| `GATWY_ENCRYPTION_KEY` | *(auto-generated file)* | 64-char hex AES-256 key for encrypting credentials and recordings. **Set this in production.** Generate with `openssl rand -hex 32` |
 | `ADMIN_PASSWORD` | *(none)* | Pre-set admin password on first launch (skips setup screen) |
 | `TLS_CERT_PATH` | *(auto)* | Path to a custom TLS certificate inside the container |
 | `TLS_KEY_PATH` | *(auto)* | Path to a custom TLS private key inside the container |
@@ -172,15 +172,15 @@ All configuration is via environment variables:
 
 ### Encryption key
 
-Alterm encrypts all credentials, MFA secrets, and session recordings using AES-256. The key can be supplied in two ways:
+Gatwy encrypts all credentials, MFA secrets, and session recordings using AES-256. The key can be supplied in two ways:
 
 1. **Recommended — environment variable:**
    ```bash
-   ALTERM_ENCRYPTION_KEY=[Generate encryption key using the command - openssl rand -hex 32]
+   GATWY_ENCRYPTION_KEY=[Generate encryption key using the command - openssl rand -hex 32]
    ```
    The key lives outside the data volume, so a snapshot of `/data` alone is useless without it.
 
-2. **Fallback — auto-generated file** (`/app/data/encryption.key`): Alterm creates a key automatically if the env var is not set. A **red warning banner** is shown in the server logs and on the login page as a reminder. This is acceptable for local/home-lab use but not recommended for production.
+2. **Fallback — auto-generated file** (`/app/data/encryption.key`): Gatwy creates a key automatically if the env var is not set. A **red warning banner** is shown in the server logs and on the login page as a reminder. This is acceptable for local/home-lab use but not recommended for production.
 
 > ⚠️ If you switch from file-based to env-based key, export a backup first (Settings → Backup & Restore) and re-import after setting the new key — the backup is self-contained and includes the key used to encrypt recordings.
 
@@ -198,8 +198,8 @@ docker compose pull && docker compose up -d
 
 ```bash
 # Clone & Open Folder
-git clone https://github.com/kotoxie/alterm
-cd alterm/
+git clone https://github.com/kotoxie/gatwy
+cd Gatwy/
 
 # With Docker
 docker compose up --build -d

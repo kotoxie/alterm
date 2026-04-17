@@ -9,8 +9,8 @@ const STREAM_ALGORITHM = 'aes-256-ctr';
 const IV_LENGTH = 16;
 const TAG_LENGTH = 16;
 
-// Recording magic: "ALTERM_REC\0" (11) + version (1) + IV (16) = 28 bytes header
-const REC_MAGIC = Buffer.from('ALTERM_REC\0');
+// Recording magic: "GATWY_REC\0" (11) + version (1) + IV (16) = 28 bytes header
+const REC_MAGIC = Buffer.from('GATWY_REC\0');
 const REC_VERSION = 0x01;
 export const REC_HEADER_SIZE = REC_MAGIC.length + 1 + IV_LENGTH; // 28
 
@@ -18,7 +18,7 @@ let encryptionKey: Buffer;
 export let usingFileKey = false;
 
 export function initEncryption(): void {
-  const envKey = process.env.ALTERM_ENCRYPTION_KEY;
+  const envKey = process.env.GATWY_ENCRYPTION_KEY;
 
   if (envKey) {
     try {
@@ -33,10 +33,10 @@ export function initEncryption(): void {
       }
       encryptionKey = keyBuf;
       usingFileKey = false;
-      console.log('[Alterm] Encryption key loaded from ALTERM_ENCRYPTION_KEY.');
+      console.log('[Gatwy] Encryption key loaded from GATWY_ENCRYPTION_KEY.');
       return;
     } catch (e) {
-      console.error(`\x1b[41m\x1b[97m[Alterm] FATAL: Invalid ALTERM_ENCRYPTION_KEY: ${(e as Error).message}\x1b[0m`);
+      console.error(`\x1b[41m\x1b[97m[Gatwy] FATAL: Invalid GATWY_ENCRYPTION_KEY: ${(e as Error).message}\x1b[0m`);
       process.exit(1);
     }
   }
@@ -57,14 +57,14 @@ export function initEncryption(): void {
   console.error(`${R}╔══════════════════════════════════════════════════════════════════╗${X}`);
   console.error(`${R}║       !!  SECURITY WARNING — INSECURE KEY STORAGE  !!            ║${X}`);
   console.error(`${R}║                                                                  ║${X}`);
-  console.error(`${R}║  ALTERM_ENCRYPTION_KEY env variable is NOT set.                  ║${X}`);
+  console.error(`${R}║  GATWY_ENCRYPTION_KEY env variable is NOT set.                  ║${X}`);
   console.error(`${R}║  Using auto-generated key stored in /app/data/encryption.key     ║${X}`);
   console.error(`${R}║                                                                  ║${X}`);
   console.error(`${R}║  The key is co-located with encrypted data — anyone with the     ║${X}`);
   console.error(`${R}║  /data volume gets both the key and ciphertext.                  ║${X}`);
   console.error(`${R}║                                                                  ║${X}`);
   console.error(`${R}║  Fix: set in docker-compose.yml environment:                     ║${X}`);
-  console.error(`${R}║    ALTERM_ENCRYPTION_KEY: $(openssl rand -hex 32)                ║${X}`);
+  console.error(`${R}║    GATWY_ENCRYPTION_KEY: $(openssl rand -hex 32)                ║${X}`);
   console.error(`${R}╚══════════════════════════════════════════════════════════════════╝${X}`);
   console.error('');
 }
@@ -113,7 +113,7 @@ export function encryptRecordingStream(): Transform {
   });
 }
 
-/** Returns true if the buffer starts with the Alterm recording magic header. */
+/** Returns true if the buffer starts with the Gatwy recording magic header. */
 export function isEncryptedRecording(buf: Buffer): boolean {
   if (buf.length < REC_HEADER_SIZE) return false;
   return buf.subarray(0, REC_MAGIC.length).equals(REC_MAGIC);

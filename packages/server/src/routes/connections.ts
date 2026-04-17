@@ -202,7 +202,7 @@ router.get('/export', (req: Request, res: Response) => {
       username: c.username, groupId: c.group_id, shared: c.shared,
     })),
   };
-  res.setHeader('Content-Disposition', `attachment; filename="alterm-connections-${Date.now()}.json"`);
+  res.setHeader('Content-Disposition', `attachment; filename="gatwy-connections-${Date.now()}.json"`);
   res.setHeader('Content-Type', 'application/json');
   res.json(payload);
 });
