@@ -16,7 +16,7 @@ declare global {
 export function authRequired(req: Request, res: Response, next: NextFunction): void {
   const header = req.headers.authorization;
   const bearerToken = header?.startsWith('Bearer ') ? header.slice(7) : null;
-  const cookieToken = req.cookies?.['alterm_token'] as string | undefined;
+  const cookieToken = req.cookies?.['gatwy_token'] as string | undefined;
   const token = bearerToken ?? cookieToken ?? null;
 
   if (!token) {

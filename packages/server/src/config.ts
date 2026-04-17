@@ -12,7 +12,7 @@ export const config = {
   sessionTimeout: process.env.SESSION_TIMEOUT || '24h',
 
   get dbPath() {
-    return path.join(this.dataDir, 'alterm.db');
+    return path.join(this.dataDir, 'gatwy.db');
   },
   get certsDir() {
     return path.join(this.dataDir, 'certs');

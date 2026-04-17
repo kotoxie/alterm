@@ -40,7 +40,7 @@ async function main() {
   }
 
   // Initialize services
-  console.log('[Alterm] Initializing...');
+  console.log('[Gatwy] Initializing...');
   await initDb();
   initJwt();
   initEncryption();
@@ -134,7 +134,7 @@ async function main() {
   // Global JSON error handler — prevents Express from returning HTML 500 pages
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-    console.error('[Alterm] Unhandled error:', err.message);
+    console.error('[Gatwy] Unhandled error:', err.message);
     if (!res.headersSent) {
       res.status(500).json({ error: 'Internal server error' });
     }
@@ -149,7 +149,7 @@ async function main() {
     });
   } else {
     app.get('/', (_req, res) => {
-      res.json({ message: 'Alterm API is running. Frontend not built yet.' });
+      res.json({ message: 'Gatwy API is running. Frontend not built yet.' });
     });
   }
 
@@ -164,10 +164,10 @@ async function main() {
 
   // Graceful shutdown
   function shutdown() {
-    console.log('\n[Alterm] Shutting down gracefully...');
+    console.log('\n[Gatwy] Shutting down gracefully...');
     persistDb();
     server.close(() => {
-      console.log('[Alterm] Server closed.');
+      console.log('[Gatwy] Server closed.');
       process.exit(0);
     });
     setTimeout(() => process.exit(1), 10000);
@@ -178,11 +178,11 @@ async function main() {
 
   // Start
   server.listen(config.port, () => {
-    console.log(`[Alterm] Running on https://localhost:${config.port}`);
+    console.log(`[Gatwy] Running on https://localhost:${config.port}`);
   });
 }
 
 main().catch((err) => {
-  console.error('[Alterm] Fatal error:', err);
+  console.error('[Gatwy] Fatal error:', err);
   process.exit(1);
 });

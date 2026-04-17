@@ -30,7 +30,7 @@ router.post('/export', requirePermission('settings.backup'), (req: Request, res:
   try {
     const dbBytes = Buffer.from(getDb().export());
     const backupBuf = createBackup(password, dbBytes, includeRecordings);
-    const filename = `alterm-backup-${new Date().toISOString().slice(0, 10)}.aeb`;
+    const filename = `gatwy-backup-${new Date().toISOString().slice(0, 10)}.geb`;
     logAudit({
       userId: req.user!.userId,
       eventType: 'admin.backup.export',
@@ -48,7 +48,7 @@ router.post('/export', requirePermission('settings.backup'), (req: Request, res:
 });
 
 // POST /import — restore system from encrypted backup
-// Body: raw .aeb binary. Password in X-Backup-Password header.
+// Body: raw .geb binary. Password in X-Backup-Password header.
 router.post('/import', requirePermission('settings.backup'), (req: Request, res: Response) => {
   const password = req.headers['x-backup-password'] as string | undefined;
   if (!password) {

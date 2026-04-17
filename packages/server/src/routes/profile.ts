@@ -212,8 +212,8 @@ router.post('/mfa/setup', async (req: Request, res: Response) => {
   if (!user) { res.status(404).json({ error: 'User not found' }); return; }
 
   const secret = otpGenerateSecret();
-  const appName = getSetting('app.name') || 'Alterm';
-  // Label format: "Alterm (username)" so users can identify the account in their authenticator app
+  const appName = getSetting('app.name') || 'Gatwy';
+  // Label format: "Gatwy (username)" so users can identify the account in their authenticator app
   const otpUri = otpGenerateURI({ issuer: appName, label: `${appName} (${user.username})`, secret });
   const qrDataUrl = await QRCode.toDataURL(otpUri);
 

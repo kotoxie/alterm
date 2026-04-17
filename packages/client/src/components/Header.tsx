@@ -75,7 +75,7 @@ export function Header({ onToggleSidebar, onOpenSettings }: HeaderProps) {
     await refreshVersion();
   }
 
-  const appName = settings['app.name'] ?? 'Alterm';
+  const appName = settings['app.name'] ?? 'Gatwy';
   const appLogo = settings['app.logo'] ?? '';
   const username = user?.username ?? '';
   const displayName = user?.displayName ?? username;
@@ -134,7 +134,7 @@ export function Header({ onToggleSidebar, onOpenSettings }: HeaderProps) {
           <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 z-50 hidden group-hover:flex group-focus-within:flex flex-col bg-surface-alt border border-border rounded shadow-lg py-1 min-w-[160px]">
             <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-surface-alt border-l border-t border-border rotate-45" />
             <a
-              href="https://github.com/kotoxie/alterm"
+              href="https://github.com/kotoxie/gatwy"
               target="_blank"
               rel="noreferrer"
               className="flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
@@ -146,7 +146,7 @@ export function Header({ onToggleSidebar, onOpenSettings }: HeaderProps) {
               View Project
             </a>
             <a
-              href="https://github.com/kotoxie/alterm/issues/new"
+              href="https://github.com/kotoxie/gatwy/issues/new"
               target="_blank"
               rel="noreferrer"
               className="flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"

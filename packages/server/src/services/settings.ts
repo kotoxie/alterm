@@ -1,7 +1,7 @@
 import { queryAll, execute } from '../db/helpers.js';
 
 const DEFAULTS: Record<string, string> = {
-  'app.name': 'Alterm',
+  'app.name': 'Gatwy',
   'app.logo': '',
   'app.timezone': 'UTC',
   'security.session_timeout_minutes': '0',

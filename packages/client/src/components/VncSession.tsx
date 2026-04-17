@@ -38,7 +38,7 @@ export function VncSession({ connectionId, connectionName, isActive, onStatusCha
     let rfb: import('@novnc/novnc/lib/rfb.js').default | null = null;
     let resizeObserver: ResizeObserver | null = null;
     const onRevoked = () => { sessionRevoked = true; };
-    window.addEventListener('alterm:unauthorized', onRevoked);
+    window.addEventListener('gatwy:unauthorized', onRevoked);
 
     async function connect() {
       try {
@@ -137,7 +137,7 @@ export function VncSession({ connectionId, connectionName, isActive, onStatusCha
 
     return () => {
       cancelled = true;
-      window.removeEventListener('alterm:unauthorized', onRevoked);
+      window.removeEventListener('gatwy:unauthorized', onRevoked);
       resizeObserver?.disconnect();
       if (rfbRef.current) {
         try { rfbRef.current.disconnect(); } catch { /* ignore */ }

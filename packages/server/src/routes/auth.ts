@@ -67,7 +67,7 @@ setInterval(() => {
   }
 }, MFA_RATE_WINDOW_MS);
 
-const TRUSTED_DEVICE_COOKIE = 'alterm_trusted_device';
+const TRUSTED_DEVICE_COOKIE = 'gatwy_trusted_device';
 const TRUSTED_DEVICE_DAYS = 30;
 
 function isTrustedDevice(req: Request, userId: string): boolean {
@@ -165,7 +165,7 @@ function setAuthCookie(res: Response, token: string, maxSessionMinutes?: number)
   const maxAgeMs = maxSessionMinutes
     ? maxSessionMinutes * 60 * 1000
     : 24 * 60 * 60 * 1000; // default 24h
-  res.cookie('alterm_token', token, {
+  res.cookie('gatwy_token', token, {
     httpOnly: true,
     secure: true,
     sameSite: 'strict',
@@ -495,7 +495,7 @@ router.post('/logout', authRequired, (req: Request, res: Response) => {
     target: req.user!.username,
     ipAddress: req.ip,
   });
-  res.clearCookie('alterm_token', { path: '/', secure: true, sameSite: 'strict' });
+  res.clearCookie('gatwy_token', { path: '/', secure: true, sameSite: 'strict' });
   res.json({ ok: true });
 });
 
