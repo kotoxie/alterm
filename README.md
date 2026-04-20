@@ -11,7 +11,7 @@
 
 **No Web-sockets. No middleware. No Java. Just raw WebAssembly RDP at full speed.**
 
-[Website](https://gatwy.dev) · [Documentation](https://docs.gatwy.dev) · [Gatwy vs Guacamole](COMPARISON.md)
+[Website](https://gatwy.dev) · [Documentation](https://docs.gatwy.dev) · [Gatwy vs Guacamole](https://docs.gatwy.dev/comparison)
 
 </div>
 
