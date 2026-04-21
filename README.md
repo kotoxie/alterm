@@ -106,6 +106,3 @@ npm install && npm run build && npm start
 ## 📄 License
 
 [MIT](LICENSE)
-
-## Attribution
-<a href="https://www.flaticon.com/free-icons/terminal" title="terminal icons">Terminal icons created by msidiqf - Flaticon</a>
