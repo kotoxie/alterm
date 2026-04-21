@@ -44,8 +44,14 @@ router.get('/', (req: Request, res: Response) => {
   }
 
   if (eventType) {
-    conditions.push('a.event_type = ?');
-    params.push(eventType);
+    const types = eventType.split(',').map((t: string) => t.trim()).filter(Boolean);
+    if (types.length === 1) {
+      conditions.push('a.event_type = ?');
+      params.push(types[0]);
+    } else if (types.length > 1) {
+      conditions.push(`a.event_type IN (${types.map(() => '?').join(',')})`);
+      params.push(...types);
+    }
   }
 
   if (from) {
