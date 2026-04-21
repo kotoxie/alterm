@@ -1,6 +1,8 @@
 <div align="center">
 
-# ⚡ Gatwy
+# Gatwy
+### ![alt text](https://github.com/kotoxie/Gatwy/blob/master/packages/client/public/favicon.png?raw=true) 
+
 
 ### Lightning-fast, self-hosted remote access — RDP, SSH, VNC, Telnet, SMB, SFTP & FTP in one Docker container.
 
