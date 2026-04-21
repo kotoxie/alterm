@@ -5,6 +5,8 @@ interface DateTimePickerProps {
   onChange: (value: string) => void;
   className?: string;
   placeholder?: string;
+  label?: string;
+  align?: 'left' | 'right';
 }
 
 const DAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
@@ -21,7 +23,7 @@ function pad(n: number): string {
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const MINUTES = Array.from({ length: 60 }, (_, i) => i);
 
-export function DateTimePicker({ value, onChange, className = '', placeholder }: DateTimePickerProps) {
+export function DateTimePicker({ value, onChange, className = '', placeholder, label, align = 'left' }: DateTimePickerProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -93,6 +95,16 @@ export function DateTimePicker({ value, onChange, className = '', placeholder }:
     setOpen(false);
   }
 
+  function handleToday() {
+    const now = new Date();
+    setViewYear(now.getFullYear());
+    setViewMonth(now.getMonth());
+    setSelectedDay(now.getDate());
+    setHour(now.getHours());
+    setMinute(now.getMinutes());
+    emit(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes());
+  }
+
   // Build calendar grid
   const firstDayOfWeek = new Date(viewYear, viewMonth, 1).getDay();
   const totalDays = daysInMonth(viewYear, viewMonth);
@@ -106,6 +118,7 @@ export function DateTimePicker({ value, onChange, className = '', placeholder }:
 
   return (
     <div className="relative" ref={ref}>
+      {label && <span className="block text-[10px] font-medium text-text-secondary/60 mb-0.5">{label}</span>}
       <input
         type="text"
         readOnly
@@ -115,7 +128,7 @@ export function DateTimePicker({ value, onChange, className = '', placeholder }:
         className={`cursor-pointer ${className}`}
       />
       {open && (
-        <div className="absolute top-full mt-1 z-50 bg-surface-alt border border-border rounded-lg shadow-xl p-3 w-[280px]">
+        <div className={`absolute top-full mt-1 z-50 bg-surface-alt border border-border rounded-lg shadow-xl p-3 w-[280px] ${align === 'right' ? 'right-0' : 'left-0'}`}>
           {/* Month navigation */}
           <div className="flex items-center justify-between mb-2">
             <button type="button" onClick={prevMonth} className="p-1 rounded hover:bg-surface-hover text-text-secondary">
@@ -185,8 +198,15 @@ export function DateTimePicker({ value, onChange, className = '', placeholder }:
             </select>
           </div>
 
-          {/* Clear button */}
-          <div className="flex justify-end mt-2 pt-2 border-t border-border">
+          {/* Footer */}
+          <div className="flex justify-between mt-2 pt-2 border-t border-border">
+            <button
+              type="button"
+              onClick={handleToday}
+              className="px-2 py-1 text-xs text-accent hover:text-accent-hover hover:bg-surface-hover rounded font-medium"
+            >
+              Today
+            </button>
             <button
               type="button"
               onClick={handleClear}
