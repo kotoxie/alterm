@@ -93,6 +93,78 @@ function DetailsView({ details }: { details: unknown }) {
   );
 }
 
+function EventTypeMultiSelect({ eventTypes, selected, onChange }: {
+  eventTypes: string[];
+  selected: string[];
+  onChange: (v: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    if (open) document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [open]);
+
+  function toggle(et: string) {
+    onChange(selected.includes(et) ? selected.filter((s) => s !== et) : [...selected, et]);
+  }
+
+  const label = selected.length === 0
+    ? 'All event types'
+    : selected.length === 1
+      ? selected[0]
+      : `${selected.length} event types`;
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1 px-2 py-1.5 bg-surface border border-border rounded text-text-primary text-sm min-w-[160px] text-left"
+      >
+        <span className="flex-1 truncate">{label}</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 text-text-secondary">
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute top-full mt-1 z-50 bg-surface-alt border border-border rounded-lg shadow-xl py-1 w-[240px] max-h-[280px] overflow-y-auto">
+          {selected.length > 0 && (
+            <button
+              type="button"
+              onClick={() => onChange([])}
+              className="w-full px-3 py-1.5 text-left text-xs text-accent hover:bg-surface-hover"
+            >
+              Clear all
+            </button>
+          )}
+          {eventTypes.map((et) => (
+            <label
+              key={et}
+              className="flex items-center gap-2 px-3 py-1.5 hover:bg-surface-hover cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                checked={selected.includes(et)}
+                onChange={() => toggle(et)}
+                className="rounded border-border text-accent focus:ring-accent"
+              />
+              <span className="text-xs text-text-primary truncate">{et}</span>
+            </label>
+          ))}
+          {eventTypes.length === 0 && (
+            <span className="block px-3 py-2 text-xs text-text-secondary">No event types</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function AuditTrail() {
   const { user } = useAuth();
   const timezone = useTimezone();
@@ -105,7 +177,7 @@ export function AuditTrail() {
 
   // Filters
   const [search, setSearch] = useState('');
-  const [eventTypeFilter, setEventTypeFilter] = useState('');
+  const [eventTypeFilters, setEventTypeFilters] = useState<string[]>([]);
   const [userFilter, setUserFilter] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
@@ -128,14 +200,14 @@ export function AuditTrail() {
   const buildParams = useCallback((overridePage?: number) => {
     const p = new URLSearchParams();
     if (debouncedSearch) p.set('search', debouncedSearch);
-    if (eventTypeFilter) p.set('eventType', eventTypeFilter);
+    if (eventTypeFilters.length > 0) p.set('eventType', eventTypeFilters.join(','));
     if (userFilter) p.set('userId', userFilter);
     if (fromDate) p.set('from', fromDate);
     if (toDate) p.set('to', toDate);
     p.set('page', String(overridePage ?? page));
     p.set('limit', '50');
     return p;
-  }, [debouncedSearch, eventTypeFilter, userFilter, fromDate, toDate, page]);
+  }, [debouncedSearch, eventTypeFilters, userFilter, fromDate, toDate, page]);
 
   const loadEntries = useCallback(async (overridePage?: number) => {
     setLoading(true);
@@ -214,7 +286,7 @@ export function AuditTrail() {
 
   function resetFilters() {
     setSearch('');
-    setEventTypeFilter('');
+    setEventTypeFilters([]);
     setUserFilter('');
     setFromDate('');
     setToDate('');
@@ -246,14 +318,14 @@ export function AuditTrail() {
           placeholder="Search..."
           className="flex-1 min-w-[160px] px-3 py-1.5 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
         />
-        <select
-          value={eventTypeFilter}
-          onChange={(e) => { setEventTypeFilter(e.target.value); setPage(1); }}
-          className="px-2 py-1.5 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
-        >
-          <option value="">All event types</option>
-          {eventTypes.map((et) => <option key={et} value={et}>{et}</option>)}
-        </select>
+        {/* Event type multi-select */}
+        <div className="relative">
+          <EventTypeMultiSelect
+            eventTypes={eventTypes}
+            selected={eventTypeFilters}
+            onChange={(v) => { setEventTypeFilters(v); setPage(1); }}
+          />
+        </div>
 
         {canViewAny && (
           <select
@@ -272,12 +344,15 @@ export function AuditTrail() {
           value={fromDate}
           onChange={(v) => { setFromDate(v); setPage(1); }}
           placeholder="From date"
+          label="From"
           className="px-2 py-1.5 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm w-[170px]"
         />
         <DateTimePicker
           value={toDate}
           onChange={(v) => { setToDate(v); setPage(1); }}
           placeholder="To date"
+          label="To"
+          align="right"
           className="px-2 py-1.5 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm w-[170px]"
         />
         <button onClick={resetFilters}
