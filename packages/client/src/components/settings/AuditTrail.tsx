@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate as formatDateTz } from '../../utils/formatDate';
+import { DateTimePicker } from '../DateTimePicker';
 
 interface AuditEntry {
   id: string;
@@ -267,17 +268,17 @@ export function AuditTrail() {
           </select>
         )}
 
-        <input
-          type="datetime-local"
+        <DateTimePicker
           value={fromDate}
-          onChange={(e) => { setFromDate(e.target.value); setPage(1); }}
-          className="px-2 py-1.5 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
+          onChange={(v) => { setFromDate(v); setPage(1); }}
+          placeholder="From date"
+          className="px-2 py-1.5 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm w-[170px]"
         />
-        <input
-          type="datetime-local"
+        <DateTimePicker
           value={toDate}
-          onChange={(e) => { setToDate(e.target.value); setPage(1); }}
-          className="px-2 py-1.5 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
+          onChange={(v) => { setToDate(v); setPage(1); }}
+          placeholder="To date"
+          className="px-2 py-1.5 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm w-[170px]"
         />
         <button onClick={resetFilters}
           className="px-3 py-1.5 text-xs border border-border rounded text-text-secondary hover:bg-surface-hover">

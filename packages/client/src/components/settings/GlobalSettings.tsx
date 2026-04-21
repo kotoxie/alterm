@@ -60,6 +60,9 @@ export function GlobalSettings() {
   // Recordings
   const [recordingEnabled, setRecordingEnabled] = useState(false);
   const [recordingRetention, setRecordingRetention] = useState('90');
+  const [retentionDaysEnabled, setRetentionDaysEnabled] = useState(true);
+  const [retentionSizeEnabled, setRetentionSizeEnabled] = useState(false);
+  const [retentionMaxSizeGb, setRetentionMaxSizeGb] = useState('10');
   const [recordingMsg, setRecordingMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [savingRecording, setSavingRecording] = useState(false);
 
@@ -90,6 +93,9 @@ export function GlobalSettings() {
     setVersionNotify(settings['version.notify_on_update'] === 'true');
     setRecordingEnabled(settings['session.recording_enabled'] === 'true');
     setRecordingRetention(settings['session.recording_retention_days'] ?? '90');
+    setRetentionDaysEnabled(settings['session.recording_retention_days_enabled'] !== 'false');
+    setRetentionSizeEnabled(settings['session.recording_retention_size_enabled'] === 'true');
+    setRetentionMaxSizeGb(settings['session.recording_retention_max_size_gb'] ?? '10');
   }, [settings]);
 
   useEffect(() => {
@@ -180,6 +186,9 @@ export function GlobalSettings() {
       const result = await saveSettings({
         'session.recording_enabled': String(recordingEnabled),
         'session.recording_retention_days': recordingRetention,
+        'session.recording_retention_days_enabled': String(retentionDaysEnabled),
+        'session.recording_retention_size_enabled': String(retentionSizeEnabled),
+        'session.recording_retention_max_size_gb': retentionMaxSizeGb,
       });
       setRecordingMsg(result.ok ? { type: 'success', text: 'Saved.' } : { type: 'error', text: result.error! });
     } catch {
@@ -319,17 +328,55 @@ export function GlobalSettings() {
             <Toggle value={recordingEnabled} onChange={setRecordingEnabled} />
             <span className="text-sm text-text-secondary">Session recording enabled <span className="text-xs text-text-secondary/60">(SSH &amp; RDP)</span></span>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1">Recording retention (days)</label>
-            <p className="text-xs text-text-secondary mb-1">Recordings older than this will be automatically removed.</p>
-            <input
-              type="number"
-              min="1"
-              value={recordingRetention}
-              onChange={(e) => setRecordingRetention(e.target.value)}
-              className="w-40 px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
-            />
+
+          {/* Retention by days */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-3">
+              <Toggle value={retentionDaysEnabled} onChange={setRetentionDaysEnabled} />
+              <span className="text-sm text-text-secondary">Retention by age</span>
+            </div>
+            {retentionDaysEnabled && (
+              <div className="ml-12">
+                <label className="block text-sm font-medium text-text-secondary mb-1">Recording retention (days)</label>
+                <p className="text-xs text-text-secondary mb-1">Recordings older than this will be automatically removed.</p>
+                <input
+                  type="number"
+                  min="1"
+                  value={recordingRetention}
+                  onChange={(e) => setRecordingRetention(e.target.value)}
+                  className="w-40 px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
+                />
+              </div>
+            )}
           </div>
+
+          {/* Retention by size */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-3">
+              <Toggle value={retentionSizeEnabled} onChange={setRetentionSizeEnabled} />
+              <span className="text-sm text-text-secondary">Retention by size</span>
+            </div>
+            {retentionSizeEnabled && (
+              <div className="ml-12">
+                <label className="block text-sm font-medium text-text-secondary mb-1">Max recording storage (GB)</label>
+                <p className="text-xs text-text-secondary mb-1">When total storage exceeds this limit, the oldest recordings are removed first.</p>
+                <input
+                  type="number"
+                  min="0.1"
+                  step="0.1"
+                  value={retentionMaxSizeGb}
+                  onChange={(e) => setRetentionMaxSizeGb(e.target.value)}
+                  className="w-40 px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
+                />
+              </div>
+            )}
+          </div>
+
+          {retentionDaysEnabled && retentionSizeEnabled && (
+            <p className="text-xs text-text-secondary bg-surface rounded px-3 py-2 border border-border">
+              ℹ️ Both retention policies are active — whichever limit is reached first will trigger cleanup (FIFO).
+            </p>
+          )}
           {recordingMsg && (
             <p className={`text-sm ${recordingMsg.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
               {recordingMsg.text}
