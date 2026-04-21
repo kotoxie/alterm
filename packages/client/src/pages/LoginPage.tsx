@@ -77,8 +77,9 @@ export function LoginPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, password }),
         });
-        const data = await res.json() as { token?: string; user?: { id: string; username: string; displayName: string; role: 'admin' | 'user'; theme: string | null }; error?: string };
+        const data = await res.json() as { token?: string; user?: { id: string; username: string; displayName: string; role: 'admin' | 'user'; theme: string | null }; error?: string; proxyIp?: string };
         if (!res.ok) throw new Error(data.error || 'Login failed');
+        if (data.proxyIp) sessionStorage.setItem('gatwy-proxy-ip', data.proxyIp);
         // Reload to pick up cookie-based auth
         window.location.reload();
       } else {

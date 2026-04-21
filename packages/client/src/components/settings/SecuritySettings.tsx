@@ -35,6 +35,7 @@ export function SecuritySettings() {
 
   // Trusted proxies
   const [trustedProxies, setTrustedProxies] = useState('');
+  const [proxyDetectionEnabled, setProxyDetectionEnabled] = useState(true);
   const [proxyMsg, setProxyMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [savingProxy, setSavingProxy] = useState(false);
 
@@ -46,6 +47,7 @@ export function SecuritySettings() {
     setIpRulesEnabled(settings['security.ip_rules_enabled'] === 'true');
     setIpRulesMode((settings['security.ip_rules_mode'] as 'allowlist' | 'denylist') ?? 'allowlist');
     setTrustedProxies(settings['security.trusted_proxies'] ?? '');
+    setProxyDetectionEnabled(settings['security.proxy_detection_enabled'] !== 'false');
 
     try {
       const raw = settings['security.ip_rules'];
@@ -156,7 +158,10 @@ export function SecuritySettings() {
     setProxyMsg(null);
     try {
       await saveSetting(
-        { 'security.trusted_proxies': trustedProxies },
+        {
+          'security.trusted_proxies': trustedProxies,
+          'security.proxy_detection_enabled': String(proxyDetectionEnabled),
+        },
         () => setProxyMsg({ type: 'success', text: 'Saved.' }),
         (msg) => setProxyMsg({ type: 'error', text: msg }),
       );
@@ -392,6 +397,25 @@ export function SecuritySettings() {
               placeholder="10.0.0.1, 10.0.0.2"
               className="w-full px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm font-mono"
             />
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setProxyDetectionEnabled((v) => !v)}
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                proxyDetectionEnabled ? 'bg-accent' : 'bg-surface-hover border border-border'
+              }`}
+            >
+              <span
+                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                  proxyDetectionEnabled ? 'translate-x-4' : 'translate-x-0.5'
+                }`}
+              />
+            </button>
+            <div>
+              <span className="text-sm text-text-secondary">Proxy detection notifications</span>
+              <p className="text-xs text-text-secondary">When enabled, users are notified at login if their connection arrives via an untrusted proxy.</p>
+            </div>
           </div>
           {proxyMsg && (
             <p className={`text-sm ${proxyMsg.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>

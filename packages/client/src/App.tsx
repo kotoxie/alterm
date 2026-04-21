@@ -3,6 +3,7 @@ import { useAuth } from './hooks/useAuth';
 import { SetupPage } from './pages/SetupPage';
 import { LoginPage } from './pages/LoginPage';
 import { MainLayout } from './pages/MainLayout';
+import { ProxyDetectionToast } from './components/ProxyDetectionToast';
 
 export function App() {
   const { user, loading, needsSetup } = useAuth();
@@ -34,9 +35,12 @@ export function App() {
 
   // When logged in, redirect /login → / so the URL doesn't stay as "/login" after auth
   return (
-    <Routes>
-      <Route path="/login" element={<Navigate to="/" replace />} />
-      <Route path="/*" element={<MainLayout />} />
-    </Routes>
+    <>
+      <ProxyDetectionToast />
+      <Routes>
+        <Route path="/login" element={<Navigate to="/" replace />} />
+        <Route path="/*" element={<MainLayout />} />
+      </Routes>
+    </>
   );
 }

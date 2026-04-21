@@ -13,6 +13,7 @@ interface User {
 interface LoginResult {
   mfaRequired?: boolean;
   mfaToken?: string;
+  proxyIp?: string;
 }
 
 interface AuthContextValue {
@@ -25,6 +26,8 @@ interface AuthContextValue {
   setup: (username: string, password: string, displayName: string) => Promise<void>;
   needsSetup: boolean | null;
   refreshUser: () => Promise<void>;
+  proxyIp: string | null;
+  clearProxyIp: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -73,6 +76,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
   const [idleWarnSecondsLeft, setIdleWarnSecondsLeft] = useState<number | null>(null);
+  const [proxyIp, setProxyIp] = useState<string | null>(() => sessionStorage.getItem('gatwy-proxy-ip'));
+
+  const clearProxyIp = useCallback(() => {
+    sessionStorage.removeItem('gatwy-proxy-ip');
+    setProxyIp(null);
+  }, []);
 
   /** Timestamp of the last detected user interaction */
   const lastActivityRef = useRef<number>(Date.now());
@@ -136,26 +145,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await apiFetch('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ username, password }),
-    }) as { token?: string; user?: User; mfaRequired?: boolean; mfaToken?: string };
+    }) as { token?: string; user?: User; mfaRequired?: boolean; mfaToken?: string; proxyIp?: string };
 
     if (data.mfaRequired) {
       return { mfaRequired: true, mfaToken: data.mfaToken };
+    }
+
+    if (data.proxyIp) {
+      sessionStorage.setItem('gatwy-proxy-ip', data.proxyIp);
+      setProxyIp(data.proxyIp);
     }
 
     const u = data.user!;
     setToken('cookie');
     setUser(u);
     setNeedsSetup(false);
-    return {};
+    return { proxyIp: data.proxyIp };
   }, []);
 
   const completeMfaLogin = useCallback(async (mfaToken: string, code: string, trustDevice?: boolean) => {
-    const { user: u } = await apiFetch('/auth/login/mfa', {
+    const data = await apiFetch('/auth/login/mfa', {
       method: 'POST',
       body: JSON.stringify({ mfaToken, code, trustDevice: !!trustDevice }),
-    }) as { token: string; user: User };
+    }) as { token: string; user: User; proxyIp?: string };
+
+    if (data.proxyIp) {
+      sessionStorage.setItem('gatwy-proxy-ip', data.proxyIp);
+      setProxyIp(data.proxyIp);
+    }
+
     setToken('cookie');
-    setUser(u);
+    setUser(data.user);
     setNeedsSetup(false);
   }, []);
 
@@ -165,6 +185,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     sessionStorage.clear();
     setToken(null);
     setUser(null);
+    setProxyIp(null);
     setIdleWarnSecondsLeft(null);
     // Revoke the session on the server (fire-and-forget — UI clears immediately)
     fetch('/api/v1/auth/logout', {
@@ -272,7 +293,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, completeMfaLogin, logout, setup, needsSetup, refreshUser }}>
+    <AuthContext.Provider value={{ user, token, loading, login, completeMfaLogin, logout, setup, needsSetup, refreshUser, proxyIp, clearProxyIp }}>
       {children}
       {idleWarnSecondsLeft !== null && (
         <IdleWarningDialog secondsLeft={idleWarnSecondsLeft} onStayActive={handleStayActive} />

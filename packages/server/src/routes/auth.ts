@@ -16,6 +16,41 @@ import { decrypt } from '../services/encryption.js';
 import { authenticateLdap } from '../services/ldap.js';
 import { buildOidcAuthUrl, handleOidcCallback, isOidcEnabled } from '../services/oidc.js';
 
+// ── Proxy detection helper ───────────────────────────────────────────────────
+function detectProxyIp(req: Request): string | null {
+  if (getSetting('security.proxy_detection_enabled') !== 'true') return null;
+
+  const xff = req.headers['x-forwarded-for'];
+  if (!xff) return null;
+
+  const rawPeer = req.socket?.remoteAddress ?? '';
+  const peerIp = rawPeer.replace(/^::ffff:/i, '');
+  if (!peerIp) return null;
+
+  const trusted = getSetting('security.trusted_proxies').trim();
+  if (trusted === 'true' || trusted === '*') return null;
+  if (trusted) {
+    const entries = trusted.split(',').map((s) => s.trim()).filter(Boolean);
+    const isAlreadyTrusted = entries.some((entry) => {
+      if (entry.includes('/')) {
+        try {
+          const [range, bitsStr] = entry.split('/');
+          const bits = parseInt(bitsStr, 10);
+          if (bits < 0 || bits > 32) return false;
+          const mask = bits === 0 ? 0 : (~0 << (32 - bits)) >>> 0;
+          const toNum = (s: string) =>
+            s.split('.').reduce((acc, o) => ((acc << 8) + parseInt(o, 10)) >>> 0, 0) >>> 0;
+          return (toNum(peerIp) & mask) === (toNum(range) & mask);
+        } catch { return false; }
+      }
+      return entry === peerIp;
+    });
+    if (isAlreadyTrusted) return null;
+  }
+
+  return peerIp;
+}
+
 // ── IP-based rate limiting for login ──────────────────────────────────────────
 interface IpRecord { count: number; resetAt: number; }
 const ipLoginAttempts = new Map<string, IpRecord>();
@@ -390,6 +425,7 @@ router.post('/login', async (req: Request, res: Response) => {
   });
 
   setAuthCookie(res, token, maxSessionMinutes || undefined);
+  const proxyIp = detectProxyIp(req);
   res.json({
     token,
     user: {
@@ -401,6 +437,7 @@ router.post('/login', async (req: Request, res: Response) => {
       permissions: getPermissionsForRole(user.role),
       dismissedWarnings: parseDismissedWarnings(user.dismissed_warnings_json),
     },
+    ...(proxyIp ? { proxyIp } : {}),
   });
 });
 
@@ -469,6 +506,7 @@ router.post('/login/mfa', async (req: Request, res: Response) => {
   });
 
   setAuthCookie(res, token, maxSessionMinutes || undefined);
+  const proxyIp = detectProxyIp(req);
   res.json({
     token,
     user: {
@@ -480,6 +518,7 @@ router.post('/login/mfa', async (req: Request, res: Response) => {
       permissions: getPermissionsForRole(user.role),
       dismissedWarnings: parseDismissedWarnings(user.dismissed_warnings_json),
     },
+    ...(proxyIp ? { proxyIp } : {}),
   });
 });
 
@@ -587,9 +626,11 @@ router.post('/login/ldap', async (req: Request, res: Response) => {
     ipAddress: req.ip,
   });
 
+  const proxyIp = detectProxyIp(req);
   res.json({
     token,
     user: { id: user.id, username: user.username, displayName: user.display_name, role: user.role, theme: null, permissions: getPermissionsForRole(user.role), dismissedWarnings: [] },
+    ...(proxyIp ? { proxyIp } : {}),
   });
 });
 
