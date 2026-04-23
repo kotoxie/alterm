@@ -307,21 +307,17 @@ router.delete('/:connectionId/file', async (req: Request, res: Response) => {
     });
 
     if (stats.isDirectory()) {
-      console.log(`[sftp] deleting directory recursively: ${filePath}`);
       await sftpRmdirRecursive(sftp, filePath);
     } else {
-      console.log(`[sftp] deleting file: ${filePath}`);
       await new Promise<void>((resolve, reject) => {
         sftp.unlink(filePath, (err) => err ? reject(err) : resolve());
       });
     }
 
-    console.log(`[sftp] delete success: ${filePath}`);
     logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'sftp', action: 'delete', path: filePath });
     res.json({ success: true });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'SFTP error';
-    console.error('[sftp] delete error:', msg);
     res.status(500).json({ error: msg });
   } finally {
     ssh?.end();
