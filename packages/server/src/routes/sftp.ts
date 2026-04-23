@@ -246,12 +246,13 @@ router.delete('/:connectionId/file', async (req: Request, res: Response) => {
     ssh = result.ssh;
     const { sftp } = result;
 
-    // Try unlink (file) first; if it fails, use rm -rf via SSH for directories
-    try {
-      await new Promise<void>((resolve, reject) => {
-        sftp.unlink(filePath, (err) => err ? reject(err) : resolve());
-      });
-    } catch {
+    // Check if target is a directory
+    const stats = await new Promise<import('ssh2').Stats>((resolve, reject) => {
+      sftp.stat(filePath, (err, s) => err ? reject(err) : resolve(s));
+    });
+
+    if (stats.isDirectory()) {
+      // Use rm -rf via SSH for directories (recursive delete)
       const q = (s: string) => "'" + s.replace(/'/g, "'\\''") + "'";
       await new Promise<void>((resolve, reject) => {
         ssh!.exec(`rm -rf ${q(filePath)}`, (err, stream) => {
@@ -263,6 +264,10 @@ router.delete('/:connectionId/file', async (req: Request, res: Response) => {
             else resolve();
           });
         });
+      });
+    } else {
+      await new Promise<void>((resolve, reject) => {
+        sftp.unlink(filePath, (err) => err ? reject(err) : resolve());
       });
     }
 
