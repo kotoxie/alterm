@@ -86,6 +86,7 @@ router.post('/:connectionId/list', async (req: Request, res: Response) => {
       files: entries.map((e) => ({
         filename: e.name,
         fileAttributes: e.isDirectory ? 0x10 : 0x00,
+        size: e.isDirectory ? undefined : (e.size ?? undefined),
       })),
     });
   } catch (e: unknown) {
@@ -255,6 +256,34 @@ router.post('/:connectionId/stat', async (req: Request, res: Response) => {
     } catch {
       res.status(500).json({ error: e instanceof Error ? e.message : 'FTP error' });
     }
+  } finally { client?.close(); }
+});
+
+// POST /:connectionId/copy — copy a file (server-side download + upload)
+router.post('/:connectionId/copy', async (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const conn = getConn(req.params.connectionId as string, userId, req.user!.role);
+  if (!conn) { res.status(404).json({ error: 'Connection not found' }); return; }
+
+  const { srcPath, destPath } = req.body as { srcPath?: string; destPath?: string };
+  if (!srcPath || !destPath) { res.status(400).json({ error: 'srcPath and destPath required' }); return; }
+
+  let client: ftp.Client | null = null;
+  try {
+    client = await makeFtpClient(conn);
+    // Download to memory then upload (FTP has no native copy)
+    const pass = new PassThrough();
+    const chunks: Buffer[] = [];
+    pass.on('data', (chunk: Buffer) => chunks.push(chunk));
+    await client.downloadTo(pass, srcPath);
+    const data = Buffer.concat(chunks);
+    const uploadStream = new PassThrough();
+    uploadStream.end(data);
+    await client.uploadFrom(uploadStream, destPath);
+    logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'ftp', action: 'copy', path: `${srcPath} → ${destPath}` });
+    res.json({ success: true });
+  } catch (e: unknown) {
+    res.status(500).json({ error: e instanceof Error ? e.message : 'FTP error' });
   } finally { client?.close(); }
 });
 

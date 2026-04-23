@@ -97,13 +97,14 @@ router.post('/:connectionId/list', async (req: Request, res: Response) => {
     ssh = result.ssh;
     const { sftp } = result;
 
-    const entries = await new Promise<{ filename: string; fileAttributes: number }[]>((resolve, reject) => {
+    const entries = await new Promise<{ filename: string; fileAttributes: number; size?: number }[]>((resolve, reject) => {
       sftp.readdir(dirPath || '/', (err, list) => {
         if (err) { reject(err); return; }
         resolve(
           list.map((entry) => ({
             filename: entry.filename,
             fileAttributes: entry.attrs.isDirectory() ? 0x10 : 0x00,
+            size: entry.attrs.isDirectory() ? undefined : (entry.attrs.size ?? undefined),
           })),
         );
       });
@@ -229,7 +230,7 @@ router.post('/:connectionId/mkdir', async (req: Request, res: Response) => {
   }
 });
 
-// DELETE /:connectionId/file — delete a file
+// DELETE /:connectionId/file — delete a file or directory
 router.delete('/:connectionId/file', async (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const conn = getConn(req.params.connectionId as string, userId, req.user!.role);
@@ -245,12 +246,25 @@ router.delete('/:connectionId/file', async (req: Request, res: Response) => {
     ssh = result.ssh;
     const { sftp } = result;
 
-    await new Promise<void>((resolve, reject) => {
-      sftp.unlink(filePath, (err) => {
-        if (err) { reject(err); return; }
-        resolve();
+    // Try unlink (file) first; if it fails, use rm -rf via SSH for directories
+    try {
+      await new Promise<void>((resolve, reject) => {
+        sftp.unlink(filePath, (err) => err ? reject(err) : resolve());
       });
-    });
+    } catch {
+      const q = (s: string) => "'" + s.replace(/'/g, "'\\''") + "'";
+      await new Promise<void>((resolve, reject) => {
+        ssh!.exec(`rm -rf ${q(filePath)}`, (err, stream) => {
+          if (err) { reject(err); return; }
+          let stderr = '';
+          stream.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
+          stream.on('close', (code: number) => {
+            if (code !== 0) reject(new Error(stderr || `rm failed with code ${code}`));
+            else resolve();
+          });
+        });
+      });
+    }
 
     logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'sftp', action: 'delete', path: filePath });
     res.json({ success: true });

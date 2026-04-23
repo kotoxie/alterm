@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 interface FileEntry {
   filename: string;
   fileAttributes: number;
+  size?: number;
 }
 
 const ATTR_DIRECTORY = 0x10;
@@ -355,15 +356,10 @@ export function FileBrowser({
 
   async function pasteFromClipboard() {
     if (!clipboard) return;
-    const isSftp = apiBase.includes('sftp');
     for (const srcPath of clipboard.paths) {
       const filename = srcPath.split(pathSep).filter(Boolean).pop() || srcPath.split('/').filter(Boolean).pop() || '';
       const destPath = joinPath(path, filename);
       if (clipboard.operation === 'copy') {
-        if (!isSftp) {
-          setError('Copy not supported for this protocol');
-          return;
-        }
         try {
           const res = await fetch(`${apiBase}/${connectionId}/copy`, {
             method: 'POST',
@@ -733,6 +729,9 @@ export function FileBrowser({
                   ) : (
                     <span className="flex-1 text-text-primary truncate text-sm leading-none">{f.filename}</span>
                   )}
+                  <span className="shrink-0 text-[11px] tabular-nums text-text-secondary/50 w-16 text-right">
+                    {!isDir(f) && f.size != null ? formatSize(f.size) : ''}
+                  </span>
                   <span className="shrink-0 text-[10px] font-medium text-text-secondary/60 tracking-wide uppercase px-1.5 py-0.5 rounded bg-surface-hover/0 group-hover:bg-surface">
                     {badge}
                   </span>
