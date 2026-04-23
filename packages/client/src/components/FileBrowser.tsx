@@ -150,10 +150,13 @@ export function FileBrowser({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [clipboard, contextMenu, deleteConfirm, renamingFile, infoFile]);
 
-  // For SFTP/FTP (pathSep='/'), always produce absolute paths.
+  // For SFTP/FTP (pathSep='/'), always produce absolute paths (no double slashes).
   // For SMB (pathSep='\\'), keep existing relative-join behaviour.
   const joinPath = (base: string, name: string) => {
-    if (pathSep === '/') return base ? `${base}/${name}` : `/${name}`;
+    if (pathSep === '/') {
+      const b = base.endsWith('/') ? base.slice(0, -1) : base;
+      return b ? `${b}/${name}` : `/${name}`;
+    }
     return base ? `${base}${pathSep}${name}` : name;
   };
 
@@ -247,13 +250,21 @@ export function FileBrowser({
   async function deleteFile(name: string) {
     setDeleteConfirm(null);
     const filePath = joinPath(path, name);
-    const res = await fetch(`${apiBase}/${connectionId}/file?path=${encodeURIComponent(filePath)}`, {
-      method: 'DELETE',
-      credentials: 'include',
-      ...(fileSessionId ? { headers: { 'X-File-Session-Id': fileSessionId } } : {}),
-    });
-    if (res.ok) listDir(path);
-    else { const d = await res.json(); setError(d.error || 'Delete failed'); }
+    try {
+      const res = await fetch(`${apiBase}/${connectionId}/file?path=${encodeURIComponent(filePath)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        ...(fileSessionId ? { headers: { 'X-File-Session-Id': fileSessionId } } : {}),
+      });
+      if (res.ok) { listDir(path); }
+      else {
+        let msg = 'Delete failed';
+        try { const d = await res.json() as { error?: string }; msg = d.error || msg; } catch { /* non-JSON */ }
+        setError(msg);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Delete failed');
+    }
   }
 
   async function createFolder() {
@@ -297,15 +308,26 @@ export function FileBrowser({
 
   async function deleteSelected() {
     setDeleteConfirm(null);
+    const errors: string[] = [];
     for (const name of [...selectedFiles]) {
       const filePath = joinPath(path, name);
-      await fetch(`${apiBase}/${connectionId}/file?path=${encodeURIComponent(filePath)}`, {
-        method: 'DELETE',
-        credentials: 'include',
-        ...(fileSessionId ? { headers: { 'X-File-Session-Id': fileSessionId } } : {}),
-      });
+      try {
+        const res = await fetch(`${apiBase}/${connectionId}/file?path=${encodeURIComponent(filePath)}`, {
+          method: 'DELETE',
+          credentials: 'include',
+          ...(fileSessionId ? { headers: { 'X-File-Session-Id': fileSessionId } } : {}),
+        });
+        if (!res.ok) {
+          let msg = name;
+          try { const d = await res.json() as { error?: string }; msg = d.error || msg; } catch { /* non-JSON */ }
+          errors.push(msg);
+        }
+      } catch (e) {
+        errors.push(e instanceof Error ? e.message : name);
+      }
     }
     setSelectedFiles(new Set());
+    if (errors.length) setError(`Delete failed: ${errors.join(', ')}`);
     listDir(path);
   }
 
