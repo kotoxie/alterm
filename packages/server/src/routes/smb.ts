@@ -288,17 +288,17 @@ router.post('/:connectionId/stat', async (req: Request, res: Response) => {
   let smb: SMB2 | null = null;
   try {
     smb = makeSmbClient(conn);
-    const stats = await smbOp(() => smb!.stat(filePath));
-    const s = stats as unknown as { size?: number; birthtime?: Date; mtime?: Date; atime?: Date; ctime?: Date; isDirectory: () => boolean };
+    const stats = await smbOp(() => smb!.stat(filePath)) as Record<string, unknown>;
     res.json({
-      size: s.size ?? null,
-      mtime: s.mtime instanceof Date ? s.mtime.toISOString() : null,
-      atime: s.atime instanceof Date ? s.atime.toISOString() : null,
-      birthtime: s.birthtime instanceof Date ? s.birthtime.toISOString() : null,
-      isDirectory: s.isDirectory(),
+      size: typeof stats.size === 'number' ? stats.size : null,
+      mtime: stats.mtime instanceof Date ? stats.mtime.toISOString() : null,
+      atime: stats.atime instanceof Date ? stats.atime.toISOString() : null,
+      birthtime: stats.birthtime instanceof Date ? stats.birthtime.toISOString() : null,
+      isDirectory: typeof stats.isDirectory === 'function' ? (stats.isDirectory as () => boolean)() : false,
     });
   } catch (e: unknown) {
-    res.status(500).json({ error: e instanceof Error ? e.message : 'SMB error' });
+    console.error('[smb] stat error:', e instanceof Error ? e.message : e);
+    res.status(500).json({ error: e instanceof Error ? e.message : 'SMB stat failed' });
   } finally { smb?.disconnect(); }
 });
 

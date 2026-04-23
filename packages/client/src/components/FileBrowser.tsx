@@ -415,8 +415,9 @@ export function FileBrowser({
         setInfoFile({ filename, stats });
         setChmodMode(stats.mode != null ? '0' + (stats.mode & 0o7777).toString(8) : '');
       } else {
-        const d = await res.json();
-        setError(d.error || 'Failed to get file info');
+        let msg = 'Failed to get file info';
+        try { const d = await res.json(); msg = d.error || msg; } catch { /* non-JSON response */ }
+        setError(msg);
         setInfoFile(null);
       }
     } catch {
