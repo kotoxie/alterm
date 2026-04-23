@@ -230,6 +230,61 @@ router.post('/:connectionId/mkdir', async (req: Request, res: Response) => {
   }
 });
 
+// Recursively delete a directory using pure SFTP operations
+async function sftpRmdirRecursive(sftp: SFTPWrapper, dirPath: string): Promise<void> {
+  const entries = await new Promise<{ filename: string; attrs: import('ssh2').Stats }[]>((resolve, reject) => {
+    sftp.readdir(dirPath, (err, list) => err ? reject(err) : resolve(list));
+  });
+  for (const entry of entries) {
+    if (entry.filename === '.' || entry.filename === '..') continue;
+    const fullPath = dirPath.endsWith('/') ? `${dirPath}${entry.filename}` : `${dirPath}/${entry.filename}`;
+    if (entry.attrs.isDirectory()) {
+      await sftpRmdirRecursive(sftp, fullPath);
+    } else {
+      await new Promise<void>((resolve, reject) => {
+        sftp.unlink(fullPath, (err) => err ? reject(err) : resolve());
+      });
+    }
+  }
+  await new Promise<void>((resolve, reject) => {
+    sftp.rmdir(dirPath, (err) => err ? reject(err) : resolve());
+  });
+}
+
+// Recursively copy a directory using pure SFTP operations
+async function sftpCopyDirRecursive(sftp: SFTPWrapper, srcPath: string, destPath: string): Promise<void> {
+  // Create destination directory
+  await new Promise<void>((resolve, reject) => {
+    sftp.mkdir(destPath, (err) => err ? reject(err) : resolve());
+  });
+  const entries = await new Promise<{ filename: string; attrs: import('ssh2').Stats }[]>((resolve, reject) => {
+    sftp.readdir(srcPath, (err, list) => err ? reject(err) : resolve(list));
+  });
+  for (const entry of entries) {
+    if (entry.filename === '.' || entry.filename === '..') continue;
+    const src = srcPath.endsWith('/') ? `${srcPath}${entry.filename}` : `${srcPath}/${entry.filename}`;
+    const dest = destPath.endsWith('/') ? `${destPath}${entry.filename}` : `${destPath}/${entry.filename}`;
+    if (entry.attrs.isDirectory()) {
+      await sftpCopyDirRecursive(sftp, src, dest);
+    } else {
+      // Read file into memory then write to destination
+      const data = await new Promise<Buffer>((resolve, reject) => {
+        const chunks: Buffer[] = [];
+        const rs = sftp.createReadStream(src);
+        rs.on('data', (chunk: Buffer) => chunks.push(chunk));
+        rs.on('end', () => resolve(Buffer.concat(chunks)));
+        rs.on('error', reject);
+      });
+      await new Promise<void>((resolve, reject) => {
+        const ws = sftp.createWriteStream(dest);
+        ws.on('close', () => resolve());
+        ws.on('error', reject);
+        ws.end(data);
+      });
+    }
+  }
+}
+
 // DELETE /:connectionId/file — delete a file or directory
 router.delete('/:connectionId/file', async (req: Request, res: Response) => {
   const userId = req.user!.userId;
@@ -238,7 +293,6 @@ router.delete('/:connectionId/file', async (req: Request, res: Response) => {
 
   const rawPath = req.query.path as string;
   if (!rawPath) { res.status(400).json({ error: 'path required' }); return; }
-  // Normalize double slashes (e.g. //folder → /folder)
   const filePath = rawPath.replace(/\/\/+/g, '/');
 
   let ssh: SshClient | null = null;
@@ -248,34 +302,13 @@ router.delete('/:connectionId/file', async (req: Request, res: Response) => {
     ssh = result.ssh;
     const { sftp } = result;
 
-    // Check if target is a directory
     const stats = await new Promise<import('ssh2').Stats>((resolve, reject) => {
       sftp.stat(filePath, (err, s) => err ? reject(err) : resolve(s));
     });
 
     if (stats.isDirectory()) {
-      console.log(`[sftp] deleting directory: ${filePath}`);
-      // Try rm -rf via SSH exec first (recursive delete)
-      try {
-        const q = (s: string) => "'" + s.replace(/'/g, "'\\''") + "'";
-        await new Promise<void>((resolve, reject) => {
-          ssh!.exec(`rm -rf ${q(filePath)}`, (err, stream) => {
-            if (err) { reject(err); return; }
-            let stderr = '';
-            stream.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
-            stream.on('close', (code: number) => {
-              if (code !== 0) reject(new Error(stderr || `rm failed with code ${code}`));
-              else resolve();
-            });
-          });
-        });
-      } catch (execErr) {
-        // Fallback: try sftp.rmdir (works for empty directories or if exec is blocked)
-        console.log(`[sftp] exec rm -rf failed, trying sftp.rmdir: ${execErr instanceof Error ? execErr.message : execErr}`);
-        await new Promise<void>((resolve, reject) => {
-          sftp.rmdir(filePath, (err) => err ? reject(err) : resolve());
-        });
-      }
+      console.log(`[sftp] deleting directory recursively: ${filePath}`);
+      await sftpRmdirRecursive(sftp, filePath);
     } else {
       console.log(`[sftp] deleting file: ${filePath}`);
       await new Promise<void>((resolve, reject) => {
@@ -375,7 +408,7 @@ router.post('/:connectionId/chmod', async (req: Request, res: Response) => {
   } finally { ssh?.end(); }
 });
 
-// POST /:connectionId/copy — copy a file (server-side, uses SFTP-safe shell quoting)
+// POST /:connectionId/copy — copy a file or directory using pure SFTP
 router.post('/:connectionId/copy', async (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const conn = getConn(req.params.connectionId as string, userId, req.user!.role);
@@ -384,25 +417,34 @@ router.post('/:connectionId/copy', async (req: Request, res: Response) => {
   const { srcPath, destPath } = req.body as { srcPath?: string; destPath?: string };
   if (!srcPath || !destPath) { res.status(400).json({ error: 'srcPath and destPath required' }); return; }
 
-  // Shell-safe single-quote escaping — prevents command injection via path names
-  const q = (s: string) => "'" + s.replace(/'/g, "'\\''") + "'";
-
   let ssh: SshClient | null = null;
   try {
     const result = await connectSftp(conn);
     ssh = result.ssh;
-    // Use SSH exec for copy since SFTP has no native copy
-    await new Promise<void>((resolve, reject) => {
-      ssh!.exec(`cp -r ${q(srcPath)} ${q(destPath)}`, (err, stream) => {
-        if (err) { reject(err); return; }
-        let stderr = '';
-        stream.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
-        stream.on('close', (code: number) => {
-          if (code !== 0) reject(new Error(stderr || `cp failed with code ${code}`));
-          else resolve();
-        });
-      });
+    const { sftp } = result;
+
+    const stats = await new Promise<import('ssh2').Stats>((resolve, reject) => {
+      sftp.stat(srcPath, (err, s) => err ? reject(err) : resolve(s));
     });
+
+    if (stats.isDirectory()) {
+      await sftpCopyDirRecursive(sftp, srcPath, destPath);
+    } else {
+      const data = await new Promise<Buffer>((resolve, reject) => {
+        const chunks: Buffer[] = [];
+        const rs = sftp.createReadStream(srcPath);
+        rs.on('data', (chunk: Buffer) => chunks.push(chunk));
+        rs.on('end', () => resolve(Buffer.concat(chunks)));
+        rs.on('error', reject);
+      });
+      await new Promise<void>((resolve, reject) => {
+        const ws = sftp.createWriteStream(destPath);
+        ws.on('close', () => resolve());
+        ws.on('error', reject);
+        ws.end(data);
+      });
+    }
+
     logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'sftp', action: 'copy', path: `${srcPath} → ${destPath}` });
     res.json({ success: true });
   } catch (e: unknown) {
