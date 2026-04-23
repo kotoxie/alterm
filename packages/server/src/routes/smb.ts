@@ -288,7 +288,7 @@ router.post('/:connectionId/stat', async (req: Request, res: Response) => {
   let smb: SMB2 | null = null;
   try {
     smb = makeSmbClient(conn);
-    const stats = await smbOp(() => smb!.stat(filePath)) as Record<string, unknown>;
+    const stats = await smbOp(() => smb!.stat(filePath)) as unknown as Record<string, unknown>;
     res.json({
       size: typeof stats.size === 'number' ? stats.size : null,
       mtime: stats.mtime instanceof Date ? stats.mtime.toISOString() : null,
