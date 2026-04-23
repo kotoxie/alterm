@@ -236,8 +236,10 @@ router.delete('/:connectionId/file', async (req: Request, res: Response) => {
   const conn = getConn(req.params.connectionId as string, userId, req.user!.role);
   if (!conn) { res.status(404).json({ error: 'Connection not found' }); return; }
 
-  const filePath = req.query.path as string;
-  if (!filePath) { res.status(400).json({ error: 'path required' }); return; }
+  const rawPath = req.query.path as string;
+  if (!rawPath) { res.status(400).json({ error: 'path required' }); return; }
+  // Normalize double slashes (e.g. //folder → /folder)
+  const filePath = rawPath.replace(/\/\/+/g, '/');
 
   let ssh: SshClient | null = null;
 
@@ -252,25 +254,36 @@ router.delete('/:connectionId/file', async (req: Request, res: Response) => {
     });
 
     if (stats.isDirectory()) {
-      // Use rm -rf via SSH for directories (recursive delete)
-      const q = (s: string) => "'" + s.replace(/'/g, "'\\''") + "'";
-      await new Promise<void>((resolve, reject) => {
-        ssh!.exec(`rm -rf ${q(filePath)}`, (err, stream) => {
-          if (err) { reject(err); return; }
-          let stderr = '';
-          stream.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
-          stream.on('close', (code: number) => {
-            if (code !== 0) reject(new Error(stderr || `rm failed with code ${code}`));
-            else resolve();
+      console.log(`[sftp] deleting directory: ${filePath}`);
+      // Try rm -rf via SSH exec first (recursive delete)
+      try {
+        const q = (s: string) => "'" + s.replace(/'/g, "'\\''") + "'";
+        await new Promise<void>((resolve, reject) => {
+          ssh!.exec(`rm -rf ${q(filePath)}`, (err, stream) => {
+            if (err) { reject(err); return; }
+            let stderr = '';
+            stream.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
+            stream.on('close', (code: number) => {
+              if (code !== 0) reject(new Error(stderr || `rm failed with code ${code}`));
+              else resolve();
+            });
           });
         });
-      });
+      } catch (execErr) {
+        // Fallback: try sftp.rmdir (works for empty directories or if exec is blocked)
+        console.log(`[sftp] exec rm -rf failed, trying sftp.rmdir: ${execErr instanceof Error ? execErr.message : execErr}`);
+        await new Promise<void>((resolve, reject) => {
+          sftp.rmdir(filePath, (err) => err ? reject(err) : resolve());
+        });
+      }
     } else {
+      console.log(`[sftp] deleting file: ${filePath}`);
       await new Promise<void>((resolve, reject) => {
         sftp.unlink(filePath, (err) => err ? reject(err) : resolve());
       });
     }
 
+    console.log(`[sftp] delete success: ${filePath}`);
     logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'sftp', action: 'delete', path: filePath });
     res.json({ success: true });
   } catch (e: unknown) {
