@@ -260,10 +260,12 @@ export function FileBrowser({
       else {
         let msg = 'Delete failed';
         try { const d = await res.json() as { error?: string }; msg = d.error || msg; } catch { /* non-JSON */ }
-        setError(msg);
+        // Refresh list first (to show partial progress), then show error after refresh completes
+        await listDir(path);
+        setError(`Delete "${name}": ${msg}`);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Delete failed');
+      setError(`Delete "${name}": ${e instanceof Error ? e.message : 'failed'}`);
     }
   }
 
@@ -327,8 +329,8 @@ export function FileBrowser({
       }
     }
     setSelectedFiles(new Set());
+    await listDir(path);
     if (errors.length) setError(`Delete failed: ${errors.join(', ')}`);
-    listDir(path);
   }
 
   function toggleSelect(name: string) {
