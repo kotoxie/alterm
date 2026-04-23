@@ -103,10 +103,14 @@ router.post('/:connectionId/list', async (req: Request, res: Response) => {
     const files = await smbOp(() => smb!.readdir(dirPath, { stats: true }));
     logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'smb', action: 'browse', path: dirPath || '\\', detail: { count: files.length } });
     res.json({
-      files: files.map((f) => ({
-        filename: f.name,
-        fileAttributes: f.isDirectory() ? 0x10 : 0x00,
-      })),
+      files: files.map((f) => {
+        const s = f as unknown as { size?: number };
+        return {
+          filename: f.name,
+          fileAttributes: f.isDirectory() ? 0x10 : 0x00,
+          size: f.isDirectory() ? undefined : (s.size ?? undefined),
+        };
+      }),
     });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'SMB error';
@@ -208,7 +212,21 @@ router.post('/:connectionId/mkdir', async (req: Request, res: Response) => {
   }
 });
 
-// DELETE /:connectionId/file — delete a file
+// Recursively delete a directory and all its contents
+async function rmdirRecursive(smb: SMB2, dirPath: string): Promise<void> {
+  const entries = await smbOp(() => smb.readdir(dirPath, { stats: true }));
+  for (const entry of entries) {
+    const childPath = dirPath ? `${dirPath}\\${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      await rmdirRecursive(smb, childPath);
+    } else {
+      await smbOp(() => smb.unlink(childPath));
+    }
+  }
+  await smbOp(() => smb.rmdir(dirPath));
+}
+
+// DELETE /:connectionId/file — delete a file or directory
 router.delete('/:connectionId/file', async (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const conn = await getConn(req.params.connectionId as string, userId, req.user!.role);
@@ -221,7 +239,12 @@ router.delete('/:connectionId/file', async (req: Request, res: Response) => {
 
   try {
     smb = makeSmbClient(conn);
-    await smbOp(() => smb!.unlink(filePath));
+    // Try as file first; if that fails, try as directory (recursive)
+    try {
+      await smbOp(() => smb!.unlink(filePath));
+    } catch {
+      await rmdirRecursive(smb, filePath);
+    }
     logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'smb', action: 'delete', path: filePath });
     res.json({ success: true });
   } catch (e: unknown) {
@@ -252,5 +275,78 @@ router.post('/:connectionId/rename', async (req: Request, res: Response) => {
     res.status(500).json({ error: e instanceof Error ? e.message : 'SMB error' });
   } finally { smb?.disconnect(); }
 });
+
+// POST /:connectionId/stat — get file/folder info (size, timestamps)
+router.post('/:connectionId/stat', async (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const conn = await getConn(req.params.connectionId as string, userId, req.user!.role);
+  if (!conn) { res.status(404).json({ error: 'Connection not found' }); return; }
+
+  const { path: filePath } = req.body as { path?: string };
+  if (!filePath) { res.status(400).json({ error: 'path required' }); return; }
+
+  let smb: SMB2 | null = null;
+  try {
+    smb = makeSmbClient(conn);
+    const stats = await smbOp(() => smb!.stat(filePath));
+    const s = stats as unknown as { size?: number; birthtime?: Date; mtime?: Date; atime?: Date; ctime?: Date; isDirectory: () => boolean };
+    res.json({
+      size: s.size ?? null,
+      mtime: s.mtime instanceof Date ? s.mtime.toISOString() : null,
+      atime: s.atime instanceof Date ? s.atime.toISOString() : null,
+      birthtime: s.birthtime instanceof Date ? s.birthtime.toISOString() : null,
+      isDirectory: s.isDirectory(),
+    });
+  } catch (e: unknown) {
+    res.status(500).json({ error: e instanceof Error ? e.message : 'SMB error' });
+  } finally { smb?.disconnect(); }
+});
+
+// POST /:connectionId/copy — copy a file (server-side read + write)
+router.post('/:connectionId/copy', async (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const conn = await getConn(req.params.connectionId as string, userId, req.user!.role);
+  if (!conn) { res.status(404).json({ error: 'Connection not found' }); return; }
+
+  const { srcPath, destPath } = req.body as { srcPath?: string; destPath?: string };
+  if (!srcPath || !destPath) { res.status(400).json({ error: 'srcPath and destPath required' }); return; }
+
+  let smb: SMB2 | null = null;
+  try {
+    smb = makeSmbClient(conn);
+
+    // Check if source is a directory — if so, do recursive copy
+    const stats = await smbOp(() => smb!.stat(srcPath));
+    const isDirectory = (stats as unknown as { isDirectory: () => boolean }).isDirectory();
+
+    if (isDirectory) {
+      await copyDirRecursive(smb, srcPath, destPath);
+    } else {
+      const data = await smbOp(() => smb!.readFile(srcPath));
+      await smbOp(() => smb!.writeFile(destPath, data));
+    }
+
+    logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'smb', action: 'copy', path: `${srcPath} → ${destPath}` });
+    res.json({ success: true });
+  } catch (e: unknown) {
+    res.status(500).json({ error: e instanceof Error ? e.message : 'SMB error' });
+  } finally { smb?.disconnect(); }
+});
+
+// Recursively copy a directory and all its contents
+async function copyDirRecursive(smb: SMB2, srcDir: string, destDir: string): Promise<void> {
+  await smbOp(() => smb.mkdir(destDir));
+  const entries = await smbOp(() => smb.readdir(srcDir, { stats: true }));
+  for (const entry of entries) {
+    const srcChild = `${srcDir}\\${entry.name}`;
+    const destChild = `${destDir}\\${entry.name}`;
+    if (entry.isDirectory()) {
+      await copyDirRecursive(smb, srcChild, destChild);
+    } else {
+      const data = await smbOp(() => smb.readFile(srcChild));
+      await smbOp(() => smb.writeFile(destChild, data));
+    }
+  }
+}
 
 export default router;
