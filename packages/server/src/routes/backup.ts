@@ -50,16 +50,18 @@ router.post('/export', requirePermission('settings.backup'), (req: Request, res:
 // POST /import — restore system from encrypted backup
 // Body: raw .geb binary. Password in X-Backup-Password header.
 router.post('/import', requirePermission('settings.backup'), (req: Request, res: Response) => {
-  const password = req.headers['x-backup-password'] as string | undefined;
-  if (!password) {
+  const password = req.headers['x-backup-password'];
+  if (!password || typeof password !== 'string') {
     res.status(400).json({ error: 'X-Backup-Password header required' });
     return;
   }
-  const data = req.body as Buffer;
-  if (!Buffer.isBuffer(data) || data.length < 100) {
+  const raw = req.body;
+  if (!Buffer.isBuffer(raw) || raw.length < 100) {
     res.status(400).json({ error: 'Valid backup file required' });
     return;
   }
+  // Explicit Buffer construction ensures type is always Buffer (not array/string)
+  const data: Buffer = Buffer.from(raw);
   try {
     const restored = restoreBackup(data, password);
 

@@ -85,7 +85,9 @@ export interface RestoreResult {
   encryptionKeyHex: string;
 }
 
-export function restoreBackup(data: Buffer, password: string): RestoreResult {
+export function restoreBackup(rawData: Buffer, password: string): RestoreResult {
+  // Ensure we always operate on a proper Buffer regardless of caller
+  const data = Buffer.isBuffer(rawData) ? rawData : Buffer.from(rawData);
   let offset = 0;
   const magic = data.subarray(offset, offset + BACKUP_MAGIC.length);
   if (!magic.equals(BACKUP_MAGIC)) throw new Error('Invalid backup file — not an Gatwy backup');
