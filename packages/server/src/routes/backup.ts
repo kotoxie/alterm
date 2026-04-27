@@ -55,13 +55,18 @@ router.post('/import', requirePermission('settings.backup'), (req: Request, res:
     res.status(400).json({ error: 'X-Backup-Password header required' });
     return;
   }
-  const raw = req.body;
-  if (!Buffer.isBuffer(raw) || raw.length < 100) {
+  const raw: unknown = req.body;
+  if (!Buffer.isBuffer(raw)) {
     res.status(400).json({ error: 'Valid backup file required' });
     return;
   }
-  // Explicit Buffer construction ensures type is always Buffer (not array/string)
+  // Construct a fresh Buffer immediately after type guard — all further checks
+  // operate on `data` so CodeQL sees a clearly-typed value, not the raw body.
   const data: Buffer = Buffer.from(raw);
+  if (data.length < 100) {
+    res.status(400).json({ error: 'Valid backup file required' });
+    return;
+  }
   try {
     const restored = restoreBackup(data, password);
 

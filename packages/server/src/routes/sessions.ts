@@ -205,6 +205,10 @@ router.post('/:id/recording/chunk', (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const canViewAny = userCan(req, 'sessions.view_any');
   const id = req.params.id as string;
+  // Validate UUID format to prevent path traversal in recording file path
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    res.status(400).json({ error: 'Invalid session id' }); return;
+  }
 
   const session = queryOne<{ recording_path: string | null; user_id: string }>(
     'SELECT recording_path, user_id FROM sessions WHERE id = ?',
