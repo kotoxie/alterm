@@ -5,8 +5,9 @@ import { getSetting } from './settings.js';
 /**
  * Validates that a URL is safe for outbound webhook/Slack requests.
  * Blocks private/loopback addresses and non-HTTPS schemes to prevent SSRF.
+ * Exported so callers can validate at their input boundary (breaking the taint chain).
  */
-function validateOutboundUrl(raw: string): URL {
+export function validateOutboundUrl(raw: string): URL {
   let parsed: URL;
   try { parsed = new URL(raw); } catch { throw new Error(`Invalid URL: ${raw}`); }
   if (parsed.protocol !== 'https:') throw new Error('Outbound notification URLs must use HTTPS');
@@ -72,8 +73,6 @@ export interface NotificationAction {
   // Telegram overrides
   chat_id?: string;
   template?: string;
-  // Slack / Webhook overrides
-  url?: string;
 }
 
 export interface DispatchContext {
@@ -255,9 +254,9 @@ async function sendTelegram(action: NotificationAction, cfg: ChannelConfig, ctx:
 }
 
 async function sendSlack(action: NotificationAction, cfg: ChannelConfig, ctx: DispatchContext): Promise<void> {
-  const rawUrl = action.url ?? cfg.slack_webhook_url;
-  if (!rawUrl) throw new Error('Slack webhook URL not configured');
-  const url = validateOutboundUrl(rawUrl);
+  // URL always comes from stored config (not action) so it is never user-tainted at dispatch time.
+  if (!cfg.slack_webhook_url) throw new Error('Slack webhook URL not configured');
+  const url = validateOutboundUrl(cfg.slack_webhook_url);
 
   const defaultTemplate = cfg.slack_default_template ??
     '{{severity}} *[{{app_name}}]* {{rule}}\n' +
@@ -275,9 +274,9 @@ async function sendSlack(action: NotificationAction, cfg: ChannelConfig, ctx: Di
 }
 
 async function sendWebhook(action: NotificationAction, cfg: ChannelConfig, ctx: DispatchContext): Promise<void> {
-  const rawUrl = action.url ?? cfg.webhook_url;
-  if (!rawUrl) throw new Error('Webhook URL not configured');
-  const url = validateOutboundUrl(rawUrl);
+  // URL always comes from stored config (not action) so it is never user-tainted at dispatch time.
+  if (!cfg.webhook_url) throw new Error('Webhook URL not configured');
+  const url = validateOutboundUrl(cfg.webhook_url);
 
   const method = cfg.webhook_method ?? 'POST';
   let extraHeaders: Record<string, string> = {};

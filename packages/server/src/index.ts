@@ -111,6 +111,31 @@ async function main() {
   app.use(express.json({ limit: '6mb' })); // allow base64-encoded logos (~4 MB image → ~5.4 MB base64)
   app.use(cookieParser());
 
+  // CSRF protection: for state-changing API requests that carry a session cookie,
+  // validate the Origin or Referer header matches the server host.
+  // This satisfies the double-submit / origin-check CSRF mitigation pattern.
+  app.use('/api/v1', (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') {
+      return next();
+    }
+    // Only apply to cookie-carrying requests
+    if (!req.cookies?.gatwy_token) return next();
+
+    const origin = req.headers.origin;
+    const referer = req.headers.referer;
+    const host = req.headers.host;
+    if (!host) return next(); // no Host header — can't validate, allow through
+
+    // Build expected origin from Host header
+    const expectedOrigin = `https://${host}`;
+    const source = origin ?? (referer ? new URL(referer).origin : undefined);
+    if (source && source !== expectedOrigin) {
+      res.status(403).json({ error: 'CSRF check failed' });
+      return;
+    }
+    next();
+  });
+
   // API routes
   app.use('/api/v1/auth', authRoutes);
   app.use('/api/v1', ipRulesMiddleware);
