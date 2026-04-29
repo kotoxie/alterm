@@ -7,7 +7,7 @@
 ### Lightning-fast, self-hosted remote access — RDP, SSH, VNC, Telnet, SMB, SFTP & FTP in one Docker container.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Image size](https://ghcr-badge.egpl.dev/kotoxie/gatwy/size)](https://github.com/kotoxie/gatwy/releases/latest)
+![Image Size](https://img.shields.io/endpoint?url=https://gatwy-image-size.gatwy.dev)
 [![Latest Release](https://img.shields.io/github/v/release/kotoxie/gatwy?label=release)](https://github.com/kotoxie/gatwy/releases/latest)
 [![Docker Image](https://img.shields.io/badge/ghcr.io-kotoxie%2Fgatwy-blue?logo=docker)](https://ghcr.io/kotoxie/gatwy)
 
