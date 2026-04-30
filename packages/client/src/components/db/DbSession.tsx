@@ -17,8 +17,11 @@ interface QueryResult {
   columns: string[];
   rows: unknown[][];
   rowCount: number;
+  totalRows: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
   durationMs: number;
-  truncated?: boolean;
   error?: string;
 }
 
@@ -46,6 +49,7 @@ export function DbSession({ connectionId, connectionName, isActive, onStatusChan
   const [showHistory, setShowHistory] = useState(false);
 
   const [pendingSql, setPendingSql] = useState<string | null>(null);
+  const lastSqlRef = useRef('');
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -90,7 +94,8 @@ export function DbSession({ connectionId, connectionName, isActive, onStatusChan
     };
   }, [connectionId, reconnectCount]);
 
-  const handleExecute = useCallback(async (sql: string) => {
+  const handleExecute = useCallback(async (sql: string, page = 0) => {
+    if (page === 0) lastSqlRef.current = sql;
     setIsLoading(true);
     setResult(null);
     try {
@@ -98,14 +103,17 @@ export function DbSession({ connectionId, connectionName, isActive, onStatusChan
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ sql }),
+        body: JSON.stringify({ sql, page }),
       });
       const d = await r.json() as {
         columns?: string[];
         rows?: unknown[][];
         rowCount?: number;
+        totalRows?: number;
+        page?: number;
+        pageSize?: number;
+        totalPages?: number;
         durationMs?: number;
-        truncated?: boolean;
         error?: string;
         connectionLost?: boolean;
       };
@@ -117,16 +125,23 @@ export function DbSession({ connectionId, connectionName, isActive, onStatusChan
         columns: d.columns ?? [],
         rows: d.rows ?? [],
         rowCount: d.rowCount ?? 0,
+        totalRows: d.totalRows ?? 0,
+        page: d.page ?? 0,
+        pageSize: d.pageSize ?? rowLimit,
+        totalPages: d.totalPages ?? 0,
         durationMs: d.durationMs ?? 0,
-        truncated: d.truncated,
         error: d.error,
       });
     } catch (err) {
-      setResult({ columns: [], rows: [], rowCount: 0, durationMs: 0, error: err instanceof Error ? err.message : 'Request failed' });
+      setResult({ columns: [], rows: [], rowCount: 0, totalRows: 0, page: 0, pageSize: rowLimit, totalPages: 0, durationMs: 0, error: err instanceof Error ? err.message : 'Request failed' });
     } finally {
       setIsLoading(false);
     }
-  }, [connectionId, showDisconnect]);
+  }, [connectionId, showDisconnect, rowLimit]);
+
+  const handlePageChange = useCallback((page: number) => {
+    if (lastSqlRef.current) handleExecute(lastSqlRef.current, page);
+  }, [handleExecute]);
 
   const handleExport = useCallback(async (sql: string, format: 'csv' | 'json') => {
     try {
@@ -238,8 +253,11 @@ export function DbSession({ connectionId, connectionName, isActive, onStatusChan
             <ResultsGrid
               columns={result?.columns ?? []}
               rows={result?.rows ?? []}
-              truncated={result?.truncated}
-              onExport={result && !result.error ? undefined : undefined}
+              page={result?.page ?? 0}
+              totalPages={result?.totalPages ?? 0}
+              totalRows={result?.totalRows ?? 0}
+              pageSize={result?.pageSize ?? rowLimit}
+              onPageChange={handlePageChange}
             />
           </div>
 

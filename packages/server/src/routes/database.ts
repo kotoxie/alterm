@@ -278,17 +278,22 @@ router.post('/:connectionId/query', async (req: Request, res: Response) => {
   const conn = getConn(connectionId, req);
   if (!conn) { res.status(404).json({ error: 'Connection not found' }); return; }
 
-  const { sql: queryText } = req.body as { sql?: string };
+  const { sql: queryText, page: rawPage } = req.body as { sql?: string; page?: number };
   if (!queryText || typeof queryText !== 'string' || !queryText.trim()) {
     res.status(400).json({ error: 'sql is required' }); return;
   }
+  const pageNum = Math.max(0, Math.floor(Number(rawPage ?? 0)));
 
   try {
     const pool = await getPool(connectionId);
+    const pageSize = pool.rowLimit;
+    const offset = pageNum * pageSize;
     const startTime = Date.now();
     let columns: string[] = [];
     let rows: unknown[][] = [];
     let rowCount = 0;
+    let totalRows = 0;
+    let totalPages = 0;
     let error: string | undefined;
     let connectionLost = false;
 
@@ -300,18 +305,26 @@ router.post('/:connectionId/query', async (req: Request, res: Response) => {
         try {
           pgClient = await pgPool.connect();
         } catch (connectErr) {
-          // Failed to get a client from the pool — connection-level error
           error = connectErr instanceof Error ? connectErr.message : String(connectErr);
           connectionLost = true;
-          throw connectErr; // skip to outer catch for cleanup
+          throw connectErr;
         }
         try {
           await pgClient.query(`SET statement_timeout = ${pool.queryTimeoutMs}`);
           const result = await pgClient.query(queryText);
           columns = result.fields.map((f: { name: string }) => f.name);
-          const limited = result.rows.slice(0, pool.rowLimit);
-          rows = limited.map((r: Record<string, unknown>) => columns.map(c => r[c] ?? null));
-          rowCount = result.rowCount ?? rows.length;
+          if (columns.length > 0) {
+            // SELECT — paginate
+            const allRows = result.rows as Record<string, unknown>[];
+            totalRows = allRows.length;
+            totalPages = Math.ceil(totalRows / pageSize) || 1;
+            const pageRows = allRows.slice(offset, offset + pageSize);
+            rows = pageRows.map(r => columns.map(c => r[c] ?? null));
+            rowCount = totalRows;
+          } else {
+            // DML — affected rows
+            rowCount = result.rowCount ?? 0;
+          }
         } catch (queryErr) {
           error = queryErr instanceof Error ? queryErr.message : String(queryErr);
         } finally { pgClient.release(); }
@@ -320,16 +333,18 @@ router.post('/:connectionId/query', async (req: Request, res: Response) => {
           const [result, fields] = await pool.mysqlPool!.query({ sql: queryText, timeout: pool.queryTimeoutMs });
           if (Array.isArray(result)) {
             columns = (fields as Array<{ name: string }> | undefined)?.map(f => f.name) ?? [];
-            const limited = (result as unknown[]).slice(0, pool.rowLimit);
-            rows = limited.map(r => columns.map(c => (r as Record<string, unknown>)[c] ?? null));
-            rowCount = result.length;
+            const allRows = result as Record<string, unknown>[];
+            totalRows = allRows.length;
+            totalPages = Math.ceil(totalRows / pageSize) || 1;
+            const pageRows = allRows.slice(offset, offset + pageSize);
+            rows = pageRows.map(r => columns.map(c => r[c] ?? null));
+            rowCount = totalRows;
           } else {
             const res2 = result as { affectedRows?: number };
             rowCount = res2.affectedRows ?? 0;
           }
         } catch (mysqlErr) {
           error = mysqlErr instanceof Error ? mysqlErr.message : String(mysqlErr);
-          // MySQL system/network errors have a code starting with 'E' or 'PROTOCOL'
           const code = (mysqlErr as NodeJS.ErrnoException).code ?? '';
           if (code.startsWith('E') || code.startsWith('PROTOCOL')) connectionLost = true;
         }
@@ -356,7 +371,6 @@ router.post('/:connectionId/query', async (req: Request, res: Response) => {
     }
 
     if (connectionLost) {
-      // Release the stale pool so next connect attempt creates a fresh one
       await releasePool(connectionId);
       res.status(503).json({ error, connectionLost: true });
       return;
@@ -367,7 +381,7 @@ router.post('/:connectionId/query', async (req: Request, res: Response) => {
       return;
     }
 
-    res.json({ columns, rows, rowCount, durationMs, truncated: rowCount > pool.rowLimit });
+    res.json({ columns, rows, rowCount, totalRows, page: pageNum, pageSize, totalPages, durationMs });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: message });

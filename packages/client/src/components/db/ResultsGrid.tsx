@@ -3,7 +3,11 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 interface ResultsGridProps {
   columns: string[];
   rows: unknown[][];
-  truncated?: boolean;
+  page: number;
+  totalPages: number;
+  totalRows: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
   onExport?: (format: 'csv' | 'json') => void;
 }
 
@@ -16,7 +20,20 @@ function cellToString(val: unknown): string {
   return String(val);
 }
 
-export function ResultsGrid({ columns, rows, truncated, onExport }: ResultsGridProps) {
+function pageNumbers(current: number, total: number): (number | '...')[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i);
+  const result: (number | '...')[] = [];
+  const left = Math.max(1, current - 2);
+  const right = Math.min(total - 2, current + 2);
+  result.push(0);
+  if (left > 1) result.push('...');
+  for (let i = left; i <= right; i++) result.push(i);
+  if (right < total - 2) result.push('...');
+  result.push(total - 1);
+  return result;
+}
+
+export function ResultsGrid({ columns, rows, page, totalPages, totalRows, pageSize, onPageChange, onExport }: ResultsGridProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
@@ -112,7 +129,7 @@ export function ResultsGrid({ columns, rows, truncated, onExport }: ResultsGridP
       {/* Toolbar */}
       <div className="flex items-center gap-2 px-3 py-1 border-b border-border shrink-0">
         <span className="text-xs text-text-secondary">
-          {columns.length > 0 && `${sortedRows.length} row${sortedRows.length !== 1 ? 's' : ''}${truncated ? ' (result truncated)' : ''}`}
+          {columns.length > 0 && `${totalRows.toLocaleString()} row${totalRows !== 1 ? 's' : ''}`}
         </span>
         {onExport && columns.length > 0 && (
           <div className="ml-auto flex gap-1">
@@ -195,6 +212,68 @@ export function ResultsGrid({ columns, rows, truncated, onExport }: ResultsGridP
           </>
         )}
       </div>
+
+      {/* Pagination bar — shown when more than one page */}
+      {columns.length > 0 && totalPages > 1 && (() => {
+        const btnBase = 'flex items-center justify-center w-7 h-7 rounded text-xs transition-colors';
+        const btnActive = 'bg-accent text-white font-medium';
+        const btnNormal = 'text-text-secondary hover:bg-surface-hover hover:text-text-primary';
+        const btnDisabled = 'text-text-secondary/30 cursor-not-allowed';
+        const rowStart = page * pageSize + 1;
+        const rowEnd = Math.min((page + 1) * pageSize, totalRows);
+        return (
+          <div className="flex items-center justify-between px-3 py-1.5 border-t border-border shrink-0 bg-surface">
+            <span className="text-xs text-text-secondary min-w-[120px]">
+              Rows {rowStart.toLocaleString()}–{rowEnd.toLocaleString()} of {totalRows.toLocaleString()}
+            </span>
+            <div className="flex items-center gap-0.5">
+              {/* First */}
+              <button
+                onClick={() => onPageChange(0)}
+                disabled={page === 0}
+                className={`${btnBase} ${page === 0 ? btnDisabled : btnNormal}`}
+                title="First page"
+              >«</button>
+              {/* Prev */}
+              <button
+                onClick={() => onPageChange(page - 1)}
+                disabled={page === 0}
+                className={`${btnBase} ${page === 0 ? btnDisabled : btnNormal}`}
+                title="Previous page"
+              >‹</button>
+              {/* Page numbers */}
+              {pageNumbers(page, totalPages).map((p, i) =>
+                p === '...' ? (
+                  <span key={`e${i}`} className="w-6 text-center text-xs text-text-secondary/50">…</span>
+                ) : (
+                  <button
+                    key={p}
+                    onClick={() => onPageChange(p as number)}
+                    className={`${btnBase} ${p === page ? btnActive : btnNormal}`}
+                  >
+                    {(p as number) + 1}
+                  </button>
+                )
+              )}
+              {/* Next */}
+              <button
+                onClick={() => onPageChange(page + 1)}
+                disabled={page >= totalPages - 1}
+                className={`${btnBase} ${page >= totalPages - 1 ? btnDisabled : btnNormal}`}
+                title="Next page"
+              >›</button>
+              {/* Last */}
+              <button
+                onClick={() => onPageChange(totalPages - 1)}
+                disabled={page >= totalPages - 1}
+                className={`${btnBase} ${page >= totalPages - 1 ? btnDisabled : btnNormal}`}
+                title="Last page"
+              >»</button>
+            </div>
+            <div className="min-w-[120px]" />
+          </div>
+        );
+      })()}
     </div>
   );
 }
