@@ -5,7 +5,11 @@ import { decrypt } from '../services/encryption.js';
 import { logAudit } from '../services/audit.js';
 import { logFileSessionEvent } from '../services/fileSession.js';
 import { resolveClientIp } from '../services/ip.js';
+import { patchSmbNtlm } from '../services/smbPatch.js';
 import SMB2 from '@marsaud/smb2';
+
+// Patch @marsaud/smb2 to use NTLMv2 — must run before any SMB connection
+patchSmbNtlm();
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
