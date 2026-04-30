@@ -139,6 +139,7 @@ export function SessionsLayer({
                 connectionName={tab.name}
                 isActive={isActive}
                 onStatusChange={(status) => onStatusChange(tab.id, status)}
+                onClose={() => onClose(tab.id)}
               />
             )}
           </div>

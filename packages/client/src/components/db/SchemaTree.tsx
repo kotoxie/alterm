@@ -14,6 +14,7 @@ interface SchemaTreeProps {
   connectionId: string;
   protocol: 'postgres' | 'mysql';
   defaultDatabase: string;
+  rowLimit: number;
   onTableClick: (sql: string) => void;
 }
 
@@ -71,7 +72,7 @@ function NodeIcon({ type, isPk }: { type: SchemaNode['type']; isPk?: boolean }) 
   return null;
 }
 
-export function SchemaTree({ connectionId, protocol, defaultDatabase, onTableClick }: SchemaTreeProps) {
+export function SchemaTree({ connectionId, protocol, defaultDatabase, rowLimit, onTableClick }: SchemaTreeProps) {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [schemas, setSchemas] = useState<string[]>([]);
@@ -134,8 +135,8 @@ export function SchemaTree({ connectionId, protocol, defaultDatabase, onTableCli
 
   const handleTableDoubleClick = (schema: string, table: string) => {
     const sql = protocol === 'postgres'
-      ? `SELECT * FROM "${schema}"."${table}" LIMIT 100;`
-      : `SELECT * FROM \`${table}\` LIMIT 100;`;
+      ? `SELECT * FROM "${schema}"."${table}" LIMIT ${rowLimit};`
+      : `SELECT * FROM \`${table}\` LIMIT ${rowLimit};`;
     onTableClick(sql);
   };
 

@@ -86,7 +86,8 @@ router.post('/:connectionId/connect', async (req: Request, res: Response) => {
       sessions.set(connectionId, sessionId);
     }
     logAudit({ userId, eventType: 'db.connect', target: connectionId, details: { protocol: conn.protocol } });
-    res.json({ sessionId, defaultDatabase: pool.defaultDatabase, protocol: pool.protocol });  } catch (err) {
+    res.json({ sessionId, defaultDatabase: pool.defaultDatabase, protocol: pool.protocol, rowLimit: pool.rowLimit });
+  } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[db] connect error:', message);
     res.status(500).json({ error: `Failed to connect: ${message}` });
@@ -289,10 +290,21 @@ router.post('/:connectionId/query', async (req: Request, res: Response) => {
     let rows: unknown[][] = [];
     let rowCount = 0;
     let error: string | undefined;
+    let connectionLost = false;
 
     try {
       if (pool.protocol === 'postgres') {
-        const pgClient = await pool.pgPool!.connect();
+        const pgPool = pool.pgPool!;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let pgClient: any;
+        try {
+          pgClient = await pgPool.connect();
+        } catch (connectErr) {
+          // Failed to get a client from the pool — connection-level error
+          error = connectErr instanceof Error ? connectErr.message : String(connectErr);
+          connectionLost = true;
+          throw connectErr; // skip to outer catch for cleanup
+        }
         try {
           await pgClient.query(`SET statement_timeout = ${pool.queryTimeoutMs}`);
           const result = await pgClient.query(queryText);
@@ -300,42 +312,54 @@ router.post('/:connectionId/query', async (req: Request, res: Response) => {
           const limited = result.rows.slice(0, pool.rowLimit);
           rows = limited.map((r: Record<string, unknown>) => columns.map(c => r[c] ?? null));
           rowCount = result.rowCount ?? rows.length;
+        } catch (queryErr) {
+          error = queryErr instanceof Error ? queryErr.message : String(queryErr);
         } finally { pgClient.release(); }
       } else {
-        const [result, fields] = await pool.mysqlPool!.query({ sql: queryText, timeout: pool.queryTimeoutMs });
-        if (Array.isArray(result)) {
-          columns = (fields as Array<{ name: string }> | undefined)?.map(f => f.name) ?? [];
-          const limited = (result as unknown[]).slice(0, pool.rowLimit);
-          rows = limited.map(r => columns.map(c => (r as Record<string, unknown>)[c] ?? null));
-          rowCount = result.length;
-        } else {
-          // DML (INSERT/UPDATE/DELETE)
-          const res2 = result as { affectedRows?: number };
-          rowCount = res2.affectedRows ?? 0;
+        try {
+          const [result, fields] = await pool.mysqlPool!.query({ sql: queryText, timeout: pool.queryTimeoutMs });
+          if (Array.isArray(result)) {
+            columns = (fields as Array<{ name: string }> | undefined)?.map(f => f.name) ?? [];
+            const limited = (result as unknown[]).slice(0, pool.rowLimit);
+            rows = limited.map(r => columns.map(c => (r as Record<string, unknown>)[c] ?? null));
+            rowCount = result.length;
+          } else {
+            const res2 = result as { affectedRows?: number };
+            rowCount = res2.affectedRows ?? 0;
+          }
+        } catch (mysqlErr) {
+          error = mysqlErr instanceof Error ? mysqlErr.message : String(mysqlErr);
+          // MySQL system/network errors have a code starting with 'E' or 'PROTOCOL'
+          const code = (mysqlErr as NodeJS.ErrnoException).code ?? '';
+          if (code.startsWith('E') || code.startsWith('PROTOCOL')) connectionLost = true;
         }
       }
-    } catch (execErr) {
-      error = execErr instanceof Error ? execErr.message : String(execErr);
-    }
+    } catch { /* connection-level error already recorded above */ }
 
     const durationMs = Date.now() - startTime;
 
-    // Record in db_query_history
-    execute(
-      `INSERT INTO db_query_history (id, user_id, connection_id, query_text, row_count, duration_ms, error, executed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-      [uuid(), userId, connectionId, queryText.slice(0, 10000), error ? null : rowCount, durationMs, error ?? null],
-    );
-
-    // Record session event
-    const sessionId = getUserSessions(userId).get(connectionId);
-    if (sessionId) {
-      recordDbEvent(
-        sessionId,
-        error ? 'query_error' : 'query_execute',
-        'query',
-        { queryPreview: queryText.slice(0, 200), rowCount, durationMs, error },
+    if (!connectionLost) {
+      execute(
+        `INSERT INTO db_query_history (id, user_id, connection_id, query_text, row_count, duration_ms, error, executed_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+        [uuid(), userId, connectionId, queryText.slice(0, 10000), error ? null : rowCount, durationMs, error ?? null],
       );
+      const sessionId = getUserSessions(userId).get(connectionId);
+      if (sessionId) {
+        recordDbEvent(
+          sessionId,
+          error ? 'query_error' : 'query_execute',
+          'query',
+          { queryPreview: queryText.slice(0, 200), rowCount, durationMs, error },
+        );
+      }
+    }
+
+    if (connectionLost) {
+      // Release the stale pool so next connect attempt creates a fresh one
+      await releasePool(connectionId);
+      res.status(503).json({ error, connectionLost: true });
+      return;
     }
 
     if (error) {

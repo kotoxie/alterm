@@ -25,17 +25,27 @@ export function ResultsGrid({ columns, rows, truncated, onExport }: ResultsGridP
   const [colWidths, setColWidths] = useState<number[]>(() => columns.map(() => 150));
   const [copiedCell, setCopiedCell] = useState<string | null>(null);
 
-  useEffect(() => {
-    const el = containerRef.current;
+  // ResizeObserver must observe the scrollable div.
+  // We use a callback ref so it re-attaches whenever the element mounts/unmounts.
+  const attachObserver = useCallback((el: HTMLDivElement | null) => {
+    (containerRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
     if (!el) return;
     const obs = new ResizeObserver(entries => {
       setContainerHeight(entries[0].contentRect.height);
     });
     obs.observe(el);
-    return () => obs.disconnect();
+    // Store cleanup on the element itself
+    (el as HTMLDivElement & { _resizeCleanup?: () => void })._resizeCleanup = () => obs.disconnect();
   }, []);
 
-  // Reset sort when columns change
+  useEffect(() => {
+    return () => {
+      const el = containerRef.current as (HTMLDivElement & { _resizeCleanup?: () => void }) | null;
+      el?._resizeCleanup?.();
+    };
+  }, []);
+
+  // Reset sort/scroll when result set changes
   useEffect(() => {
     setSortCol(null);
     setColWidths(columns.map(() => 150));
@@ -57,7 +67,7 @@ export function ResultsGrid({ columns, rows, truncated, onExport }: ResultsGridP
 
   const totalHeight = sortedRows.length * ROW_HEIGHT;
   const startIdx = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
-  const endIdx = Math.min(sortedRows.length, Math.ceil((scrollTop + containerHeight) / ROW_HEIGHT) + OVERSCAN);
+  const endIdx = Math.min(sortedRows.length, Math.ceil((scrollTop + Math.max(containerHeight, 1)) / ROW_HEIGHT) + OVERSCAN);
   const visibleRows = sortedRows.slice(startIdx, endIdx);
 
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
@@ -97,23 +107,14 @@ export function ResultsGrid({ columns, rows, truncated, onExport }: ResultsGridP
     window.addEventListener('mouseup', onUp);
   };
 
-  if (columns.length === 0) {
-    return (
-      <div className="flex-1 flex items-center justify-center text-text-secondary text-sm">
-        Run a query to see results
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col h-full min-h-0 bg-surface">
       {/* Toolbar */}
       <div className="flex items-center gap-2 px-3 py-1 border-b border-border shrink-0">
         <span className="text-xs text-text-secondary">
-          {sortedRows.length} row{sortedRows.length !== 1 ? 's' : ''}
-          {truncated && ' (result truncated)'}
+          {columns.length > 0 && `${sortedRows.length} row${sortedRows.length !== 1 ? 's' : ''}${truncated ? ' (result truncated)' : ''}`}
         </span>
-        {onExport && (
+        {onExport && columns.length > 0 && (
           <div className="ml-auto flex gap-1">
             <button
               onClick={() => onExport('csv')}
@@ -127,64 +128,72 @@ export function ResultsGrid({ columns, rows, truncated, onExport }: ResultsGridP
         )}
       </div>
 
-      {/* Grid */}
-      <div className="flex-1 overflow-auto min-h-0 relative" ref={containerRef} onScroll={handleScroll}>
-        {/* Header (sticky) */}
-        <div className="sticky top-0 z-10 flex bg-surface border-b border-border" style={{ minWidth: colWidths.reduce((s, w) => s + w, 0) + 'px' }}>
-          {columns.map((col, ci) => (
-            <div
-              key={ci}
-              className="relative flex items-center shrink-0 px-2 text-xs font-medium text-text-secondary cursor-pointer hover:bg-surface-hover select-none"
-              style={{ width: colWidths[ci], height: ROW_HEIGHT }}
-              onClick={() => handleSortClick(ci)}
-            >
-              <span className="truncate">{col}</span>
-              {sortCol === ci && (
-                <span className="ml-1 opacity-60">{sortDir === 'asc' ? '↑' : '↓'}</span>
-              )}
-              <div
-                className="absolute right-0 top-1 bottom-1 w-1 cursor-col-resize hover:bg-accent/40"
-                onMouseDown={e => resizeHandleMouseDown(ci, e)}
-                onClick={e => e.stopPropagation()}
-              />
+      {/* Scrollable grid — always mounted so ResizeObserver fires on load */}
+      <div className="flex-1 overflow-auto min-h-0 relative" ref={attachObserver} onScroll={handleScroll}>
+        {columns.length === 0 ? (
+          <div className="flex h-full items-center justify-center text-text-secondary text-sm">
+            Run a query to see results
+          </div>
+        ) : (
+          <>
+            {/* Header (sticky) */}
+            <div className="sticky top-0 z-10 flex bg-surface border-b border-border" style={{ minWidth: colWidths.reduce((s, w) => s + w, 0) + 'px' }}>
+              {columns.map((col, ci) => (
+                <div
+                  key={ci}
+                  className="relative flex items-center shrink-0 px-2 text-xs font-medium text-text-secondary cursor-pointer hover:bg-surface-hover select-none"
+                  style={{ width: colWidths[ci], height: ROW_HEIGHT }}
+                  onClick={() => handleSortClick(ci)}
+                >
+                  <span className="truncate">{col}</span>
+                  {sortCol === ci && (
+                    <span className="ml-1 opacity-60">{sortDir === 'asc' ? '↑' : '↓'}</span>
+                  )}
+                  <div
+                    className="absolute right-0 top-1 bottom-1 w-1 cursor-col-resize hover:bg-accent/40"
+                    onMouseDown={e => resizeHandleMouseDown(ci, e)}
+                    onClick={e => e.stopPropagation()}
+                  />
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
 
-        {/* Virtual body */}
-        <div style={{ height: totalHeight, position: 'relative', minWidth: colWidths.reduce((s, w) => s + w, 0) + 'px' }}>
-          {visibleRows.map((row, ri) => {
-            const absIdx = startIdx + ri;
-            return (
-              <div
-                key={absIdx}
-                className={`absolute flex border-b border-border/50 ${absIdx % 2 === 0 ? 'bg-surface' : 'bg-surface-hover/30'}`}
-                style={{ top: absIdx * ROW_HEIGHT, height: ROW_HEIGHT, width: '100%' }}
-              >
-                {row.map((cell, ci) => {
-                  const s = cellToString(cell);
-                  const isNull = cell === null || cell === undefined;
-                  const cellKey = s.slice(0, 50);
-                  return (
-                    <div
-                      key={ci}
-                      className={`shrink-0 px-2 text-xs flex items-center overflow-hidden cursor-pointer hover:bg-accent/5 ${isNull ? 'text-text-secondary/40 italic' : 'text-text-primary'}`}
-                      style={{ width: colWidths[ci], height: ROW_HEIGHT }}
-                      title={s || '(null)'}
-                      onClick={() => copyCell(cell)}
-                    >
-                      {copiedCell === cellKey ? (
-                        <span className="text-accent text-[10px]">Copied</span>
-                      ) : (
-                        <span className="truncate">{isNull ? 'NULL' : s}</span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })}
-        </div>
+            {/* Virtual body */}
+            <div style={{ height: totalHeight, position: 'relative', minWidth: colWidths.reduce((s, w) => s + w, 0) + 'px' }}>
+              {visibleRows.map((row, ri) => {
+                const absIdx = startIdx + ri;
+                return (
+                  <div
+                    key={absIdx}
+                    className={`absolute flex border-b border-border/50 ${absIdx % 2 === 0 ? 'bg-surface' : 'bg-surface-hover/30'}`}
+                    style={{ top: absIdx * ROW_HEIGHT, height: ROW_HEIGHT, width: '100%' }}
+                  >
+                    {row.map((cell, ci) => {
+                      const s = cellToString(cell);
+                      const isNull = cell === null || cell === undefined;
+                      const cellKey = s.slice(0, 50);
+                      return (
+                        <div
+                          key={ci}
+                          className={`shrink-0 px-2 text-xs flex items-center overflow-hidden cursor-pointer hover:bg-accent/5 ${isNull ? 'text-text-secondary/40 italic' : 'text-text-primary'}`}
+                          style={{ width: colWidths[ci], height: ROW_HEIGHT }}
+                          title={s || '(null)'}
+                          onClick={() => copyCell(cell)}
+                        >
+                          {copiedCell === cellKey ? (
+                            <span className="text-accent text-[10px]">Copied</span>
+                          ) : (
+                            <span className="truncate">{isNull ? 'NULL' : s}</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

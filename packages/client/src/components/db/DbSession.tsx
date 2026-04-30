@@ -3,12 +3,14 @@ import { SchemaTree } from './SchemaTree';
 import { QueryEditor } from './QueryEditor';
 import { ResultsGrid } from './ResultsGrid';
 import { QueryHistory } from './QueryHistory';
+import { DisconnectOverlay } from '../DisconnectOverlay';
 
 interface DbSessionProps {
   connectionId: string;
   connectionName: string;
   isActive: boolean;
   onStatusChange?: (status: 'connecting' | 'connected' | 'disconnected') => void;
+  onClose?: () => void;
 }
 
 interface QueryResult {
@@ -26,11 +28,15 @@ const SCHEMA_WIDTH_MAX = 400;
 const RESULTS_HEIGHT_DEFAULT = 260;
 const RESULTS_HEIGHT_MIN = 80;
 
-export function DbSession({ connectionId, connectionName, isActive, onStatusChange }: DbSessionProps) {
+export function DbSession({ connectionId, connectionName, isActive, onStatusChange, onClose }: DbSessionProps) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [protocol, setProtocol] = useState<'postgres' | 'mysql'>('postgres');
   const [defaultDatabase, setDefaultDatabase] = useState('');
-  const [connectError, setConnectError] = useState<string | null>(null);
+  const [rowLimit, setRowLimit] = useState(100);
+
+  const [disconnected, setDisconnected] = useState(false);
+  const [disconnectMessage, setDisconnectMessage] = useState('');
+  const [reconnectCount, setReconnectCount] = useState(0);
 
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<QueryResult | null>(null);
@@ -39,34 +45,42 @@ export function DbSession({ connectionId, connectionName, isActive, onStatusChan
   const [resultsHeight, setResultsHeight] = useState(RESULTS_HEIGHT_DEFAULT);
   const [showHistory, setShowHistory] = useState(false);
 
-  // Pending SQL to inject into editor (from schema tree double-click)
   const [pendingSql, setPendingSql] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Connect on mount
+  const showDisconnect = useCallback((msg: string) => {
+    setDisconnected(true);
+    setDisconnectMessage(msg);
+    setSessionId(null);
+    onStatusChange?.('disconnected');
+  }, [onStatusChange]);
+
+  // Connect on mount / reconnect
   useEffect(() => {
     let cancelled = false;
+    setDisconnected(false);
+    setDisconnectMessage('');
+    setSessionId(null);
     onStatusChange?.('connecting');
 
     fetch(`/api/v1/db/${connectionId}/connect`, { method: 'POST', credentials: 'include' })
       .then(r => r.json())
-      .then((d: { sessionId?: string; protocol?: string; defaultDatabase?: string; error?: string }) => {
+      .then((d: { sessionId?: string; protocol?: string; defaultDatabase?: string; rowLimit?: number; error?: string }) => {
         if (cancelled) return;
         if (d.error) {
-          setConnectError(d.error);
-          onStatusChange?.('disconnected');
+          showDisconnect(d.error);
           return;
         }
         setSessionId(d.sessionId ?? null);
         setProtocol((d.protocol as 'postgres' | 'mysql') ?? 'postgres');
         setDefaultDatabase(d.defaultDatabase ?? '');
+        setRowLimit(d.rowLimit ?? 100);
         onStatusChange?.('connected');
       })
       .catch(err => {
         if (cancelled) return;
-        setConnectError(err instanceof Error ? err.message : 'Connection failed');
-        onStatusChange?.('disconnected');
+        showDisconnect(err instanceof Error ? err.message : 'Connection failed');
       });
 
     return () => {
@@ -74,7 +88,7 @@ export function DbSession({ connectionId, connectionName, isActive, onStatusChan
       fetch(`/api/v1/db/${connectionId}/disconnect`, { method: 'POST', credentials: 'include' }).catch(() => {});
       onStatusChange?.('disconnected');
     };
-  }, [connectionId]);
+  }, [connectionId, reconnectCount]);
 
   const handleExecute = useCallback(async (sql: string) => {
     setIsLoading(true);
@@ -93,7 +107,12 @@ export function DbSession({ connectionId, connectionName, isActive, onStatusChan
         durationMs?: number;
         truncated?: boolean;
         error?: string;
+        connectionLost?: boolean;
       };
+      if (d.connectionLost) {
+        showDisconnect(d.error ?? 'Database connection lost');
+        return;
+      }
       setResult({
         columns: d.columns ?? [],
         rows: d.rows ?? [],
@@ -107,7 +126,7 @@ export function DbSession({ connectionId, connectionName, isActive, onStatusChan
     } finally {
       setIsLoading(false);
     }
-  }, [connectionId]);
+  }, [connectionId, showDisconnect]);
 
   const handleExport = useCallback(async (sql: string, format: 'csv' | 'json') => {
     try {
@@ -155,21 +174,7 @@ export function DbSession({ connectionId, connectionName, isActive, onStatusChan
     window.addEventListener('mouseup', onUp);
   };
 
-  if (connectError) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-3 text-sm">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-red-400">
-          <circle cx="12" cy="12" r="10" />
-          <line x1="12" y1="8" x2="12" y2="12" />
-          <line x1="12" y1="16" x2="12.01" y2="16" />
-        </svg>
-        <p className="text-text-primary font-medium">Connection failed</p>
-        <p className="text-text-secondary text-xs max-w-sm text-center">{connectError}</p>
-      </div>
-    );
-  }
-
-  if (!sessionId) {
+  if (!disconnected && !sessionId) {
     return (
       <div className="flex items-center justify-center h-full gap-2 text-sm text-text-secondary">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin">
@@ -181,13 +186,21 @@ export function DbSession({ connectionId, connectionName, isActive, onStatusChan
   }
 
   return (
-    <div className="flex h-full overflow-hidden" ref={containerRef}>
+    <div className="relative flex h-full overflow-hidden" ref={containerRef}>
+      <DisconnectOverlay
+        show={disconnected}
+        message={disconnectMessage}
+        onExit={() => onClose?.()}
+        onReconnect={() => setReconnectCount(c => c + 1)}
+      />
+
       {/* Schema tree */}
       <div style={{ width: schemaWidth, minWidth: schemaWidth, maxWidth: schemaWidth }} className="flex flex-col overflow-hidden">
         <SchemaTree
           connectionId={connectionId}
           protocol={protocol}
           defaultDatabase={defaultDatabase}
+          rowLimit={rowLimit}
           onTableClick={(sql) => setPendingSql(sql)}
         />
       </div>
