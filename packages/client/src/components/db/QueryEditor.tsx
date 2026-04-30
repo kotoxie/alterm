@@ -11,13 +11,14 @@ interface QueryEditorProps {
   isLoading: boolean;
   error?: string;
   rowCount?: number;
+  totalRows?: number;
   durationMs?: number;
   /** SQL to inject into the active tab (e.g. from schema tree double-click) */
   pendingSql?: string | null;
   onPendingSqlConsumed?: () => void;
 }
 
-export function QueryEditor({ onExecute, isLoading, error, rowCount, durationMs, pendingSql, onPendingSqlConsumed }: QueryEditorProps) {
+export function QueryEditor({ onExecute, isLoading, error, rowCount, totalRows, durationMs, pendingSql, onPendingSqlConsumed }: QueryEditorProps) {
   const [tabs, setTabs] = useState<QueryTab[]>([{ id: crypto.randomUUID(), title: 'Query 1', sql: '' }]);
   const [activeTabId, setActiveTabId] = useState(tabs[0].id);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -136,7 +137,10 @@ export function QueryEditor({ onExecute, isLoading, error, rowCount, durationMs,
         )}
         {!error && rowCount !== undefined && (
           <span className="text-xs text-text-secondary">
-            {rowCount} row{rowCount !== 1 ? 's' : ''}
+            {rowCount.toLocaleString()} row{rowCount !== 1 ? 's' : ''}
+            {totalRows !== undefined && totalRows > rowCount && (
+              <span className="text-text-secondary/60"> (of {totalRows.toLocaleString()})</span>
+            )}
             {durationMs !== undefined && ` · ${durationMs}ms`}
           </span>
         )}

@@ -134,9 +134,10 @@ export function SchemaTree({ connectionId, protocol, defaultDatabase, rowLimit, 
   };
 
   const handleTableDoubleClick = (schema: string, table: string) => {
+    // No LIMIT here — the server injects LIMIT/OFFSET automatically and runs COUNT(*) for totals
     const sql = protocol === 'postgres'
-      ? `SELECT * FROM "${schema}"."${table}" LIMIT ${rowLimit};`
-      : `SELECT * FROM \`${table}\` LIMIT ${rowLimit};`;
+      ? `SELECT * FROM "${schema}"."${table}";`
+      : `SELECT * FROM \`${table}\`;`;
     onTableClick(sql);
   };
 

@@ -297,6 +297,26 @@ router.post('/:connectionId/query', async (req: Request, res: Response) => {
     let error: string | undefined;
     let connectionLost = false;
 
+    // For SELECT queries without an explicit LIMIT: strip any trailing LIMIT/OFFSET,
+    // inject DB-level pagination (LIMIT pageSize OFFSET offset), and run COUNT(*) for total.
+    // If the user wrote an explicit LIMIT, respect it and run as-is (no pagination, no COUNT).
+    const isSelect = /^\s*(\(?\s*(WITH|SELECT)\b)/i.test(queryText.trim());
+    const hasUserLimit = isSelect && /\bLIMIT\s+\d+/i.test(queryText);
+    function stripLimitOffset(sql: string): string {
+      return sql.trim().replace(/;+\s*$/, '').trimEnd()
+        .replace(/\bLIMIT\s+\d+\s+OFFSET\s+\d+\s*$/i, '')
+        .replace(/\bOFFSET\s+\d+\s+LIMIT\s+\d+\s*$/i, '')
+        .replace(/\bLIMIT\s+\d+,\s*\d+\s*$/i, '')
+        .replace(/\bLIMIT\s+\d+\s*$/i, '')
+        .replace(/\bOFFSET\s+\d+\s*$/i, '')
+        .trimEnd();
+    }
+    // Only paginate when user has no explicit LIMIT
+    const shouldPaginate = isSelect && !hasUserLimit;
+    const strippedSql = shouldPaginate ? stripLimitOffset(queryText) : queryText;
+    const dataQuery = shouldPaginate ? `${strippedSql} LIMIT ${pageSize} OFFSET ${offset}` : queryText;
+    const countQuerySql = `SELECT COUNT(*) AS _total FROM (${strippedSql}) AS _count_subq`;
+
     try {
       if (pool.protocol === 'postgres') {
         const pgPool = pool.pgPool!;
@@ -311,37 +331,55 @@ router.post('/:connectionId/query', async (req: Request, res: Response) => {
         }
         try {
           await pgClient.query(`SET statement_timeout = ${pool.queryTimeoutMs}`);
-          const result = await pgClient.query(queryText);
+          const result = await pgClient.query(dataQuery);
           columns = result.fields.map((f: { name: string }) => f.name);
           if (columns.length > 0) {
-            // SELECT — paginate
-            const allRows = result.rows as Record<string, unknown>[];
-            totalRows = allRows.length;
-            totalPages = Math.ceil(totalRows / pageSize) || 1;
-            const pageRows = allRows.slice(offset, offset + pageSize);
-            rows = pageRows.map(r => columns.map(c => r[c] ?? null));
-            rowCount = totalRows;
+            rows = (result.rows as Record<string, unknown>[]).map(r => columns.map(c => r[c] ?? null));
+            rowCount = rows.length;
+            if (shouldPaginate) {
+              try {
+                const countResult = await pgClient.query(countQuerySql);
+                totalRows = Number(countResult.rows[0]?._total ?? rowCount);
+              } catch {
+                totalRows = rowCount;
+              }
+              totalPages = Math.ceil(totalRows / pageSize) || 1;
+            } else {
+              totalRows = rowCount;
+              totalPages = 1;
+            }
           } else {
-            // DML — affected rows
             rowCount = result.rowCount ?? 0;
+            totalRows = rowCount;
+            totalPages = 1;
           }
         } catch (queryErr) {
           error = queryErr instanceof Error ? queryErr.message : String(queryErr);
         } finally { pgClient.release(); }
       } else {
         try {
-          const [result, fields] = await pool.mysqlPool!.query({ sql: queryText, timeout: pool.queryTimeoutMs });
+          const [result, fields] = await pool.mysqlPool!.query({ sql: dataQuery, timeout: pool.queryTimeoutMs });
           if (Array.isArray(result)) {
             columns = (fields as Array<{ name: string }> | undefined)?.map(f => f.name) ?? [];
-            const allRows = result as Record<string, unknown>[];
-            totalRows = allRows.length;
-            totalPages = Math.ceil(totalRows / pageSize) || 1;
-            const pageRows = allRows.slice(offset, offset + pageSize);
-            rows = pageRows.map(r => columns.map(c => r[c] ?? null));
-            rowCount = totalRows;
+            rows = (result as Record<string, unknown>[]).map(r => columns.map(c => r[c] ?? null));
+            rowCount = rows.length;
+            if (shouldPaginate) {
+              try {
+                const [countResult] = await pool.mysqlPool!.query({ sql: countQuerySql, timeout: pool.queryTimeoutMs });
+                totalRows = Number((countResult as Record<string, unknown>[])[0]?._total ?? rowCount);
+              } catch {
+                totalRows = rowCount;
+              }
+              totalPages = Math.ceil(totalRows / pageSize) || 1;
+            } else {
+              totalRows = rowCount;
+              totalPages = 1;
+            }
           } else {
             const res2 = result as { affectedRows?: number };
             rowCount = res2.affectedRows ?? 0;
+            totalRows = rowCount;
+            totalPages = 1;
           }
         } catch (mysqlErr) {
           error = mysqlErr instanceof Error ? mysqlErr.message : String(mysqlErr);
@@ -357,7 +395,7 @@ router.post('/:connectionId/query', async (req: Request, res: Response) => {
       execute(
         `INSERT INTO db_query_history (id, user_id, connection_id, query_text, row_count, duration_ms, error, executed_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-        [uuid(), userId, connectionId, queryText.slice(0, 10000), error ? null : rowCount, durationMs, error ?? null],
+        [uuid(), userId, connectionId, queryText.slice(0, 10000), error ? null : totalRows || rowCount, durationMs, error ?? null],
       );
       const sessionId = getUserSessions(userId).get(connectionId);
       if (sessionId) {

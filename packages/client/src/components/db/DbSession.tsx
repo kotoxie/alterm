@@ -235,6 +235,7 @@ export function DbSession({ connectionId, connectionName, isActive, onStatusChan
             isLoading={isLoading}
             error={result?.error}
             rowCount={result?.error ? undefined : result?.rowCount}
+            totalRows={result?.error ? undefined : result?.totalRows}
             durationMs={result?.error ? undefined : result?.durationMs}
             pendingSql={pendingSql}
             onPendingSqlConsumed={() => setPendingSql(null)}
