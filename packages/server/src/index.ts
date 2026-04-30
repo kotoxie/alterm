@@ -31,6 +31,7 @@ import ftpRoutes from './routes/ftp.js';
 import fileSessionsRoutes from './routes/file-sessions.js';
 import rolesRoutes from './routes/roles.js';
 import notificationsRoutes from './routes/notifications.js';
+import databaseRoutes from './routes/database.js';
 import { ipRulesMiddleware } from './middleware/ipRules.js';
 
 async function main() {
@@ -154,6 +155,7 @@ async function main() {
   app.use('/api/v1/file-sessions', fileSessionsRoutes);
   app.use('/api/v1/roles', rolesRoutes);
   app.use('/api/v1/notifications', notificationsRoutes);
+  app.use('/api/v1/db', databaseRoutes);
   app.use('/health', healthRoutes);
 
   // Global JSON error handler — prevents Express from returning HTML 500 pages

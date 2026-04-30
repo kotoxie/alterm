@@ -514,6 +514,80 @@ function runMigrations() {
         }
       },
     },
+    {
+      version: 13,
+      run: (database: Database) => {
+        // Add 'postgres' and 'mysql' to the connections protocol CHECK constraint.
+        // SQLite requires table recreation to change CHECK constraints.
+        database.run(`CREATE TABLE connections_v13 (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          group_id TEXT REFERENCES connection_groups(id) ON DELETE SET NULL,
+          name TEXT NOT NULL,
+          protocol TEXT NOT NULL CHECK(protocol IN ('ssh','rdp','smb','vnc','sftp','ftp','telnet','postgres','mysql')),
+          host TEXT NOT NULL,
+          port INTEGER NOT NULL,
+          username TEXT,
+          encrypted_password TEXT,
+          private_key TEXT,
+          extra_config_json TEXT,
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          recording_enabled INTEGER NOT NULL DEFAULT 1,
+          shared INTEGER NOT NULL DEFAULT 0,
+          tunnels_json TEXT,
+          host_fingerprint TEXT,
+          tags TEXT,
+          skip_cert_validation INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )`);
+        database.run(`INSERT INTO connections_v13
+          SELECT id, user_id, group_id, name, protocol, host, port, username, encrypted_password,
+                 private_key, extra_config_json, sort_order, recording_enabled, shared, tunnels_json,
+                 host_fingerprint, tags, skip_cert_validation, created_at, updated_at
+          FROM connections`);
+        database.run('DROP TABLE connections');
+        database.run('ALTER TABLE connections_v13 RENAME TO connections');
+        database.run('CREATE INDEX IF NOT EXISTS idx_connections_user ON connections(user_id)');
+
+        // Create db_query_history table
+        database.run(`CREATE TABLE IF NOT EXISTS db_query_history (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          connection_id TEXT NOT NULL REFERENCES connections(id) ON DELETE CASCADE,
+          query_text TEXT NOT NULL,
+          row_count INTEGER,
+          duration_ms INTEGER,
+          error TEXT,
+          executed_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )`);
+        database.run('CREATE INDEX IF NOT EXISTS idx_db_query_history_user_conn ON db_query_history(user_id, connection_id)');
+        database.run('CREATE INDEX IF NOT EXISTS idx_db_query_history_executed ON db_query_history(executed_at)');
+
+        // Add protocols.postgres and protocols.mysql to admin and user roles
+        for (const roleId of ['admin', 'user']) {
+          const row = database.exec(`SELECT permissions_json FROM roles WHERE id = '${roleId}'`);
+          if (!row.length || !row[0].values.length) continue;
+          const raw = row[0].values[0][0] as string;
+          let perms: string[] = [];
+          try { perms = JSON.parse(raw) as string[]; } catch { continue; }
+          let changed = false;
+          for (const perm of ['protocols.postgres', 'protocols.mysql']) {
+            if (!perms.includes(perm)) { perms.push(perm); changed = true; }
+          }
+          if (changed) {
+            database.run(`UPDATE roles SET permissions_json = ? WHERE id = '${roleId}'`, [JSON.stringify(perms)]);
+          }
+        }
+
+        // Add db.* default settings
+        database.run(`INSERT OR IGNORE INTO settings (key, value) VALUES
+          ('db.default_row_limit', '1000'),
+          ('db.query_timeout_ms', '30000'),
+          ('db.idle_timeout_minutes', '10'),
+          ('db.max_pool_connections', '5')`);
+      },
+    },
   ];
 
   for (const migration of migrations) {

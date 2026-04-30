@@ -8,6 +8,7 @@ import { SettingsPanel } from '../components/settings/SettingsPanel';
 import { useSettings } from '../hooks/useSettings';
 import { useAuth } from '../hooks/useAuth';
 import type { PaneNode } from '../types/panes';
+import { type Protocol, type SessionProtocol } from '../types/protocol.js';
 import {
   addSplit,
   removeLeaf,
@@ -49,7 +50,7 @@ export interface Tab {
   id: string;
   connectionId: string;
   name: string;
-  protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' | 'telnet';
+  protocol: Protocol;
   status: 'connecting' | 'connected' | 'disconnected';
   /** Stable across page refreshes — used to reattach SSH sessions without reconnecting. */
   clientSessionId: string;
@@ -65,7 +66,7 @@ export interface ViewData {
 export interface TabBarItem {
   id: string;
   label: string;
-  protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' | 'telnet' | 'split';
+  protocol: SessionProtocol;
   status: 'connecting' | 'connected' | 'disconnected';
 }
 
@@ -215,7 +216,7 @@ export function MainLayout() {
   // Rule: if active view has an empty pane, fill it; otherwise create a new view.
 
   const openTab = useCallback(
-    (connection: { id: string; name: string; protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' | 'telnet' }) => {
+    (connection: { id: string; name: string; protocol: Protocol }) => {
       const currentViews = viewsRef.current;
       const currentActiveViewId = activeViewIdRef.current;
       const activeView = currentActiveViewId
@@ -273,7 +274,7 @@ export function MainLayout() {
   // Opens multiple connections as separate views atomically (used for "Connect All").
 
   const openMultipleTabs = useCallback(
-    (connections: Array<{ id: string; name: string; protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' | 'telnet' }>) => {
+    (connections: Array<{ id: string; name: string; protocol: Protocol }>) => {
       if (connections.length === 0) return;
       const newTabs: Tab[] = connections.map((conn) => ({
         id: crypto.randomUUID(),

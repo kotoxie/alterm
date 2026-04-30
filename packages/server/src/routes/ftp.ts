@@ -109,6 +109,7 @@ router.get('/:connectionId/download', async (req: Request, res: Response) => {
 
   const rawName = filePath.split('/').pop() || 'download';
   const safeFileName = encodeURIComponent(rawName).replace(/['()]/g, encodeURIComponent);
+  const clientSize = req.query.size ? parseInt(req.query.size as string, 10) : null;
   let client: ftp.Client | null = null;
 
   try {
@@ -116,6 +117,7 @@ router.get('/:connectionId/download', async (req: Request, res: Response) => {
     const pass = new PassThrough();
     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${safeFileName}`);
     res.setHeader('Content-Type', 'application/octet-stream');
+    if (clientSize !== null && !isNaN(clientSize)) res.setHeader('Content-Length', clientSize);
     pass.pipe(res);
     await client.downloadTo(pass, filePath);
     logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'ftp', action: 'download', path: filePath });

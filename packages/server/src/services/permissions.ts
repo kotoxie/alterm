@@ -9,6 +9,7 @@ export const ALL_PERMISSIONS = [
   'users.manage', 'settings.manage', 'settings.auth_providers', 'settings.security', 'settings.backup', 'settings.notifications',
   'roles.manage',
   'protocols.ssh', 'protocols.rdp', 'protocols.vnc', 'protocols.smb', 'protocols.ftp', 'protocols.telnet',
+  'protocols.postgres', 'protocols.mysql',
 ] as const;
 
 export type PermissionKey = typeof ALL_PERMISSIONS[number];
@@ -21,6 +22,7 @@ export const DEFAULT_BUILTIN_PERMISSIONS: Record<string, PermissionKey[]> = {
     'sessions.view_own',
     'audit.view_own',
     'protocols.ssh', 'protocols.rdp', 'protocols.vnc', 'protocols.smb', 'protocols.ftp', 'protocols.telnet',
+    'protocols.postgres', 'protocols.mysql',
   ],
 };
 
@@ -74,6 +76,8 @@ export const PERMISSION_GROUPS: Record<string, { label: string; permissions: { k
       { key: 'protocols.smb', label: 'SMB' },
       { key: 'protocols.ftp', label: 'FTP' },
       { key: 'protocols.telnet', label: 'Telnet' },
+      { key: 'protocols.postgres', label: 'PostgreSQL' },
+      { key: 'protocols.mysql', label: 'MySQL / MariaDB' },
     ],
   },
 };

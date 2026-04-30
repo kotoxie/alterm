@@ -1,8 +1,9 @@
-import { useRef, useState, useEffect, type FormEvent } from 'react';
+import { useRef, useState, useEffect, type ReactNode, type FormEvent } from 'react';
+import { type Protocol } from '../types/protocol.js';
 interface Connection {
   id: string;
   name: string;
-  protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' | 'telnet';
+  protocol: Protocol;
   host: string;
   port: number;
   groupId: string | null;
@@ -16,7 +17,7 @@ interface FlatGroup {
 
 export interface ConnectionPrefill {
   name: string;
-  protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' | 'telnet';
+  protocol: Protocol;
   host: string;
   port: number;
   username: string;
@@ -46,12 +47,139 @@ const defaultPorts: Record<string, number> = {
   sftp: 22,
   ftp: 21,
   telnet: 23,
+  postgres: 5432,
+  mysql: 3306,
 };
+
+type ProtocolCategory = 'remote-control' | 'terminal' | 'file-browser' | 'db';
+
+function getCategoryForProtocol(p: Protocol): ProtocolCategory {
+  if (p === 'rdp' || p === 'vnc') return 'remote-control';
+  if (p === 'ssh' || p === 'telnet') return 'terminal';
+  if (p === 'smb' || p === 'sftp' || p === 'ftp') return 'file-browser';
+  return 'db';
+}
+
+const PROTOCOL_CATEGORIES: { id: ProtocolCategory; label: string; headerIcon: ReactNode; protocols: { id: Protocol; label: string; icon: ReactNode }[] }[] = [
+  {
+    id: 'remote-control',
+    label: 'Remote Control',
+    headerIcon: (
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+        <rect x="2" y="3" width="20" height="14" rx="2" />
+        <line x1="8" y1="21" x2="16" y2="21" />
+        <line x1="12" y1="17" x2="12" y2="21" />
+      </svg>
+    ),
+    protocols: [
+      { id: 'rdp', label: 'RDP', icon: (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+          <rect x="2" y="3" width="20" height="14" rx="2" />
+          <line x1="8" y1="21" x2="16" y2="21" />
+          <line x1="12" y1="17" x2="12" y2="21" />
+        </svg>
+      )},
+      { id: 'vnc', label: 'VNC', icon: (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+          <rect x="2" y="3" width="20" height="14" rx="2" />
+          <circle cx="12" cy="10" r="3" />
+          <line x1="8" y1="21" x2="16" y2="21" />
+          <line x1="12" y1="17" x2="12" y2="21" />
+        </svg>
+      )},
+    ],
+  },
+  {
+    id: 'terminal',
+    label: 'Terminal',
+    headerIcon: (
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+        <polyline points="4 17 10 11 4 5" />
+        <line x1="12" y1="19" x2="20" y2="19" />
+      </svg>
+    ),
+    protocols: [
+      { id: 'ssh', label: 'SSH', icon: (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+          <polyline points="4 17 10 11 4 5" />
+          <line x1="12" y1="19" x2="20" y2="19" />
+        </svg>
+      )},
+      { id: 'telnet', label: 'Telnet', icon: (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+          <polyline points="4 17 10 11 4 5" />
+          <line x1="12" y1="5" x2="20" y2="5" />
+          <line x1="12" y1="12" x2="20" y2="12" />
+          <line x1="12" y1="19" x2="20" y2="19" />
+        </svg>
+      )},
+    ],
+  },
+  {
+    id: 'file-browser',
+    label: 'File Browser',
+    headerIcon: (
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+      </svg>
+    ),
+    protocols: [
+      { id: 'smb', label: 'SMB', icon: (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+        </svg>
+      )},
+      { id: 'sftp', label: 'SFTP', icon: (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+          <line x1="12" y1="11" x2="12" y2="17" />
+          <polyline points="9 14 12 17 15 14" />
+        </svg>
+      )},
+      { id: 'ftp', label: 'FTP', icon: (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+          <line x1="12" y1="12" x2="12" y2="18" />
+          <polyline points="9 15 12 18 15 15" />
+        </svg>
+      )},
+    ],
+  },
+  {
+    id: 'db',
+    label: 'DB',
+    headerIcon: (
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+        <ellipse cx="12" cy="6" rx="8" ry="3" />
+        <path d="M4 6v4c0 1.66 3.58 3 8 3s8-1.34 8-3V6" />
+        <path d="M4 10v4c0 1.66 3.58 3 8 3s8-1.34 8-3v-4" />
+      </svg>
+    ),
+    protocols: [
+      { id: 'postgres', label: 'PostgreSQL', icon: (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+          <ellipse cx="12" cy="6" rx="8" ry="3" />
+          <path d="M4 6v4c0 1.66 3.58 3 8 3s8-1.34 8-3V6" />
+          <path d="M4 10v4c0 1.66 3.58 3 8 3s8-1.34 8-3v-4" />
+        </svg>
+      )},
+      { id: 'mysql', label: 'MySQL', icon: (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+          <ellipse cx="12" cy="6" rx="8" ry="3" />
+          <path d="M4 6v4c0 1.66 3.58 3 8 3s8-1.34 8-3V6" />
+          <path d="M4 10v4c0 1.66 3.58 3 8 3s8-1.34 8-3v-4" />
+          <line x1="20" y1="14" x2="20" y2="20" />
+        </svg>
+      )},
+    ],
+  },
+];
 
 export function ConnectionModal({ connection, groups, onClose, onSaved, prefill }: ConnectionModalProps) {
 
   const [name, setName] = useState(prefill?.name ?? connection?.name ?? '');
-  const [protocol, setProtocol] = useState<'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' | 'telnet'>(prefill?.protocol ?? connection?.protocol ?? 'rdp');
+  const [protocol, setProtocol] = useState<Protocol>(prefill?.protocol ?? connection?.protocol ?? 'rdp');
   const [host, setHost] = useState(prefill?.host ?? connection?.host ?? '');
   const [port, setPort] = useState(prefill?.port ?? connection?.port ?? 3389);
   const [username, setUsername] = useState(prefill?.username ?? '');
@@ -69,6 +197,12 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
   const [tunnels, setTunnels] = useState<TunnelDef[]>(prefill?.tunnels ?? []);
   const [smbShare, setSmbShare] = useState(prefill?.smbShare ?? '');
   const [smbDomain, setSmbDomain] = useState(prefill?.smbDomain ?? '');
+  // DB-specific fields
+  const [dbDatabase, setDbDatabase] = useState('');
+  const [dbSslMode, setDbSslMode] = useState<'disable' | 'require' | 'verify-ca' | 'verify-full'>('disable');
+  const [dbRowLimit, setDbRowLimit] = useState('');
+  const [dbQueryTimeout, setDbQueryTimeout] = useState('');
+  const [dbIdleTimeout, setDbIdleTimeout] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [sharingOpen, setSharingOpen] = useState(false);
@@ -94,6 +228,11 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
         })));
         if (d.extraConfig?.share) setSmbShare(d.extraConfig.share as string);
         if (d.extraConfig?.domain) setSmbDomain(d.extraConfig.domain as string);
+        if (d.extraConfig?.defaultDatabase) setDbDatabase(d.extraConfig.defaultDatabase as string);
+        if (d.extraConfig?.sslMode) setDbSslMode(d.extraConfig.sslMode as typeof dbSslMode);
+        if (d.extraConfig?.rowLimit) setDbRowLimit(String(d.extraConfig.rowLimit));
+        if (d.extraConfig?.queryTimeout) setDbQueryTimeout(String(d.extraConfig.queryTimeout));
+        if (d.extraConfig?.idleTimeoutMinutes) setDbIdleTimeout(String(d.extraConfig.idleTimeoutMinutes));
         if (d.tags && Array.isArray(d.tags)) setTags(d.tags);
         if (d.skipCertValidation !== undefined) setSkipCertValidation(!!d.skipCertValidation);
         if (d.shares && Array.isArray(d.shares)) {
@@ -117,7 +256,7 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
       .catch(() => {});
   }, []);
 
-  function handleProtocolChange(p: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' | 'telnet') {
+  function handleProtocolChange(p: Protocol) {
     setProtocol(p);
     if (!connection) setPort(defaultPorts[p]);
   }
@@ -169,6 +308,15 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
       }
       if (protocol === 'smb') {
         body.extraConfig = { share: smbShare.trim(), ...(smbDomain.trim() ? { domain: smbDomain.trim() } : {}) };
+      }
+      if (protocol === 'postgres' || protocol === 'mysql') {
+        if (!dbDatabase.trim()) { setError('Default Database is required for database connections'); setSaving(false); return; }
+        const dbCfg: Record<string, unknown> = { defaultDatabase: dbDatabase.trim() };
+        if (dbSslMode !== 'disable') dbCfg.sslMode = dbSslMode;
+        if (dbRowLimit.trim()) dbCfg.rowLimit = parseInt(dbRowLimit, 10);
+        if (dbQueryTimeout.trim()) dbCfg.queryTimeout = parseInt(dbQueryTimeout, 10);
+        if (dbIdleTimeout.trim()) dbCfg.idleTimeoutMinutes = parseInt(dbIdleTimeout, 10);
+        body.extraConfig = dbCfg;
       }
       if (protocol === 'rdp') {
         body.skipCertValidation = skipCertValidation;
@@ -238,11 +386,47 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
       onMouseUp={(e) => { if (backdropMouseDownRef.current && e.target === e.currentTarget) onClose(); backdropMouseDownRef.current = false; }}
     >
       <div
-        className="bg-surface-alt border border-border rounded-lg shadow-xl w-full max-w-md p-5 max-h-[90vh] overflow-y-auto"
+        className="bg-surface-alt border border-border rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex overflow-hidden"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <h2 className="text-base font-bold text-text-primary mb-3">{title}</h2>
-        <form onSubmit={handleSubmit} className="space-y-2.5">
+        <form onSubmit={handleSubmit} className="flex flex-1 min-h-0">
+          {/* Protocol sidebar */}
+          <div className="w-44 flex-shrink-0 bg-surface border-r border-border rounded-l-lg py-3 overflow-y-auto">
+            <p className="px-3 mb-1 text-[10px] font-semibold text-text-secondary uppercase tracking-wider">Protocol</p>
+            {PROTOCOL_CATEGORIES.map((cat) => (
+              <div key={cat.id} className="mb-1">
+                <div className="flex items-center gap-1.5 px-3 py-1.5">
+                  <span className="text-text-secondary">{cat.headerIcon}</span>
+                  <span className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider">{cat.label}</span>
+                  {cat.id === 'db' && (
+                    <span className="text-[9px] font-medium px-1 py-0.5 rounded bg-amber-400/15 text-amber-400 leading-none">beta</span>
+                  )}
+                </div>
+                {cat.protocols.map(({ id: p, label, icon }) => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => handleProtocolChange(p)}
+                    className={`w-full flex items-center gap-2 pl-7 pr-3 py-1.5 text-xs transition-colors ${
+                      protocol === p
+                        ? 'bg-accent/10 text-accent font-medium border-r-2 border-accent'
+                        : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+                    }`}
+                  >
+                    <span className="flex-shrink-0">{icon}</span>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+
+          {/* Form content */}
+          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+            <div className="px-5 pt-4 pb-2 border-b border-border">
+              <h2 className="text-base font-bold text-text-primary">{title}</h2>
+            </div>
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2.5">
           <div>
             <label className="block text-xs font-medium text-text-secondary mb-1">Name</label>
             <input
@@ -253,70 +437,6 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
               placeholder="My Server"
               className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-hidden focus:ring-2 focus:ring-accent"
             />
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-text-secondary mb-1">Protocol</label>
-            <div className="flex gap-1 w-full">
-              {([
-                { id: 'rdp', label: 'RDP', icon: (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
-                    <rect x="2" y="3" width="20" height="14" rx="2" />
-                    <line x1="8" y1="21" x2="16" y2="21" />
-                    <line x1="12" y1="17" x2="12" y2="21" />
-                  </svg>
-                )},
-                { id: 'ssh', label: 'SSH', icon: (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
-                    <polyline points="4 17 10 11 4 5" />
-                    <line x1="12" y1="19" x2="20" y2="19" />
-                  </svg>
-                )},
-                { id: 'smb', label: 'SMB', icon: (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
-                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                  </svg>
-                )},
-                { id: 'vnc', label: 'VNC', icon: (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
-                    <rect x="2" y="3" width="20" height="14" rx="2" />
-                    <circle cx="12" cy="10" r="3" />
-                    <line x1="8" y1="21" x2="16" y2="21" />
-                    <line x1="12" y1="17" x2="12" y2="21" />
-                  </svg>
-                )},
-                { id: 'ftp', label: 'FTP', icon: (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                    <polyline points="14 2 14 8 20 8" />
-                    <line x1="12" y1="12" x2="12" y2="18" />
-                    <polyline points="9 15 12 18 15 15" />
-                  </svg>
-                )},
-                { id: 'telnet', label: 'Telnet', icon: (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
-                    <polyline points="4 17 10 11 4 5" />
-                    <line x1="12" y1="5" x2="20" y2="5" />
-                    <line x1="12" y1="12" x2="20" y2="12" />
-                    <line x1="12" y1="19" x2="20" y2="19" />
-                  </svg>
-                )},
-              ] as const).map(({ id: p, label, icon }) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => handleProtocolChange(p)}
-                  className={`flex-1 flex items-center justify-center gap-1 px-1.5 py-1.5 rounded text-xs font-medium border ${
-                    protocol === p
-                      ? 'bg-accent text-white border-accent'
-                      : 'bg-surface border-border text-text-secondary hover:bg-surface-hover'
-                  }`}
-                >
-                  {icon}
-                  {label}
-                </button>
-              ))}
-            </div>
           </div>
 
           <div className="flex gap-2">
@@ -552,6 +672,74 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
             </div>
           )}
 
+          {(protocol === 'postgres' || protocol === 'mysql') && (
+            <div className="space-y-2.5">
+              <div>
+                <label className="block text-xs font-medium text-text-secondary mb-1">
+                  Default Database <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={dbDatabase}
+                  onChange={(e) => setDbDatabase(e.target.value)}
+                  placeholder={protocol === 'postgres' ? 'postgres' : 'mydb'}
+                  required
+                  className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-hidden focus:ring-2 focus:ring-accent font-mono"
+                />
+              </div>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-text-secondary mb-1">SSL Mode</label>
+                  <select
+                    value={dbSslMode}
+                    onChange={(e) => setDbSslMode(e.target.value as typeof dbSslMode)}
+                    className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-hidden focus:ring-2 focus:ring-accent"
+                  >
+                    <option value="disable">Disable</option>
+                    <option value="require">Require</option>
+                    <option value="verify-ca">Verify CA</option>
+                    <option value="verify-full">Verify Full</option>
+                  </select>
+                </div>
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-text-secondary mb-1">Row Limit <span className="font-normal">(default 1000)</span></label>
+                  <input
+                    type="number"
+                    value={dbRowLimit}
+                    onChange={(e) => setDbRowLimit(e.target.value)}
+                    placeholder="1000"
+                    min={1}
+                    className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-hidden focus:ring-2 focus:ring-accent"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-text-secondary mb-1">Query Timeout ms <span className="font-normal">(default 30000)</span></label>
+                  <input
+                    type="number"
+                    value={dbQueryTimeout}
+                    onChange={(e) => setDbQueryTimeout(e.target.value)}
+                    placeholder="30000"
+                    min={1000}
+                    className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-hidden focus:ring-2 focus:ring-accent"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-text-secondary mb-1">Idle Timeout min <span className="font-normal">(default 10)</span></label>
+                  <input
+                    type="number"
+                    value={dbIdleTimeout}
+                    onChange={(e) => setDbIdleTimeout(e.target.value)}
+                    placeholder="10"
+                    min={1}
+                    className="w-full px-2.5 py-1.5 bg-surface border border-border rounded text-sm text-text-primary focus:outline-hidden focus:ring-2 focus:ring-accent"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Tags */}
           <div>
             <label className="block text-xs font-medium text-text-secondary mb-1">Tags</label>
@@ -685,6 +873,8 @@ export function ConnectionModal({ connection, groups, onClose, onSaved, prefill 
             >
               {saving ? 'Saving...' : connection ? 'Update' : 'Create'}
             </button>
+          </div>
+            </div>
           </div>
         </form>
       </div>

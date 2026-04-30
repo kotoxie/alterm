@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as R
 import { clsx } from 'clsx';
 import { useSettings } from '../hooks/useSettings';
 import { ConnectionModal, type ConnectionPrefill } from './ConnectionModal';
+import { type Protocol } from '../types/protocol.js';
 
 interface ConnectionGroup {
   id: string;
@@ -14,7 +15,7 @@ interface ConnectionGroup {
 interface Connection {
   id: string;
   name: string;
-  protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' | 'telnet';
+  protocol: Protocol;
   host: string;
   port: number;
   groupId: string | null;
@@ -28,8 +29,8 @@ interface FlatGroup {
 }
 
 interface SidebarProps {
-  onConnect: (conn: { id: string; name: string; protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' | 'telnet' }) => void;
-  onConnectMultiple?: (conns: Array<{ id: string; name: string; protocol: 'ssh' | 'rdp' | 'smb' | 'vnc' | 'sftp' | 'ftp' | 'telnet' }>) => void;
+  onConnect: (conn: { id: string; name: string; protocol: Protocol }) => void;
+  onConnectMultiple?: (conns: Array<{ id: string; name: string; protocol: Protocol }>) => void;
   width?: number;
 }
 
@@ -69,6 +70,8 @@ const PROTOCOL_ICONS: Record<string, string> = {
   sftp: '📂',
   ftp: '🗂',
   telnet: '⌨',
+  postgres: '🐘',
+  mysql: '🐬',
 };
 
 const ProtocolBadge = ({ protocol }: { protocol: string }) => (
@@ -122,7 +125,7 @@ const PenIcon = () => (
   </svg>
 );
 
-const PROTOCOL_SUBMENU: Array<{ protocol: string; label: string; icon: React.ReactNode }> = [
+const PROTOCOL_SUBMENU: Array<{ protocol: Protocol; label: string; icon: React.ReactNode }> = [
   { protocol: 'rdp', label: 'RDP', icon: (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
       <rect x="2" y="3" width="20" height="14" rx="2" />
@@ -159,9 +162,24 @@ const PROTOCOL_SUBMENU: Array<{ protocol: string; label: string; icon: React.Rea
       <line x1="12" y1="12" x2="12" y2="18" /><polyline points="9 15 12 18 15 15" />
     </svg>
   )},
+  { protocol: 'postgres', label: 'PostgreSQL', icon: (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <ellipse cx="12" cy="6" rx="8" ry="3" />
+      <path d="M4 6v4c0 1.66 3.58 3 8 3s8-1.34 8-3V6" />
+      <path d="M4 10v4c0 1.66 3.58 3 8 3s8-1.34 8-3v-4" />
+    </svg>
+  )},
+  { protocol: 'mysql', label: 'MySQL', icon: (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <ellipse cx="12" cy="6" rx="8" ry="3" />
+      <path d="M4 6v4c0 1.66 3.58 3 8 3s8-1.34 8-3V6" />
+      <path d="M4 10v4c0 1.66 3.58 3 8 3s8-1.34 8-3v-4" />
+      <line x1="20" y1="14" x2="20" y2="20" />
+    </svg>
+  )},
 ];
 
-function ProtocolSubmenuItems({ groupId: _groupId, onSelect }: { groupId: string | null; onSelect: (p: string) => void }) {
+function ProtocolSubmenuItems({ groupId: _groupId, onSelect }: { groupId: string | null; onSelect: (p: Protocol) => void }) {
   return (
     <>
       {PROTOCOL_SUBMENU.map(({ protocol, label, icon }) => (
@@ -213,7 +231,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
   const [renamingGroupId, setRenamingGroupId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [newConnGroupId, setNewConnGroupId] = useState<string | null>(null);
-  const [newConnProtocol, setNewConnProtocol] = useState<string>('rdp');
+  const [newConnProtocol, setNewConnProtocol] = useState<Protocol>('rdp');
   const [deleteFolderConfirm, setDeleteFolderConfirm] = useState<{ group: ConnectionGroup; connCount: number } | null>(null);
   const [showExportConfirm, setShowExportConfirm] = useState(false);
   const [importResult, setImportResult] = useState<{ connectionsCreated: number; groupsCreated: number } | { error: string } | null>(null);
@@ -418,7 +436,7 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
     setInlineNewGroup(null);
   }
 
-  function openNewConnectionInFolder(groupId: string | null, protocol = 'rdp') {
+  function openNewConnectionInFolder(groupId: string | null, protocol: Protocol = 'rdp') {
     setNewConnGroupId(groupId);
     setNewConnProtocol(protocol);
     setEditingConnection(null);
@@ -1221,9 +1239,9 @@ export function Sidebar({ onConnect, onConnectMultiple, width }: SidebarProps) {
           groups={flattenGroups(groups)}
           prefill={duplicatePrefill ?? (!editingConnection ? {
             name: '',
-            protocol: newConnProtocol as ConnectionPrefill['protocol'],
+            protocol: newConnProtocol,
             host: '',
-            port: { rdp: 3389, ssh: 22, smb: 445, vnc: 5900, sftp: 22, ftp: 21, telnet: 23 }[newConnProtocol] ?? 3389,
+            port: { rdp: 3389, ssh: 22, smb: 445, vnc: 5900, sftp: 22, ftp: 21, telnet: 23, postgres: 5432, mysql: 3306 }[newConnProtocol] ?? 3389,
             username: '',
             groupId: newConnGroupId,
             shared: false,

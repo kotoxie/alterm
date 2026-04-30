@@ -6,6 +6,9 @@ import { logAudit } from '../services/audit.js';
 import { logFileSessionEvent } from '../services/fileSession.js';
 import { resolveClientIp } from '../services/ip.js';
 import SMB2 from '@marsaud/smb2';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 
 const router = Router();
 router.use(authRequired);
@@ -122,6 +125,7 @@ router.post('/:connectionId/list', async (req: Request, res: Response) => {
 });
 
 // GET /:connectionId/download — download a file
+// Uses readFile() + temp file to avoid STATUS_PENDING from Windows SMB2 async interim responses
 router.get('/:connectionId/download', async (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const conn = await getConn(req.params.connectionId as string, userId, req.user!.role);
@@ -132,18 +136,21 @@ router.get('/:connectionId/download', async (req: Request, res: Response) => {
 
   const rawName = filePath.split(/[/\\]/).pop() || 'download';
   const safeFileName = encodeURIComponent(rawName).replace(/['()]/g, encodeURIComponent);
+  const tmpFile = path.join(os.tmpdir(), `gatwy-smb-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   let smb: SMB2 | null = null;
 
   try {
     smb = makeSmbClient(conn);
-    const stream = await smbOp(() => smb!.createReadStream(filePath));
+    const data: Buffer = await smbOp(() => smb!.readFile(filePath));
+    await fs.promises.writeFile(tmpFile, data);
     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${safeFileName}`);
     res.setHeader('Content-Type', 'application/octet-stream');
-    stream.pipe(res);
+    res.setHeader('Content-Length', data.length);
+    const fileStream = fs.createReadStream(tmpFile);
+    fileStream.pipe(res);
     await new Promise<void>((resolve, reject) => {
-      stream.on('end', resolve);
-      stream.on('error', reject);
-      res.on('finish', resolve);
+      fileStream.on('end', resolve);
+      fileStream.on('error', reject);
       res.on('error', reject);
     });
     logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'smb', action: 'download', path: filePath });
@@ -153,6 +160,7 @@ router.get('/:connectionId/download', async (req: Request, res: Response) => {
     if (!res.headersSent) res.status(500).json({ error: 'Operation failed' });
   } finally {
     smb?.disconnect();
+    fs.promises.unlink(tmpFile).catch(() => {});
   }
 });
 

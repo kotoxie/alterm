@@ -133,6 +133,7 @@ router.get('/:connectionId/download', async (req: Request, res: Response) => {
   const rawName = filePath.split('/').pop() || 'download';
   // Encode filename per RFC 5987 to prevent header injection
   const safeFileName = encodeURIComponent(rawName).replace(/['()]/g, encodeURIComponent);
+  const clientSize = req.query.size ? parseInt(req.query.size as string, 10) : null;
   let ssh: SshClient | null = null;
 
   try {
@@ -143,6 +144,7 @@ router.get('/:connectionId/download', async (req: Request, res: Response) => {
     const stream = sftp.createReadStream(filePath);
     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${safeFileName}`);
     res.setHeader('Content-Type', 'application/octet-stream');
+    if (clientSize !== null && !isNaN(clientSize)) res.setHeader('Content-Length', clientSize);
     stream.pipe(res);
 
     await new Promise<void>((resolve, reject) => {

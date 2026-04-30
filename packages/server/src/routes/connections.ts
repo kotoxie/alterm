@@ -244,7 +244,7 @@ router.post('/import', (req: Request, res: Response) => {
 
   for (const c of (connections ?? [])) {
     if (!c.name || !c.protocol || !c.host || !c.port) continue;
-    if (!['ssh', 'rdp', 'smb', 'vnc', 'sftp', 'ftp', 'telnet'].includes(c.protocol)) continue;
+    if (!['ssh', 'rdp', 'smb', 'vnc', 'sftp', 'ftp', 'telnet', 'postgres', 'mysql'].includes(c.protocol)) continue;
     const newId = uuid();
     const newGroupId = c.groupId ? (groupIdMap.get(c.groupId) ?? null) : null;
     execute(
@@ -281,7 +281,7 @@ router.post('/', (req: Request, res: Response) => {
     return;
   }
 
-  if (!['ssh', 'rdp', 'smb', 'vnc', 'sftp', 'ftp', 'telnet'].includes(protocol)) {
+  if (!['ssh', 'rdp', 'smb', 'vnc', 'sftp', 'ftp', 'telnet', 'postgres', 'mysql'].includes(protocol)) {
     res.status(400).json({ error: 'Invalid protocol' });
     return;
   }

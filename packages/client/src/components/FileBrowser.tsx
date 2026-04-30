@@ -108,6 +108,7 @@ export function FileBrowser({
   const [newFolderMode, setNewFolderMode] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<{ name: string; loaded: number; total: number | null } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
@@ -229,8 +230,11 @@ export function FileBrowser({
 
   async function downloadFile(name: string) {
     const filePath = joinPath(path, name);
+    const knownSize = files.find((f) => f.filename === name)?.size ?? null;
+    setDownloadProgress({ name, loaded: 0, total: knownSize });
     try {
-      const res = await fetch(`${apiBase}/${connectionId}/download?path=${encodeURIComponent(filePath)}`, {
+      const sizeParam = knownSize !== null ? `&size=${knownSize}` : '';
+      const res = await fetch(`${apiBase}/${connectionId}/download?path=${encodeURIComponent(filePath)}${sizeParam}`, {
         credentials: 'include',
         ...(fileSessionId ? { headers: { 'X-File-Session-Id': fileSessionId } } : {}),
       });
@@ -239,12 +243,25 @@ export function FileBrowser({
         try { const d = await res.json() as { error?: string }; msg = d.error || msg; } catch { /* ignore */ }
         setError(msg); return;
       }
-      const blob = await res.blob();
+      const contentLength = res.headers.get('Content-Length');
+      const total = contentLength ? parseInt(contentLength, 10) : knownSize;
+      const reader = res.body!.getReader();
+      const chunks: Uint8Array[] = [];
+      let loaded = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        loaded += value.length;
+        setDownloadProgress({ name, loaded, total });
+      }
+      const blob = new Blob(chunks as BlobPart[]);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url; a.download = name; a.click();
       URL.revokeObjectURL(url);
     } catch { setError('Download failed'); }
+    finally { setDownloadProgress(null); }
   }
 
   async function deleteFile(name: string) {
@@ -600,7 +617,7 @@ export function FileBrowser({
         </div>
       )}
 
-      {(error || uploadProgress || status === 'connecting') && (
+      {(error || uploadProgress || downloadProgress || status === 'connecting') && (
         <div className={`px-3 py-1.5 text-xs shrink-0 flex items-center gap-2 ${
           error ? 'bg-red-500/10 text-red-400 border-b border-red-500/20' : 'bg-accent/10 text-accent border-b border-accent/20'
         }`}>
@@ -616,6 +633,32 @@ export function FileBrowser({
                 </svg>
               </button>
             </>
+          ) : downloadProgress ? (
+            <div className="flex-1 flex items-center gap-2 min-w-0">
+              <svg className="animate-spin shrink-0" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+              </svg>
+              <span className="truncate min-w-0">
+                Downloading <span className="font-medium">{downloadProgress.name}</span>
+                {' — '}
+                {downloadProgress.total !== null
+                  ? `${formatSize(downloadProgress.loaded)} / ${formatSize(downloadProgress.total)}`
+                  : formatSize(downloadProgress.loaded)}
+              </span>
+              {downloadProgress.total !== null && (
+                <div className="ml-auto shrink-0 flex items-center gap-2">
+                  <span className="tabular-nums">
+                    {Math.round((downloadProgress.loaded / downloadProgress.total) * 100)}%
+                  </span>
+                  <div className="w-24 h-1.5 bg-accent/20 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-accent rounded-full transition-all"
+                      style={{ width: `${Math.min(100, (downloadProgress.loaded / downloadProgress.total) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
           ) : (uploadProgress || 'Connecting...')}
         </div>
       )}

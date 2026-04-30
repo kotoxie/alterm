@@ -7,6 +7,7 @@ import { VncSession } from './VncSession';
 import { SftpSession } from './SftpSession';
 import { FtpSession } from './FtpSession';
 import { TelnetSession } from './TelnetSession';
+import { DbSession } from './db/DbSession';
 
 interface SessionsLayerProps {
   tabs: Tab[];
@@ -130,6 +131,14 @@ export function SessionsLayer({
                 paneHeight={paneH}
                 onStatusChange={onStatusChange}
                 onClose={onClose}
+              />
+            )}
+            {(tab.protocol === 'postgres' || tab.protocol === 'mysql') && (
+              <DbSession
+                connectionId={tab.connectionId}
+                connectionName={tab.name}
+                isActive={isActive}
+                onStatusChange={(status) => onStatusChange(tab.id, status)}
               />
             )}
           </div>
