@@ -588,6 +588,52 @@ function runMigrations() {
           ('db.max_pool_connections', '5')`);
       },
     },
+    {
+      version: 14,
+      run: (database: Database) => {
+        // Heal databases where v13 was partially applied: the schema_version row
+        // was recorded but the connections table was never recreated (so it still
+        // carries the old v5 CHECK constraint without 'postgres'/'mysql').
+        // Detect by checking the table's CREATE SQL for the new protocols.
+        const res = database.exec(
+          `SELECT sql FROM sqlite_master WHERE type='table' AND name='connections'`,
+        );
+        const createSql = (res[0]?.values[0]?.[0] as string) ?? '';
+        if (createSql.includes("'mysql'")) return; // already correct, nothing to do
+
+        // Recreate with the full constraint
+        database.run(`CREATE TABLE connections_v14 (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          group_id TEXT REFERENCES connection_groups(id) ON DELETE SET NULL,
+          name TEXT NOT NULL,
+          protocol TEXT NOT NULL CHECK(protocol IN ('ssh','rdp','smb','vnc','sftp','ftp','telnet','postgres','mysql')),
+          host TEXT NOT NULL,
+          port INTEGER NOT NULL,
+          username TEXT,
+          encrypted_password TEXT,
+          private_key TEXT,
+          extra_config_json TEXT,
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          recording_enabled INTEGER NOT NULL DEFAULT 1,
+          shared INTEGER NOT NULL DEFAULT 0,
+          tunnels_json TEXT,
+          host_fingerprint TEXT,
+          tags TEXT,
+          skip_cert_validation INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )`);
+        database.run(`INSERT INTO connections_v14
+          SELECT id, user_id, group_id, name, protocol, host, port, username, encrypted_password,
+                 private_key, extra_config_json, sort_order, recording_enabled, shared, tunnels_json,
+                 host_fingerprint, tags, skip_cert_validation, created_at, updated_at
+          FROM connections`);
+        database.run('DROP TABLE connections');
+        database.run('ALTER TABLE connections_v14 RENAME TO connections');
+        database.run('CREATE INDEX IF NOT EXISTS idx_connections_user ON connections(user_id)');
+      },
+    },
   ];
 
   for (const migration of migrations) {
