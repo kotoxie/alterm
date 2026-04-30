@@ -59,11 +59,13 @@ function makeSmbClient(conn: ConnRow): SMB2 {
   // SMB2 requires \\host\share format
   const share = `\\\\${conn.host}\\${shareName}`;
 
+  // Anonymous access requires empty username/password — not 'guest'
+  const isAnonymous = !conn.username && !password;
   return new SMB2({
     share,
     domain,
-    username: conn.username || 'guest',
-    password,
+    username: isAnonymous ? '' : (conn.username || ''),
+    password: isAnonymous ? '' : password,
     port: conn.port || 445,
     autoCloseTimeout: 5000,
   });
