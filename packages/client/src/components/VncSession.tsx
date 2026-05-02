@@ -13,7 +13,7 @@ interface VncSessionProps {
 
 export function VncSession({ connectionId, connectionName, isActive, onStatusChange, onClose }: VncSessionProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const rfbRef = useRef<import('@novnc/novnc/lib/rfb.js').default | null>(null);
+  const rfbRef = useRef<import('@novnc/novnc').default | null>(null);
   const { token } = useAuth();
   const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
   const [errorMsg, setErrorMsg] = useState('');
@@ -35,7 +35,7 @@ export function VncSession({ connectionId, connectionName, isActive, onStatusCha
 
     let cancelled = false;
     let sessionRevoked = false;
-    let rfb: import('@novnc/novnc/lib/rfb.js').default | null = null;
+    let rfb: import('@novnc/novnc').default | null = null;
     let resizeObserver: ResizeObserver | null = null;
     const onRevoked = () => { sessionRevoked = true; };
     window.addEventListener('gatwy:unauthorized', onRevoked);
@@ -50,20 +50,9 @@ export function VncSession({ connectionId, connectionName, isActive, onStatusCha
         const info: { password?: string } = await res.json();
         if (cancelled) return;
 
-        const rfbMod = await import('@novnc/novnc/lib/rfb.js');
-        // @novnc/novnc ships a Babel-compiled CJS build.  Rollup's CJS plugin
-        // exposes the class as .default, but certain interop edge cases (e.g.
-        // Rollup 4 capturing the initial `exports["default"] = void 0` before
-        // the IIFE overwrites it) can leave .default as undefined.  Fall back
-        // to the module object itself so the error below is always triggered
-        // with a clear message rather than the cryptic "not a constructor".
-        const RFB = rfbMod.default ?? (rfbMod as unknown as typeof rfbMod.default);
-        if (typeof RFB !== 'function') {
-          throw new Error(
-            'VNC client library failed to load (RFB is not a constructor). ' +
-            'Try refreshing the page; if the problem persists contact your administrator.',
-          );
-        }
+        // noVNC 1.7.0 ships as pure ESM so a direct dynamic import works
+        // correctly.  We import via the novnc-rfb wrapper for abstraction.
+        const { default: RFB } = await import('../lib/novnc-rfb');
         if (cancelled) return;
 
         const ticket = await getWsTicket();
