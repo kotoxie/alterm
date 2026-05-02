@@ -50,7 +50,20 @@ export function VncSession({ connectionId, connectionName, isActive, onStatusCha
         const info: { password?: string } = await res.json();
         if (cancelled) return;
 
-        const RFB = (await import('@novnc/novnc/lib/rfb.js')).default;
+        const rfbMod = await import('@novnc/novnc/lib/rfb.js');
+        // @novnc/novnc ships a Babel-compiled CJS build.  Rollup's CJS plugin
+        // exposes the class as .default, but certain interop edge cases (e.g.
+        // Rollup 4 capturing the initial `exports["default"] = void 0` before
+        // the IIFE overwrites it) can leave .default as undefined.  Fall back
+        // to the module object itself so the error below is always triggered
+        // with a clear message rather than the cryptic "not a constructor".
+        const RFB = rfbMod.default ?? (rfbMod as unknown as typeof rfbMod.default);
+        if (typeof RFB !== 'function') {
+          throw new Error(
+            'VNC client library failed to load (RFB is not a constructor). ' +
+            'Try refreshing the page; if the problem persists contact your administrator.',
+          );
+        }
         if (cancelled) return;
 
         const ticket = await getWsTicket();

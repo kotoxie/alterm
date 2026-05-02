@@ -6,10 +6,15 @@ import { readFileSync } from 'fs';
 
 const { version } = JSON.parse(readFileSync(path.resolve(__dirname, '../../package.json'), 'utf-8')) as { version: string };
 
-// noVNC ships a CJS build that uses top-level `await` in util/browser.js.
-// This shim converts the top-level await expression to a synchronous call
-// so Rollup's commonjs plugin can process the file without errors.
-// The feature (WebCodecs H264 decode check) degrades gracefully when sync.
+// noVNC ships a Babel-compiled CJS build that contains top-level `await` in
+// util/browser.js (a WebCodecs H.264 capability check).  Rollup's commonjs
+// plugin cannot process CJS files that contain `await` at the module scope,
+// so we replace that single line with a synchronous fallback before Rollup
+// ever sees the file.  The replaced feature degrades gracefully when sync.
+//
+// IMPORTANT: if @novnc/novnc is ever upgraded and this regex no longer
+// matches, the build will throw a clear error here rather than silently
+// producing a broken bundle where `RFB` ends up undefined at runtime.
 function novncTopLevelAwaitShim(): Plugin {
   return {
     name: 'novnc-toplevel-await-shim',
@@ -21,7 +26,16 @@ function novncTopLevelAwaitShim(): Plugin {
         /exports\.supportsWebCodecsH264Decode\s*=\s*supportsWebCodecsH264Decode\s*=\s*await\s+_checkWebCodecsH264DecodeSupport\(\);/,
         '// top-level await removed by build shim\nexports.supportsWebCodecsH264Decode = supportsWebCodecsH264Decode = false;',
       );
-      if (patched === code) return null;
+      if (patched === code) {
+        // Pattern not found — @novnc/novnc may have been upgraded and changed
+        // its output.  Fail loudly here rather than producing a silent runtime
+        // crash where `new RFB(...)` throws "Object is not a constructor".
+        throw new Error(
+          '[novnc-toplevel-await-shim] Expected pattern not found in ' + id + '. ' +
+          'The @novnc/novnc package may have been updated. ' +
+          'Inspect browser.js and update the regex in vite.config.ts.',
+        );
+      }
       return { code: patched, map: null };
     },
   };
@@ -43,6 +57,13 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true,
+    // Rollup 4's @rollup/plugin-commonjs can mis-handle the `exports["default"] = void 0`
+    // initialiser pattern in noVNC's Babel-compiled rfb.js, capturing the initial `void 0`
+    // instead of the final RFB class.  Enabling transformMixedEsModules ensures that the
+    // entire CJS wrapper is re-evaluated and the final export value is used.
+    commonjsOptions: {
+      transformMixedEsModules: true,
+    },
   },
   server: {
     proxy: {
