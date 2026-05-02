@@ -136,7 +136,19 @@ function ClipboardArea({ rfbRef, disabled }: { rfbRef: RefObject<RFBInstance | n
 
   const send = useCallback(() => {
     if (!rfbRef.current || !text) return;
-    rfbRef.current.clipboardPasteFrom(text);
+    const rfb = rfbRef.current;
+    rfb.clipboardPasteFrom(text);
+    // clipboardPasteFrom only sets the server's clipboard buffer (ClientCutText).
+    // To actually paste into the focused remote application, also send Ctrl+V.
+    // Use a short delay so the server has time to process the clipboard message
+    // before receiving the key events.
+    setTimeout(() => {
+      if (!rfbRef.current) return;
+      rfbRef.current.sendKey(0xffe3, 'ControlLeft', true);   // XK_Control_L down
+      rfbRef.current.sendKey(0x0076, 'KeyV', true);           // XK_v down
+      rfbRef.current.sendKey(0x0076, 'KeyV', false);          // XK_v up
+      rfbRef.current.sendKey(0xffe3, 'ControlLeft', false);   // XK_Control_L up
+    }, 50);
     setText('');
     setFeedback('Sent!');
     if (feedbackTimer.current) clearTimeout(feedbackTimer.current);

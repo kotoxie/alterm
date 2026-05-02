@@ -45,6 +45,7 @@ export function VncSession({ connectionId, connectionName, isActive, onStatusCha
     let cancelled = false;
     let sessionRevoked = false;
     let rfb: import('@novnc/novnc').default | null = null;
+    let resizeObserver: ResizeObserver | null = null;
     const onRevoked = () => { sessionRevoked = true; };
     window.addEventListener('gatwy:unauthorized', onRevoked);
 
@@ -104,6 +105,19 @@ export function VncSession({ connectionId, connectionName, isActive, onStatusCha
         rfb.resizeSession = false;
         rfbRef.current = rfb;
 
+        // noVNC observes its own _screen element (100%×100% inside container).
+        // When the control panel opens/closes, the container flex width changes
+        // and noVNC's internal observer *should* fire — but CSS-transition-driven
+        // reflows are sometimes missed in certain browser engines.  Add our own
+        // ResizeObserver on containerRef to reliably poke _updateScale() by
+        // re-assigning scaleViewport (the setter always calls _updateScale()).
+        resizeObserver = new ResizeObserver(() => {
+          if (rfbRef.current) {
+            rfbRef.current.scaleViewport = rfbRef.current.scaleViewport;
+          }
+        });
+        resizeObserver.observe(container);
+
         rfb.addEventListener('connect', () => {
           if (!cancelled) setAndNotify('connected');
         });
@@ -124,11 +138,6 @@ export function VncSession({ connectionId, connectionName, isActive, onStatusCha
             setAndNotify('disconnected');
           }
         });
-
-        // noVNC sets up its own internal ResizeObserver on its _screen element.
-        // With flex layout the canvas div genuinely shrinks when the control
-        // panel opens, so noVNC's observer fires and handles both scaleViewport
-        // and resizeSession automatically — no external observer needed.
       } catch (err) {
         if (!cancelled) {
           setErrorMsg(err instanceof Error ? err.message : 'Connection failed');
@@ -144,6 +153,7 @@ export function VncSession({ connectionId, connectionName, isActive, onStatusCha
     return () => {
       cancelled = true;
       window.removeEventListener('gatwy:unauthorized', onRevoked);
+      resizeObserver?.disconnect();
       if (rfbRef.current) {
         try { rfbRef.current.disconnect(); } catch { /* ignore */ }
         rfbRef.current = null;
