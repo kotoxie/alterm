@@ -45,7 +45,6 @@ export function VncSession({ connectionId, connectionName, isActive, onStatusCha
     let cancelled = false;
     let sessionRevoked = false;
     let rfb: import('@novnc/novnc').default | null = null;
-    let resizeObserver: ResizeObserver | null = null;
     const onRevoked = () => { sessionRevoked = true; };
     window.addEventListener('gatwy:unauthorized', onRevoked);
 
@@ -102,7 +101,7 @@ export function VncSession({ connectionId, connectionName, isActive, onStatusCha
         });
 
         rfb.scaleViewport = true;
-        rfb.resizeSession = true;
+        rfb.resizeSession = false;
         rfbRef.current = rfb;
 
         rfb.addEventListener('connect', () => {
@@ -126,14 +125,10 @@ export function VncSession({ connectionId, connectionName, isActive, onStatusCha
           }
         });
 
-        // ResizeObserver to trigger viewport scale update
-        resizeObserver = new ResizeObserver(() => {
-          if (rfbRef.current && rfbRef.current.scaleViewport) {
-            // Accessing scaleViewport setter triggers re-scale
-            rfbRef.current.scaleViewport = true;
-          }
-        });
-        resizeObserver.observe(container);
+        // noVNC sets up its own internal ResizeObserver on its _screen element.
+        // With flex layout the canvas div genuinely shrinks when the control
+        // panel opens, so noVNC's observer fires and handles both scaleViewport
+        // and resizeSession automatically — no external observer needed.
       } catch (err) {
         if (!cancelled) {
           setErrorMsg(err instanceof Error ? err.message : 'Connection failed');
@@ -149,7 +144,6 @@ export function VncSession({ connectionId, connectionName, isActive, onStatusCha
     return () => {
       cancelled = true;
       window.removeEventListener('gatwy:unauthorized', onRevoked);
-      resizeObserver?.disconnect();
       if (rfbRef.current) {
         try { rfbRef.current.disconnect(); } catch { /* ignore */ }
         rfbRef.current = null;
@@ -176,8 +170,8 @@ export function VncSession({ connectionId, connectionName, isActive, onStatusCha
         {errorMsg && <span className="text-red-400 ml-auto">{errorMsg}</span>}
       </div>
 
-      <div className="relative flex-1 overflow-hidden">
-        <div ref={containerRef} className="absolute inset-0" style={{ background: '#000' }} />
+      <div className="flex flex-row flex-1 overflow-hidden">
+        <div ref={containerRef} className="flex-1 overflow-hidden" style={{ background: '#000' }} />
         <VncControlPanel
           rfbRef={rfbRef}
           status={status}

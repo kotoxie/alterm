@@ -10,27 +10,39 @@ interface VncControlPanelProps {
   onDisconnect: () => void;
 }
 
-// ─── Small icon primitives ────────────────────────────────────────────────────
+// ─── Icons ────────────────────────────────────────────────────────────────────
 
+function IconSliders() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <line x1="4" y1="6" x2="20" y2="6" />
+      <line x1="4" y1="12" x2="20" y2="12" />
+      <line x1="4" y1="18" x2="20" y2="18" />
+      <circle cx="9" cy="6" r="2.5" fill="currentColor" stroke="none" />
+      <circle cx="16" cy="12" r="2.5" fill="currentColor" stroke="none" />
+      <circle cx="9" cy="18" r="2.5" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
 function IconChevronLeft() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="15 18 9 12 15 6" />
     </svg>
   );
 }
 function IconChevronRight() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="9 18 15 12 9 6" />
     </svg>
   );
 }
-function IconClipboard() {
+function IconSend() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="9" y="2" width="6" height="4" rx="1" />
-      <path d="M9 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2h-3" />
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="22" y1="2" x2="11" y2="13" />
+      <polygon points="22 2 15 22 11 13 2 9 22 2" />
     </svg>
   );
 }
@@ -65,7 +77,9 @@ function IconPower() {
 
 // ─── Toggle row ───────────────────────────────────────────────────────────────
 
-function Toggle({ label, checked, onChange, disabled }: { label: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+function Toggle({ label, checked, onChange, disabled }: {
+  label: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean;
+}) {
   return (
     <label className={`flex items-center justify-between gap-3 cursor-pointer select-none ${disabled ? 'opacity-40 pointer-events-none' : ''}`}>
       <span className="text-xs text-text-primary">{label}</span>
@@ -75,9 +89,7 @@ function Toggle({ label, checked, onChange, disabled }: { label: string; checked
         onClick={() => onChange(!checked)}
         className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors duration-200 focus:outline-none ${checked ? 'bg-accent' : 'bg-border'}`}
       >
-        <span
-          className={`inline-block h-4 w-4 translate-y-0.5 rounded-full bg-white shadow transition-transform duration-200 ${checked ? 'translate-x-4' : 'translate-x-0.5'}`}
-        />
+        <span className={`inline-block h-4 w-4 translate-y-0.5 rounded-full bg-white shadow transition-transform duration-200 ${checked ? 'translate-x-4' : 'translate-x-0.5'}`} />
       </button>
     </label>
   );
@@ -85,21 +97,18 @@ function Toggle({ label, checked, onChange, disabled }: { label: string; checked
 
 // ─── Slider row ───────────────────────────────────────────────────────────────
 
-function SliderRow({ label, value, min, max, onChange, disabled }: { label: string; value: number; min: number; max: number; onChange: (v: number) => void; disabled?: boolean }) {
+function SliderRow({ label, value, min, max, onChange, disabled }: {
+  label: string; value: number; min: number; max: number; onChange: (v: number) => void; disabled?: boolean;
+}) {
   return (
     <div className={`flex flex-col gap-1 ${disabled ? 'opacity-40 pointer-events-none' : ''}`}>
       <div className="flex items-center justify-between">
         <span className="text-xs text-text-primary">{label}</span>
         <span className="text-xs text-text-secondary tabular-nums w-4 text-right">{value}</span>
       </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        value={value}
+      <input type="range" min={min} max={max} value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full h-1.5 rounded-full accent-accent cursor-pointer"
-      />
+        className="w-full h-1.5 rounded-full accent-accent cursor-pointer" />
     </div>
   );
 }
@@ -115,37 +124,85 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+// ─── Clipboard send area ──────────────────────────────────────────────────────
+// Uses a plain textarea so the user pastes with Ctrl+V — no clipboard-read
+// permission required (unlike navigator.clipboard.readText which browsers
+// block or prompt for, and Firefox doesn't support at all).
+
+function ClipboardArea({ rfbRef, disabled }: { rfbRef: RefObject<RFBInstance | null>; disabled?: boolean }) {
+  const [text, setText] = useState('');
+  const [feedback, setFeedback] = useState('');
+  const feedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const send = useCallback(() => {
+    if (!rfbRef.current || !text) return;
+    rfbRef.current.clipboardPasteFrom(text);
+    setText('');
+    setFeedback('Sent!');
+    if (feedbackTimer.current) clearTimeout(feedbackTimer.current);
+    feedbackTimer.current = setTimeout(() => setFeedback(''), 1500);
+  }, [rfbRef, text]);
+
+  // Send on Ctrl+Enter inside the textarea
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      send();
+    }
+  }, [send]);
+
+  return (
+    <div className={`flex flex-col gap-1.5 ${disabled ? 'opacity-40 pointer-events-none' : ''}`}>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder="Paste text here (Ctrl+V), then click Send"
+        rows={3}
+        className="w-full text-xs bg-surface border border-border rounded-md px-2 py-1.5 text-text-primary placeholder:text-text-secondary resize-none focus:outline-none focus:border-accent"
+      />
+      <button
+        onClick={send}
+        disabled={!text}
+        className="flex items-center justify-center gap-1.5 text-xs bg-accent hover:bg-accent-hover text-white px-2 py-1.5 rounded-md transition-colors disabled:opacity-40 disabled:pointer-events-none"
+      >
+        <IconSend />
+        <span>{feedback || 'Send to remote'}</span>
+      </button>
+      <span className="text-[10px] text-text-secondary">or Ctrl+Enter</span>
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function VncControlPanel({ rfbRef, status, sessionRef, onDisconnect }: VncControlPanelProps) {
   const [open, setOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Mirror RFB properties in local state so controls update the display
   const [scaleViewport, setScaleViewport] = useState(true);
+  const [resizeSession, setResizeSessionState] = useState(false);
   const [clipViewport, setClipViewport] = useState(false);
   const [viewOnly, setViewOnly] = useState(false);
-  const [qualityLevel, setQualityLevel] = useState(6);
+  const [qualityLevel, setQualityLevel] = useState(4);
   const [compressionLevel, setCompressionLevel] = useState(2);
 
-  const [clipboardMsg, setClipboardMsg] = useState('');
-  const clipboardTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const panelRef = useRef<HTMLDivElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const connected = status === 'connected';
 
-  // Sync local state from RFB when panel opens (or connection arrives)
+  // Sync local state from RFB when panel opens or connection changes
   useEffect(() => {
     if (!open || !rfbRef.current) return;
     const r = rfbRef.current;
     setScaleViewport(r.scaleViewport);
+    setResizeSessionState(r.resizeSession);
     setClipViewport(r.clipViewport);
     setViewOnly(r.viewOnly);
     setQualityLevel(r.qualityLevel);
     setCompressionLevel(r.compressionLevel);
   }, [open, rfbRef, status]);
 
-  // Track fullscreen changes (user pressing Esc exits fullscreen externally)
+  // Track fullscreen state changes (e.g. user presses Esc)
   useEffect(() => {
     const handler = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener('fullscreenchange', handler);
@@ -156,7 +213,7 @@ export function VncControlPanel({ rfbRef, status, sessionRef, onDisconnect }: Vn
   useEffect(() => {
     if (!open) return;
     function handleClick(e: MouseEvent) {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
         setOpen(false);
       }
     }
@@ -167,9 +224,7 @@ export function VncControlPanel({ rfbRef, status, sessionRef, onDisconnect }: Vn
   // Close on Escape
   useEffect(() => {
     if (!open) return;
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setOpen(false);
-    }
+    function handleKey(e: KeyboardEvent) { if (e.key === 'Escape') setOpen(false); }
     document.addEventListener('keydown', handleKey);
     return () => document.removeEventListener('keydown', handleKey);
   }, [open]);
@@ -179,6 +234,11 @@ export function VncControlPanel({ rfbRef, status, sessionRef, onDisconnect }: Vn
   const setScale = useCallback((v: boolean) => {
     setScaleViewport(v);
     if (rfbRef.current) rfbRef.current.scaleViewport = v;
+  }, [rfbRef]);
+
+  const setResize = useCallback((v: boolean) => {
+    setResizeSessionState(v);
+    if (rfbRef.current) rfbRef.current.resizeSession = v;
   }, [rfbRef]);
 
   const setClip = useCallback((v: boolean) => {
@@ -201,20 +261,6 @@ export function VncControlPanel({ rfbRef, status, sessionRef, onDisconnect }: Vn
     if (rfbRef.current) rfbRef.current.compressionLevel = v;
   }, [rfbRef]);
 
-  const handleClipboardPaste = useCallback(async () => {
-    if (!rfbRef.current) return;
-    try {
-      const text = await navigator.clipboard.readText();
-      rfbRef.current.clipboardPasteFrom(text);
-      setClipboardMsg('Pasted!');
-    } catch {
-      setClipboardMsg('No permission');
-    } finally {
-      if (clipboardTimer.current) clearTimeout(clipboardTimer.current);
-      clipboardTimer.current = setTimeout(() => setClipboardMsg(''), 2000);
-    }
-  }, [rfbRef]);
-
   const handleFullscreen = useCallback(() => {
     const el = sessionRef.current;
     if (!el) return;
@@ -230,18 +276,23 @@ export function VncControlPanel({ rfbRef, status, sessionRef, onDisconnect }: Vn
   }, [rfbRef]);
 
   return (
-    // The panel + tab handle are absolutely positioned inside the VNC session
-    <div ref={panelRef} className="absolute inset-y-0 right-0 flex items-center z-10 pointer-events-none">
+    // Flex-row child alongside the canvas — opening the panel genuinely shrinks
+    // the canvas div so noVNC's internal ResizeObserver fires and rescales.
+    <div ref={wrapperRef} className="flex flex-row h-full shrink-0">
 
-      {/* Slide-out panel */}
+      {/* Tab handle — always visible, matches RDP style */}
+      <button
+        onClick={() => setOpen((o) => !o)}
+        title={open ? 'Close controls' : 'Session controls'}
+        className="flex flex-col items-center justify-center gap-2 w-7 h-full bg-black/50 hover:bg-black/70 text-gray-400 hover:text-white transition-colors border-l border-white/10"
+      >
+        <IconSliders />
+        {open ? <IconChevronRight /> : <IconChevronLeft />}
+      </button>
+
+      {/* Slide-out panel content */}
       <div
-        className={`
-          pointer-events-auto
-          h-full flex flex-col gap-5 overflow-y-auto
-          bg-surface-alt/95 backdrop-blur-sm border-l border-border
-          transition-all duration-250 ease-in-out
-          ${open ? 'w-56 px-4 py-5 opacity-100' : 'w-0 px-0 py-0 opacity-0 overflow-hidden'}
-        `}
+        className={`flex flex-col gap-5 overflow-y-auto overflow-x-hidden bg-surface-alt/95 backdrop-blur-sm border-l border-border transition-all duration-200 ease-in-out ${open ? 'w-56 px-4 py-5 opacity-100' : 'w-0 px-0 py-0 opacity-0'}`}
         aria-hidden={!open}
       >
         {open && (
@@ -249,6 +300,7 @@ export function VncControlPanel({ rfbRef, status, sessionRef, onDisconnect }: Vn
             <Section title="Display">
               <Toggle label="Scale to fit" checked={scaleViewport} onChange={setScale} disabled={!connected} />
               <Toggle label="Clip viewport" checked={clipViewport} onChange={setClip} disabled={!connected} />
+              <Toggle label="Match server resolution" checked={resizeSession} onChange={setResize} disabled={!connected} />
             </Section>
 
             <div className="border-t border-border" />
@@ -263,14 +315,6 @@ export function VncControlPanel({ rfbRef, status, sessionRef, onDisconnect }: Vn
             <Section title="Input">
               <Toggle label="View only" checked={viewOnly} onChange={setViewOnlyMode} disabled={!connected} />
               <button
-                onClick={handleClipboardPaste}
-                disabled={!connected}
-                className="flex items-center gap-2 text-xs text-text-primary px-2 py-1.5 rounded-md hover:bg-surface-hover transition-colors disabled:opacity-40 disabled:pointer-events-none"
-              >
-                <IconClipboard />
-                <span>{clipboardMsg || 'Paste clipboard'}</span>
-              </button>
-              <button
                 onClick={handleCtrlAltDel}
                 disabled={!connected}
                 className="flex items-center gap-2 text-xs text-text-primary px-2 py-1.5 rounded-md hover:bg-surface-hover transition-colors disabled:opacity-40 disabled:pointer-events-none"
@@ -278,6 +322,12 @@ export function VncControlPanel({ rfbRef, status, sessionRef, onDisconnect }: Vn
                 <span className="font-mono text-[11px] text-text-secondary">⌨</span>
                 <span>Ctrl+Alt+Del</span>
               </button>
+            </Section>
+
+            <div className="border-t border-border" />
+
+            <Section title="Clipboard">
+              <ClipboardArea rfbRef={rfbRef} disabled={!connected} />
             </Section>
 
             <div className="border-t border-border" />
@@ -304,32 +354,6 @@ export function VncControlPanel({ rfbRef, status, sessionRef, onDisconnect }: Vn
           </>
         )}
       </div>
-
-      {/* Sticky tab handle — always visible */}
-      <button
-        onClick={() => setOpen((o) => !o)}
-        aria-label={open ? 'Close VNC controls' : 'Open VNC controls'}
-        className="
-          pointer-events-auto
-          flex flex-col items-center justify-center gap-1
-          w-5 py-5 shrink-0
-          bg-surface-alt/90 backdrop-blur-sm
-          border border-r-0 border-border
-          rounded-l-md
-          text-text-secondary hover:text-text-primary hover:bg-surface-hover
-          transition-colors
-          cursor-pointer
-        "
-        style={{ writingMode: 'vertical-rl' }}
-      >
-        {open ? <IconChevronRight /> : <IconChevronLeft />}
-        <span
-          className="text-[10px] tracking-widest font-medium select-none"
-          style={{ writingMode: 'vertical-rl', textOrientation: 'mixed', transform: 'rotate(180deg)' }}
-        >
-          CONTROLS
-        </span>
-      </button>
     </div>
   );
 }
