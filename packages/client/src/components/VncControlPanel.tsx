@@ -137,18 +137,32 @@ function ClipboardArea({ rfbRef, disabled }: { rfbRef: RefObject<RFBInstance | n
   const send = useCallback(() => {
     if (!rfbRef.current || !text) return;
     const rfb = rfbRef.current;
+
+    // Also set the server clipboard so the user can Ctrl+V later manually.
     rfb.clipboardPasteFrom(text);
-    // clipboardPasteFrom only sets the server's clipboard buffer (ClientCutText).
-    // To actually paste into the focused remote application, also send Ctrl+V.
-    // Use a short delay so the server has time to process the clipboard message
-    // before receiving the key events.
-    setTimeout(() => {
-      if (!rfbRef.current) return;
-      rfbRef.current.sendKey(0xffe3, 'ControlLeft', true);   // XK_Control_L down
-      rfbRef.current.sendKey(0x0076, 'KeyV', true);           // XK_v down
-      rfbRef.current.sendKey(0x0076, 'KeyV', false);          // XK_v up
-      rfbRef.current.sendKey(0xffe3, 'ControlLeft', false);   // XK_Control_L up
-    }, 50);
+
+    // Type the text character-by-character using sendKey keysyms.
+    // This bypasses the clipboard exchange entirely — no timing dependency,
+    // works on all VNC servers regardless of extended clipboard support.
+    // Keysym encoding: printable Latin-1 → codePoint directly;
+    //                  Unicode > U+00FF  → 0x01000000 | codePoint;
+    //                  special keys mapped explicitly.
+    for (const char of text) {
+      const cp = char.codePointAt(0)!;
+      let keysym: number;
+      if (cp === 0x0a || cp === 0x0d) {
+        keysym = 0xff0d; // XK_Return
+      } else if (cp === 0x09) {
+        keysym = 0xff09; // XK_Tab
+      } else if (cp > 0xff) {
+        keysym = 0x01000000 | cp; // Unicode keysym encoding
+      } else {
+        keysym = cp;
+      }
+      rfb.sendKey(keysym, '', true);
+      rfb.sendKey(keysym, '', false);
+    }
+
     setText('');
     setFeedback('Sent!');
     if (feedbackTimer.current) clearTimeout(feedbackTimer.current);
@@ -169,7 +183,7 @@ function ClipboardArea({ rfbRef, disabled }: { rfbRef: RefObject<RFBInstance | n
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="Paste text here (Ctrl+V), then click Send"
+        placeholder="Paste text here (Ctrl+V), then Send"
         rows={3}
         className="w-full text-xs bg-surface border border-border rounded-md px-2 py-1.5 text-text-primary placeholder:text-text-secondary resize-none focus:outline-none focus:border-accent"
       />
