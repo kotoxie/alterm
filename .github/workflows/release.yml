@@ -63,9 +63,9 @@ jobs:
           # Find the previous semver tag (strip optional v-prefix for correct sorting)
           CURRENT="${{ github.ref_name }}"
           CURRENT_BARE="${CURRENT#v}"
-          PREV=$(git tag -l | sed 's/^v//' | sort -t. -k1,1nr -k2,2nr -k3,3nr | grep -E '^[0-9]+\.[0-9]+\.[0-9]+' | while read -r t; do
+          PREV=$(git tag -l | grep -E '^[0-9]+\.[0-9]+\.[0-9]+' | sort -t. -k1,1nr -k2,2nr -k3,3nr | while read -r t; do
             if [ "$t" != "$CURRENT_BARE" ]; then
-              if git rev-parse "v$t" >/dev/null 2>&1; then echo "v$t"; else echo "$t"; fi
+              echo "$t"
               break
             fi
           done)
