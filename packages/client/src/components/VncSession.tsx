@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { getWsTicket } from '../lib/wsTicket';
 import { DisconnectOverlay } from './DisconnectOverlay';
+import { VncControlPanel } from './VncControlPanel';
 
 interface VncSessionProps {
   connectionId: string;
@@ -12,6 +13,7 @@ interface VncSessionProps {
 }
 
 export function VncSession({ connectionId, connectionName, isActive, onStatusChange, onClose }: VncSessionProps) {
+  const sessionRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const rfbRef = useRef<import('@novnc/novnc').default | null>(null);
   const { token } = useAuth();
@@ -28,6 +30,13 @@ export function VncSession({ connectionId, connectionName, isActive, onStatusCha
     setErrorMsg('');
     setReconnectCount((n) => n + 1);
   }, []);
+
+  const handleDisconnect = useCallback(() => {
+    if (rfbRef.current) {
+      try { rfbRef.current.disconnect(); } catch { /* ignore */ }
+    }
+    onClose?.(connectionId);
+  }, [connectionId, onClose]);
 
   useEffect(() => {
     if (!isActive) return;
@@ -150,7 +159,7 @@ export function VncSession({ connectionId, connectionName, isActive, onStatusCha
   }, [connectionId, token, isActive, reconnectCount]);
 
   return (
-    <div className="absolute inset-0 bg-black flex flex-col">
+    <div ref={sessionRef} className="absolute inset-0 bg-black flex flex-col">
       <div className="flex items-center gap-2 px-3 py-1.5 bg-surface-alt border-b border-border/40 shrink-0 text-xs text-text-secondary">
         <span
           className={`w-2 h-2 rounded-full shrink-0 ${
@@ -167,7 +176,15 @@ export function VncSession({ connectionId, connectionName, isActive, onStatusCha
         {errorMsg && <span className="text-red-400 ml-auto">{errorMsg}</span>}
       </div>
 
-      <div ref={containerRef} className="flex-1 overflow-hidden" style={{ background: '#000' }} />
+      <div className="relative flex-1 overflow-hidden">
+        <div ref={containerRef} className="absolute inset-0" style={{ background: '#000' }} />
+        <VncControlPanel
+          rfbRef={rfbRef}
+          status={status}
+          sessionRef={sessionRef}
+          onDisconnect={handleDisconnect}
+        />
+      </div>
 
       <DisconnectOverlay
         show={status === 'disconnected'}
