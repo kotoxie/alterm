@@ -3,6 +3,7 @@ import { useAuth } from '../hooks/useAuth';
 import { getWsTicket } from '../lib/wsTicket';
 import { DisconnectOverlay } from './DisconnectOverlay';
 import { VncControlPanel } from './VncControlPanel';
+import { VncMobileKeyboard } from './VncMobileKeyboard';
 
 interface VncSessionProps {
   connectionId: string;
@@ -180,7 +181,7 @@ export function VncSession({ connectionId, connectionName, isActive, onStatusCha
         {errorMsg && <span className="text-red-400 ml-auto">{errorMsg}</span>}
       </div>
 
-      <div className="flex flex-row flex-1 overflow-hidden">
+      <div className="flex flex-row flex-1 overflow-hidden relative">
         <div ref={containerRef} className="flex-1 overflow-hidden" style={{ background: '#000' }} />
         <VncControlPanel
           rfbRef={rfbRef}
@@ -188,6 +189,7 @@ export function VncSession({ connectionId, connectionName, isActive, onStatusCha
           sessionRef={sessionRef}
           onDisconnect={handleDisconnect}
         />
+        <VncMobileKeyboard rfbRef={rfbRef} status={status} />
       </div>
 
       <DisconnectOverlay
