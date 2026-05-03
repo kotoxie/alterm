@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, type RefObject } from 'react';
+import { useRef, useState, useCallback, type RefObject } from 'react';
 
 type RFBInstance = import('@novnc/novnc').default;
 
@@ -79,15 +79,9 @@ function IconKeyboard() {
 const SENTINEL = 'x';
 
 export function VncMobileKeyboard({ rfbRef, status }: VncMobileKeyboardProps) {
-  const [isTouch, setIsTouch] = useState(false);
   const [active, setActive] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const connected = status === 'connected';
-
-  // Detect touch device once on mount
-  useEffect(() => {
-    setIsTouch(navigator.maxTouchPoints > 0 || 'ontouchstart' in window);
-  }, []);
 
   // ── Key forwarding ─────────────────────────────────────────────────────────
 
@@ -166,15 +160,15 @@ export function VncMobileKeyboard({ rfbRef, status }: VncMobileKeyboardProps) {
     setActive(false);
   }, []);
 
-  // Don't render at all on non-touch devices
-  if (!isTouch) return null;
-
   return (
     <>
       {/*
-        Hidden textarea — must NOT be display:none or visibility:hidden,
-        otherwise focus() won't trigger the soft keyboard.
-        Positioned off-screen via absolute + negative coordinates.
+        Hidden-but-in-viewport textarea.
+        - Must NOT be display:none or visibility:hidden (focus() won't work)
+        - Must be within the visible viewport — iOS Safari won't open the soft
+          keyboard for elements positioned off-screen (e.g. left:-9999px)
+        - font-size:16px prevents iOS from auto-zooming the page on focus
+        - pointer-events:none is fine; we focus() programmatically
       */}
       <textarea
         ref={textareaRef}
@@ -189,22 +183,22 @@ export function VncMobileKeyboard({ rfbRef, status }: VncMobileKeyboardProps) {
         aria-hidden="true"
         tabIndex={-1}
         style={{
-          position: 'absolute',
-          left: '-9999px',
-          top: '-9999px',
+          position: 'fixed',
+          top: 0,
+          left: 0,
           width: '1px',
           height: '1px',
           opacity: 0,
+          fontSize: '16px', // prevents iOS auto-zoom on focus
+          border: 'none',
+          outline: 'none',
+          padding: 0,
           pointerEvents: 'none',
         }}
       />
 
-      {/* Floating action button */}
+      {/* Floating action button — always rendered, useful on any touch device */}
       <button
-        onPointerDown={(e) => {
-          // Prevent the canvas from losing focus before we handle toggle
-          e.preventDefault();
-        }}
         onClick={toggleKeyboard}
         disabled={!connected}
         title={active ? 'Hide keyboard' : 'Show keyboard'}
@@ -212,7 +206,7 @@ export function VncMobileKeyboard({ rfbRef, status }: VncMobileKeyboardProps) {
         className={`
           absolute bottom-4 left-1/2 -translate-x-1/2
           flex items-center justify-center
-          w-12 h-12 rounded-full shadow-lg
+          w-12 h-12 rounded-full shadow-lg z-10
           transition-colors duration-150
           disabled:opacity-30 disabled:pointer-events-none
           ${active
