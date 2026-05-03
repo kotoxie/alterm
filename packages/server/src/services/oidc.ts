@@ -126,6 +126,7 @@ export async function handleOidcCallback(
         code,
         redirect_uri: cfg.redirectUri,
         client_id: cfg.clientId,
+        client_secret: cfg.clientSecret,
       }).toString(),
     });
 
