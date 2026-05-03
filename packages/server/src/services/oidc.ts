@@ -42,20 +42,26 @@ function getOidcConfig(): OidcConfig | null {
   return { clientId, clientSecret, providerUrl, redirectUri, scope };
 }
 
-export async function buildOidcAuthUrl(): Promise<{ url: string; state: string } | null> {
+export async function buildOidcAuthUrl(): Promise<{ url: string; state: string } | { error: string }> {
   const cfg = getOidcConfig();
-  if (!cfg) return null;
+  if (!cfg) {
+    if (!getSetting('auth.oidc_provider_url')) return { error: 'OIDC provider URL is not configured' };
+    if (!getSetting('auth.oidc_client_id'))   return { error: 'OIDC client ID is not configured' };
+    if (!getSetting('auth.oidc_redirect_uri')) return { error: 'OIDC redirect URI is not configured' };
+    return { error: 'OIDC configuration is incomplete' };
+  }
 
   const discoveryUrl = cfg.providerUrl.replace(/\/$/, '') + '/.well-known/openid-configuration';
   let authEndpoint: string;
   try {
     const res = await fetch(discoveryUrl);
-    if (!res.ok) throw new Error(`Discovery failed: ${res.status}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status} — ${discoveryUrl}`);
     const doc = await res.json() as { authorization_endpoint: string };
     authEndpoint = doc.authorization_endpoint;
   } catch (err) {
-    console.error('[OIDC] Discovery error:', err instanceof Error ? err.message : err);
-    return null;
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[OIDC] Discovery error:', msg);
+    return { error: `OIDC discovery failed: ${msg}. Verify the Provider URL points to the base of your IdP (e.g. https://accounts.google.com, not the discovery URL itself).` };
   }
 
   const state = randomBytes(16).toString('hex');
@@ -192,8 +198,5 @@ export async function handleOidcCallback(
 }
 
 export function isOidcEnabled(): boolean {
-  return getSetting('auth.oidc_enabled') === 'true' &&
-    !!getSetting('auth.oidc_provider_url') &&
-    !!getSetting('auth.oidc_client_id') &&
-    !!getSetting('auth.oidc_redirect_uri');
+  return getSetting('auth.oidc_enabled') === 'true';
 }

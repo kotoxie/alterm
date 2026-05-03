@@ -642,8 +642,8 @@ router.get('/oidc/authorize', async (_req: Request, res: Response) => {
   }
 
   const result = await buildOidcAuthUrl();
-  if (!result) {
-    res.status(500).json({ error: 'Failed to build OIDC authorization URL. Check OIDC configuration.' });
+  if ('error' in result) {
+    res.status(400).json({ error: result.error });
     return;
   }
 
