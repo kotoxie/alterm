@@ -9,6 +9,7 @@ const DEFAULTS: Record<string, string> = {
   'security.lockout_minutes': '30',
   'security.trusted_proxies': '',
   'security.proxy_detection_enabled': 'true',
+  'security.max_connections_per_user': '10',
   'security.ip_rules_enabled': 'false',
   'security.ip_rules_mode': 'allowlist',
   'audit.retention_days': '90',

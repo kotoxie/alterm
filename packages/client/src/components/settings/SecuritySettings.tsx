@@ -33,6 +33,11 @@ export function SecuritySettings() {
   const [ipMsg, setIpMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [savingIp, setSavingIp] = useState(false);
 
+  // Connection limits
+  const [maxConnPerUser, setMaxConnPerUser] = useState('10');
+  const [connMsg, setConnMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [savingConn, setSavingConn] = useState(false);
+
   // Trusted proxies
   const [trustedProxies, setTrustedProxies] = useState('');
   const [proxyDetectionEnabled, setProxyDetectionEnabled] = useState(true);
@@ -46,6 +51,7 @@ export function SecuritySettings() {
     setLockoutMinutes(settings['security.lockout_minutes'] ?? '30');
     setIpRulesEnabled(settings['security.ip_rules_enabled'] === 'true');
     setIpRulesMode((settings['security.ip_rules_mode'] as 'allowlist' | 'denylist') ?? 'allowlist');
+    setMaxConnPerUser(settings['security.max_connections_per_user'] ?? '10');
     setTrustedProxies(settings['security.trusted_proxies'] ?? '');
     setProxyDetectionEnabled(settings['security.proxy_detection_enabled'] !== 'false');
 
@@ -149,6 +155,23 @@ export function SecuritySettings() {
       setIpMsg({ type: 'error', text: 'Network error.' });
     } finally {
       setSavingIp(false);
+    }
+  }
+
+  async function handleConnSave(e: FormEvent) {
+    e.preventDefault();
+    setSavingConn(true);
+    setConnMsg(null);
+    try {
+      await saveSetting(
+        { 'security.max_connections_per_user': maxConnPerUser },
+        () => setConnMsg({ type: 'success', text: 'Saved.' }),
+        (msg) => setConnMsg({ type: 'error', text: msg }),
+      );
+    } catch {
+      setConnMsg({ type: 'error', text: 'Network error.' });
+    } finally {
+      setSavingConn(false);
     }
   }
 
@@ -378,6 +401,54 @@ export function SecuritySettings() {
             className="px-4 py-2 bg-accent text-white rounded hover:bg-accent-hover disabled:opacity-50 text-sm font-medium"
           >
             {savingIp ? 'Saving...' : 'Save IP Rules'}
+          </button>
+        </form>
+      </section>
+
+      <hr className="border-border" />
+
+      {/* Connection Limits */}
+      <section>
+        <h2 className="text-base font-semibold text-text-primary mb-1">Connection Limits</h2>
+        <p className="text-sm text-text-secondary mb-4">Maximum number of concurrent WebSocket sessions allowed per user.</p>
+        <form onSubmit={handleConnSave} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-1">
+              Max concurrent connections per user
+            </label>
+            <select
+              value={maxConnPerUser}
+              onChange={(e) => setMaxConnPerUser(e.target.value)}
+              className="w-40 px-3 py-2 bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent text-sm"
+            >
+              <option value="10">10 (default)</option>
+              <option value="25">25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </div>
+          {maxConnPerUser !== '10' && (
+            <div className="flex items-start gap-2 px-3 py-2 bg-yellow-500/10 border border-yellow-500/30 rounded text-yellow-400 text-sm">
+              <svg className="shrink-0 mt-0.5" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              <span>
+                Increasing beyond the default (10) may expose the server to resource exhaustion. Only raise this limit if you trust your users.
+              </span>
+            </div>
+          )}
+          {connMsg && (
+            <p className={`text-sm ${connMsg.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+              {connMsg.text}
+            </p>
+          )}
+          <button
+            type="submit"
+            disabled={savingConn}
+            className="px-4 py-2 bg-accent text-white rounded hover:bg-accent-hover disabled:opacity-50 text-sm font-medium"
+          >
+            {savingConn ? 'Saving...' : 'Save'}
           </button>
         </form>
       </section>
