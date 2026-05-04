@@ -4,7 +4,7 @@
 ### ![alt text](https://github.com/kotoxie/Gatwy/blob/master/packages/client/public/favicon.png?raw=true) 
 
 
-### Lightning-fast, self-hosted remote access — RDP, SSH, VNC, Telnet, SMB, SFTP & FTP in one Docker container.
+### Lightning-fast, self-hosted remote access — RDP, SSH, VNC, Telnet, SMB, SFTP, FTP, PostgreSQL & MySQL in one Docker container.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Image Size](https://img.shields.io/endpoint?url=https://gatwy-image-size.gatwy.dev)
@@ -29,7 +29,7 @@ One container. Zero dependencies. Open your browser and connect.
 
 ## ✨ Highlights
 
-- **7 protocols** — RDP (WebAssembly), SSH, VNC, Telnet, SMB, SFTP, FTP
+- **9 protocols** — RDP (WebAssembly), SSH, VNC, Telnet, SMB, SFTP, FTP, PostgreSQL, MySQL
 - **Split-pane workspace** — unlimited sessions side by side with drag-and-drop tabs
 - **Session recording & audit** — encrypted RDP video, SSH asciinema, command-level audit log with auto-redacted passwords, file activity tracking
 - **Granular RBAC** — 22 fine-grained permissions, custom roles, per-connection sharing, protocol-level access control
