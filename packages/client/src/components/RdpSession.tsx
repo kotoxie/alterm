@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import type { Tab } from '../pages/MainLayout';
 import { getWsTicket } from '../lib/wsTicket';
 import { DisconnectOverlay } from './DisconnectOverlay';
+import { RdpMobileKeyboard } from './RdpMobileKeyboard';
 
 let rdpInitialized = false;
 let Backend: Record<string, unknown> | null = null;
@@ -602,6 +603,9 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
           if (
             active &&
             active !== canvas &&
+            // Allow events through when the active element is our mobile keyboard
+            // textarea (identified by data-mobile-keyboard attribute).
+            (active as HTMLElement).getAttribute('data-mobile-keyboard') !== 'true' &&
             (active.tagName === 'INPUT' ||
               active.tagName === 'TEXTAREA' ||
               active.tagName === 'SELECT' ||
@@ -766,6 +770,9 @@ export function RdpSession({ tab, onStatusChange, onClose }: RdpSessionProps) {
   return (
     <div ref={outerRef} className="absolute inset-0 flex flex-col bg-black overflow-hidden">
       <div ref={containerRef} className="flex-1 w-full relative" />
+
+      {/* Mobile soft-keyboard FAB — touch devices only */}
+      <RdpMobileKeyboard connected={status === 'Connected'} />
 
       {/* Disconnect overlay */}
       <DisconnectOverlay

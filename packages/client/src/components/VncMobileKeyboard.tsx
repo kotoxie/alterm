@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, type RefObject } from 'react';
+import { useMemo, useRef, useState, useCallback, type RefObject } from 'react';
 
 type RFBInstance = import('@novnc/novnc').default;
 
@@ -79,9 +79,16 @@ function IconKeyboard() {
 const SENTINEL = 'x';
 
 export function VncMobileKeyboard({ rfbRef, status }: VncMobileKeyboardProps) {
+  // matchMedia('(pointer: coarse)') is the reliable way to detect touch-primary devices.
+  // navigator.maxTouchPoints can be > 0 on Windows 11 even without a touchscreen.
+  // useMemo runs synchronously during render (no useEffect async flip) so the component
+  // returns null immediately on desktop — no flash of the button.
+  const isTouch = useMemo(() => window.matchMedia('(pointer: coarse)').matches, []);
   const [active, setActive] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const connected = status === 'connected';
+
+  if (!isTouch) return null;
 
   // ── Key forwarding ─────────────────────────────────────────────────────────
 
