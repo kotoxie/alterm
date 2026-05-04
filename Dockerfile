@@ -26,7 +26,7 @@ FROM node:20-alpine
 WORKDIR /app
 
 # Install runtime dependencies (gosu for privilege drop in entrypoint)
-RUN apk add --no-cache ca-certificates curl gosu
+RUN apk add --no-cache ca-certificates curl gosu openssl
 
 # Copy package files and install production deps only
 COPY package.json package-lock.json* ./
