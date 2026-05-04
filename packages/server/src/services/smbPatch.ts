@@ -56,7 +56,7 @@ export function patchSmbNtlm(): void {
             extract = true;
             const r = c.responseBuffer.slice(4, msgLength + 4);
             c.responseBuffer = c.responseBuffer.slice(msgLength + 4);
-            const message = new SMB2Message();
+            const message = new SMB2Message(undefined);
             message.parseBuffer(r);
             const h = message.getHeaders();
             // Skip interim async frame — keep callback registered for the real response
