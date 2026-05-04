@@ -1,5 +1,5 @@
 # Stage 1: Build
-FROM node:20-slim AS builder
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
@@ -21,14 +21,12 @@ RUN npm run build --workspace=packages/client
 RUN npm run build --workspace=packages/server
 
 # Stage 2: Production
-FROM node:20-slim
+FROM node:20-alpine
 
 WORKDIR /app
 
 # Install runtime dependencies (gosu for privilege drop in entrypoint)
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates curl gosu && \
-    rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache ca-certificates curl gosu
 
 # Copy package files and install production deps only
 COPY package.json package-lock.json* ./
