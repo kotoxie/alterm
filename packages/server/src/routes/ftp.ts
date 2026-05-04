@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { PassThrough } from 'stream';
+import { PassThrough, Readable } from 'stream';
 import * as ftp from 'basic-ftp';
 import { queryOne } from '../db/helpers.js';
 import { authRequired, requirePermission } from '../middleware/auth.js';
@@ -143,7 +143,7 @@ router.post('/:connectionId/upload', async (req: Request, res: Response) => {
 
   try {
     client = await makeFtpClient(conn);
-    await client.uploadFrom(req, filePath);
+    await client.uploadFrom(Readable.from(req.body as Buffer), filePath);
     logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'ftp', action: 'upload', path: filePath });
     res.json({ success: true });
   } catch (e: unknown) {

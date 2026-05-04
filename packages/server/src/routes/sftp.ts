@@ -179,12 +179,12 @@ router.post('/:connectionId/upload', async (req: Request, res: Response) => {
     ssh = result.ssh;
     const { sftp } = result;
 
+    const fileData = req.body as Buffer;
     const writeStream = sftp.createWriteStream(filePath);
     await new Promise<void>((resolve, reject) => {
-      req.pipe(writeStream);
       writeStream.on('finish', resolve);
       writeStream.on('error', reject);
-      req.on('error', reject);
+      writeStream.end(fileData);
     });
 
     logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'sftp', action: 'upload', path: filePath });

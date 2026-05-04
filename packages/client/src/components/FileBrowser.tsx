@@ -107,7 +107,7 @@ export function FileBrowser({
   const [status, setStatus] = useState<'connecting' | 'connected' | 'error'>('connecting');
   const [newFolderMode, setNewFolderMode] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
-  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<{ name: string; loaded: number; total: number } | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<{ name: string; loaded: number; total: number | null } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -303,17 +303,29 @@ export function FileBrowser({
     const file = e.target.files?.[0];
     if (!file) return;
     const filePath = joinPath(path, file.name);
-    setUploadProgress(`Uploading ${file.name}...`);
+    setUploadProgress({ name: file.name, loaded: 0, total: file.size });
     try {
-      const res = await fetch(`${apiBase}/${connectionId}/upload?path=${encodeURIComponent(filePath)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/octet-stream', ...(fileSessionId ? { 'X-File-Session-Id': fileSessionId } : {}) },
-        credentials: 'include',
-        body: file,
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `${apiBase}/${connectionId}/upload?path=${encodeURIComponent(filePath)}`);
+        xhr.withCredentials = true;
+        xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+        if (fileSessionId) xhr.setRequestHeader('X-File-Session-Id', fileSessionId);
+        xhr.upload.onprogress = (ev) => {
+          if (ev.lengthComputable) setUploadProgress({ name: file.name, loaded: ev.loaded, total: ev.total });
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) { resolve(); }
+          else {
+            try { const d = JSON.parse(xhr.responseText) as { error?: string }; reject(new Error(d.error || 'Upload failed')); }
+            catch { reject(new Error('Upload failed')); }
+          }
+        };
+        xhr.onerror = () => reject(new Error('Upload failed'));
+        xhr.send(file);
       });
-      if (res.ok) listDir(path);
-      else { const d = await res.json(); setError(d.error || 'Upload failed'); }
-    } catch { setError('Upload failed'); }
+      listDir(path);
+    } catch (err) { setError(err instanceof Error ? err.message : 'Upload failed'); }
     setUploadProgress(null);
     e.target.value = '';
   }
@@ -659,7 +671,29 @@ export function FileBrowser({
                 </div>
               )}
             </div>
-          ) : (uploadProgress || 'Connecting...')}
+          ) : uploadProgress ? (
+            <div className="flex-1 flex items-center gap-2 min-w-0">
+              <svg className="animate-spin shrink-0" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+              </svg>
+              <span className="truncate min-w-0">
+                Uploading <span className="font-medium">{uploadProgress.name}</span>
+                {' — '}
+                {formatSize(uploadProgress.loaded)} / {formatSize(uploadProgress.total)}
+              </span>
+              <div className="ml-auto shrink-0 flex items-center gap-2">
+                <span className="tabular-nums">
+                  {Math.round((uploadProgress.loaded / uploadProgress.total) * 100)}%
+                </span>
+                <div className="w-24 h-1.5 bg-accent/20 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-accent rounded-full transition-all"
+                    style={{ width: `${Math.min(100, (uploadProgress.loaded / uploadProgress.total) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          ) : ('Connecting...')}
         </div>
       )}
 

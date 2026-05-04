@@ -183,12 +183,12 @@ router.post('/:connectionId/upload', async (req: Request, res: Response) => {
 
   try {
     smb = makeSmbClient(conn);
+    const fileData = req.body as Buffer;
     const stream = await smbOp(() => smb!.createWriteStream(filePath));
     await new Promise<void>((resolve, reject) => {
-      req.pipe(stream);
       stream.on('finish', resolve);
       stream.on('error', reject);
-      req.on('error', reject);
+      stream.end(fileData);
     });
     logFileSessionEvent({ req, userId, connectionId: req.params.connectionId as string, protocol: 'smb', action: 'upload', path: filePath });
     res.json({ success: true });
