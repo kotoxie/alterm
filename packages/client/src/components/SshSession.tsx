@@ -208,9 +208,25 @@ export function SshSession({ tab, isActive, paneWidth, paneHeight, onStatusChang
     };
   }, [tab.id, tab.connectionId, token, onStatusChange, reconnectCount, sshFontSize, sshFontFamily, sshScrollback, sshCursorStyle, sshCursorBlink, sshThemeName, sshPrefsLoading]);
 
+  // Re-fit when the tunnels bar appears or disappears so xterm recalculates
+  // its available height (flex-1 container shrinks/grows accordingly).
+  useEffect(() => {
+    const fit = fitAddonRef.current;
+    const term = terminalRef.current;
+    const ws = wsRef.current;
+    if (!fit || !term) return;
+    const id = requestAnimationFrame(() => {
+      fit.fit();
+      if (ws?.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+      }
+    });
+    return () => cancelAnimationFrame(id);
+  }, [activeTunnels.length]);
+
   return (
     <div
-      className="absolute inset-0 bg-[#0d0d0d]"
+      className="absolute inset-0 bg-[#0d0d0d] flex flex-col"
       onContextMenu={async (e) => {
         e.preventDefault();
         const ws = wsRef.current;
@@ -221,10 +237,10 @@ export function SshSession({ tab, isActive, paneWidth, paneHeight, onStatusChang
         } catch { /* clipboard access denied */ }
       }}
     >
-      <div ref={termRef} className="absolute inset-0" />
+      <div ref={termRef} className="flex-1 min-h-0" />
 
       {activeTunnels.length > 0 && (
-        <div className="absolute bottom-0 left-0 right-0 z-10 bg-black/80 border-t border-border/30 px-3 py-1.5 flex items-center gap-3 flex-wrap">
+        <div className="shrink-0 bg-black/80 border-t border-border/30 px-3 py-1.5 flex items-center gap-3 flex-wrap">
           <span className="text-xs text-text-secondary shrink-0">Tunnels:</span>
           {activeTunnels.map((t, i) => (
             <span
