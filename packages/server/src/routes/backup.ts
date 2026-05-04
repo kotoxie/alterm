@@ -1,11 +1,95 @@
 import { Router, type Request, type Response } from 'express';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
+import initSqlJs from 'sql.js';
 import { requirePermission } from '../middleware/auth.js';
 import { logAudit } from '../services/audit.js';
 import { createBackup, restoreBackup, getRecordingsSizeInfo } from '../services/backup.js';
 import { getDb, restoreDbFromBytes } from '../db/index.js';
 import { config } from '../config.js';
+import { getEncryptionKeyHex } from '../services/encryption.js';
+
+const AES_GCM = 'aes-256-gcm';
+const IV_LEN = 16;
+const TAG_LEN = 16;
+
+/** Decrypt a credential that was encrypted with an arbitrary key (backup's key). */
+function decryptWith(ciphertext: string, key: Buffer): string {
+  const buf = Buffer.from(ciphertext, 'base64');
+  const iv = buf.subarray(0, IV_LEN);
+  const tag = buf.subarray(IV_LEN, IV_LEN + TAG_LEN);
+  const body = buf.subarray(IV_LEN + TAG_LEN);
+  const d = crypto.createDecipheriv(AES_GCM, key, iv);
+  d.setAuthTag(tag);
+  return d.update(body) + d.final('utf8');
+}
+
+/** Encrypt a credential with an arbitrary key (the live key). */
+function encryptWith(plaintext: string, key: Buffer): string {
+  const iv = crypto.randomBytes(IV_LEN);
+  const c = crypto.createCipheriv(AES_GCM, key, iv);
+  const enc = Buffer.concat([c.update(plaintext, 'utf8'), c.final()]);
+  return Buffer.concat([iv, c.getAuthTag(), enc]).toString('base64');
+}
+
+/**
+ * Re-encrypt all credential fields in `dbBytes` from `backupKey` to `liveKey`.
+ * Opens the DB in-memory, iterates every encrypted column, and returns the
+ * patched bytes. Leaves rows with NULL / empty / already-correct values untouched.
+ */
+async function reEncryptDbBytes(dbBytes: Buffer, backupKeyHex: string, liveKeyHex: string): Promise<Buffer> {
+  if (backupKeyHex === liveKeyHex) return dbBytes; // keys are identical — nothing to do
+
+  const backupKey = Buffer.from(backupKeyHex, 'hex');
+  const liveKey = Buffer.from(liveKeyHex, 'hex');
+
+  const SQL = await initSqlJs();
+  const tmpDb = new SQL.Database(dbBytes);
+
+  function reEncryptColumn(table: string, col: string) {
+    const rows = tmpDb.exec(`SELECT id, ${col} FROM ${table} WHERE ${col} IS NOT NULL AND ${col} != ''`);
+    if (!rows.length || !rows[0].values.length) return;
+    const stmt = tmpDb.prepare(`UPDATE ${table} SET ${col} = ? WHERE id = ?`);
+    for (const [id, ciphertext] of rows[0].values as [string, string][]) {
+      try {
+        const plain = decryptWith(ciphertext, backupKey);
+        const reEncrypted = encryptWith(plain, liveKey);
+        stmt.run([reEncrypted, id]);
+      } catch {
+        // If decryption fails the value may already be in plaintext (legacy) or
+        // corrupted — leave it as-is rather than silently destroying it.
+      }
+    }
+    stmt.free();
+  }
+
+  function reEncryptSetting(key: string) {
+    const rows = tmpDb.exec(`SELECT value FROM settings WHERE key = ? AND value IS NOT NULL AND value != ''`, [key]);
+    if (!rows.length || !rows[0].values.length) return;
+    const [ciphertext] = rows[0].values[0] as [string];
+    try {
+      const plain = decryptWith(ciphertext, backupKey);
+      const reEncrypted = encryptWith(plain, liveKey);
+      tmpDb.run(`UPDATE settings SET value = ? WHERE key = ?`, [reEncrypted, key]);
+    } catch { /* leave as-is */ }
+  }
+
+  // connections table
+  reEncryptColumn('connections', 'encrypted_password');
+  reEncryptColumn('connections', 'private_key');
+
+  // users table — MFA secrets
+  reEncryptColumn('users', 'mfa_secret');
+
+  // settings table — LDAP bind password, OIDC client secret
+  reEncryptSetting('auth.ldap_bind_password');
+  reEncryptSetting('auth.oidc_client_secret');
+
+  const result = Buffer.from(tmpDb.export());
+  tmpDb.close();
+  return result;
+}
 
 const router = Router();
 
@@ -49,7 +133,7 @@ router.post('/export', requirePermission('settings.backup'), (req: Request, res:
 
 // POST /import — restore system from encrypted backup
 // Body: raw .geb binary. Password in X-Backup-Password header.
-router.post('/import', requirePermission('settings.backup'), (req: Request, res: Response) => {
+router.post('/import', requirePermission('settings.backup'), async (req: Request, res: Response) => {
   const password = req.headers['x-backup-password'];
   if (!password || typeof password !== 'string') {
     res.status(400).json({ error: 'X-Backup-Password header required' });
@@ -70,6 +154,12 @@ router.post('/import', requirePermission('settings.backup'), (req: Request, res:
   try {
     const restored = restoreBackup(data, password);
 
+    // Re-encrypt all credentials from the backup's encryption key to the
+    // currently active live key before hot-swapping the database.
+    // Without this step credentials would be undecryptable after restore.
+    const liveKeyHex = getEncryptionKeyHex();
+    const reEncryptedDb = await reEncryptDbBytes(restored.dbBytes, restored.encryptionKeyHex, liveKeyHex);
+
     // Restore recordings — sanitize filenames to prevent path traversal (C2)
     fs.mkdirSync(config.recordingsDir, { recursive: true });
     for (const f of fs.readdirSync(config.recordingsDir)) {
@@ -85,7 +175,7 @@ router.post('/import', requirePermission('settings.backup'), (req: Request, res:
     }
 
     // Hot-swap the database (last, so the audit log above isn't lost)
-    restoreDbFromBytes(restored.dbBytes);
+    restoreDbFromBytes(reEncryptedDb);
 
     res.json({
       ok: true,
