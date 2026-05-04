@@ -27,7 +27,7 @@ WORKDIR /app
 
 # Install runtime dependencies (gosu for privilege drop in entrypoint)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends openssl smbclient ca-certificates curl gosu && \
+    apt-get install -y --no-install-recommends ca-certificates curl gosu && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy package files and install production deps only
