@@ -50,18 +50,16 @@ async function reEncryptDbBytes(dbBytes: Buffer, backupKeyHex: string, liveKeyHe
   function reEncryptColumn(table: string, col: string) {
     const rows = tmpDb.exec(`SELECT id, ${col} FROM ${table} WHERE ${col} IS NOT NULL AND ${col} != ''`);
     if (!rows.length || !rows[0].values.length) return;
-    const stmt = tmpDb.prepare(`UPDATE ${table} SET ${col} = ? WHERE id = ?`);
     for (const [id, ciphertext] of rows[0].values as [string, string][]) {
       try {
         const plain = decryptWith(ciphertext, backupKey);
         const reEncrypted = encryptWith(plain, liveKey);
-        stmt.run([reEncrypted, id]);
+        tmpDb.run(`UPDATE ${table} SET ${col} = ? WHERE id = ?`, [reEncrypted, id]);
       } catch {
         // If decryption fails the value may already be in plaintext (legacy) or
         // corrupted — leave it as-is rather than silently destroying it.
       }
     }
-    stmt.free();
   }
 
   function reEncryptSetting(key: string) {
